@@ -16,3 +16,6 @@ dist/
 .idea/shelf/
 .DS_Store
 .claude/settings.local.json
+.dev.vars
+.wrangler/
+node_modules/.tmp/
