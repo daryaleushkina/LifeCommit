@@ -1,0 +1,65 @@
+/*
+ * Платформенный слой мини-аппа: высота, отступы, схема цвета.
+ * Копируется в src/styles/telegram.css и подключается раньше стилей экранов.
+ *
+ * Имена переменных — те, что создаёт @tma.js/sdk 3.x:
+ *   themeParams.bindCssVars() → --tg-theme-*               (bg-color, text-color, …)
+ *   miniApp.bindCssVars()     → --tg-bg-color, --tg-header-color, --tg-bottom-bar-color
+ *   viewport.bindCssVars()    → --tg-viewport-height, --tg-viewport-stable-height,
+ *                               --tg-viewport-safe-area-inset-*,
+ *                               --tg-viewport-content-safe-area-inset-*
+ * ⚠️ Документация Telegram называет отступы --tg-safe-area-inset-* и
+ * --tg-content-safe-area-inset-* — это имена telegram-web-app.js. У @tma.js/sdk
+ * они с префиксом viewport-, и чужое имя молча даёт 0.
+ *
+ * Запасные значения цветов — системные Canvas/CanvasText, а не hex: они
+ * следуют color-scheme и не спорят с темой на первом кадре.
+ * Общие правила «веб на телефоне» (подсветка нажатия, зум полей) — в навыке
+ * mobile-native; здесь только то, что в Telegram устроено иначе.
+ * Базовые приёмы — по мотивам miniapp-native.css (yaniv-golan/telegram-webapps-skill, MIT).
+ */
+
+:root {
+  /* Схема цвета берётся из темы Telegram, а не из ОС: тема клиента и тема
+     телефона независимы. Атрибут ставит App по miniApp.isDark. */
+  color-scheme: light;
+
+  /* Видимая высота. Не 100vh/100dvh: в половинном режиме WebView выше
+     видимой части, и прижатое к низу уедет за край экрана. */
+  --app-height: var(--tg-viewport-stable-height, 100dvh);
+
+  /* Отступы = системные (вырез, полоска «домой») + интерфейс Telegram поверх
+     содержимого (кнопки шапки в полноэкранном режиме). Сумма — практика
+     сообщества; документация Telegram явно этого не говорит — проверять на устройстве. */
+  --app-inset-top: calc(var(--tg-viewport-safe-area-inset-top, 0px) + var(--tg-viewport-content-safe-area-inset-top, 0px));
+  --app-inset-bottom: calc(var(--tg-viewport-safe-area-inset-bottom, 0px) + var(--tg-viewport-content-safe-area-inset-bottom, 0px));
+  --app-inset-left: calc(var(--tg-viewport-safe-area-inset-left, 0px) + var(--tg-viewport-content-safe-area-inset-left, 0px));
+  --app-inset-right: calc(var(--tg-viewport-safe-area-inset-right, 0px) + var(--tg-viewport-content-safe-area-inset-right, 0px));
+}
+
+:root[data-color-scheme='dark'] {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--tg-theme-bg-color, Canvas);
+  color: var(--tg-theme-text-color, CanvasText);
+}
+
+body {
+  /* Тело не прокручивается, прокручивается .app-shell: высота оболочки
+     задана от видимой области, и резиновый отскок не тянет весь документ. */
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-shell {
+  box-sizing: border-box;
+  height: var(--app-height);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: var(--app-inset-top) var(--app-inset-right) var(--app-inset-bottom) var(--app-inset-left);
+}

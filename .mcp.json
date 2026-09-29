@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "fnm",
+      "args": [
+        "exec",
+        "--using=22",
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@1.10.1",
+        "--isolated",
+        "--viewport=390x844",
+        "--performanceCrux=false",
+        "--usageStatistics=false"
+      ]
+    },
+    "lazyweb": {
+      "type": "http",
+      "url": "https://www.lazyweb.com/mcp"
+    }
+  }
+}

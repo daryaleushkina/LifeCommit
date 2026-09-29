@@ -1,0 +1,18 @@
+.claude/skills/impeccable/scripts/bin/
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# deps / build
+node_modules/
+dist/
+.vercel/
+.supabase/
+
+# IDE / OS
+.idea/workspace.xml
+.idea/shelf/
+.DS_Store
+.claude/settings.local.json
