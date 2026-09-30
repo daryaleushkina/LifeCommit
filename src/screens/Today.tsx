@@ -1,7 +1,6 @@
 import { useContext, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { api } from '../api';
-import { Heatmap } from '../components/Heatmap';
-import { isDone, TaskCard, taskScore } from '../components/TaskCard';
+import { isDone, TaskCard } from '../components/TaskCard';
 import { LangContext, useT } from '../i18n';
 import { currentChange, useTaskLog, type Cache } from '../useTaskLog';
 
@@ -12,11 +11,10 @@ interface Props {
   cache: Cache;
   setCache: Dispatch<SetStateAction<Cache>>;
   onEdit: (id: number | null) => void;
-  onProfile: () => void;
   onArchive: () => void;
 }
 
-export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props): ReactNode {
+export function Today({ cache, setCache, onEdit, onArchive }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const data = cache.today;
@@ -38,8 +36,6 @@ export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props):
   const notDue = data.tasks.filter((x) => !x.due);
   const ordered = [...due.filter((x) => !isDone(x)), ...due.filter(isDone)];
   const canAdd = data.limits.max_tasks === null || data.limits.active < data.limits.max_tasks;
-  // Сегодняшняя клетка зеленеет сразу, не дожидаясь сервера.
-  const heatNow = [...cache.heat.filter((d) => d.day !== data.day), { day: data.day, score: data.tasks.reduce((sum, x) => sum + taskScore(x), 0) }];
   const dateLabel = new Date(`${data.day}T12:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {
     weekday: 'long',
     day: 'numeric',
@@ -53,10 +49,7 @@ export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props):
         <p>{dateLabel}</p>
       </header>
 
-      <button className="heat-strip" onClick={onProfile} aria-label={t.me}>
-        <Heatmap days={heatNow} today={data.day} weeks={22} gap={3} />
-      </button>
-
+      {/* Полосы карты здесь больше нет (01.10.2026): на «Сегодня» она лишняя, карта — во вкладке «Я». */}
       {error && (
         <p className="error" onClick={clearError}>
           {error}

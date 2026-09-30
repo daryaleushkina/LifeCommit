@@ -159,7 +159,7 @@ export function VoiceSheet({ preview, setPreview, room, onEdit, onAdd, onManual,
             <li key={`${i}-${h.title}`} className={i >= fit ? 'wont-fit' : undefined}>
               <button className="voice-row" onClick={() => onEdit(i)}>
                 <KindTile kind={h.kind} title={h.title} />
-                <span>
+                <span className="voice-text">
                   <b>{h.title}</b>
                   <small>{describe(t, h)}</small>
                 </span>
