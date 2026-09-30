@@ -36,6 +36,13 @@ const Check = () => (
   </svg>
 );
 
+const Pencil = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+    <path d="M13.5 6.5l3 3" />
+  </svg>
+);
+
 interface Props {
   task: TodayTask;
   /** Первое несделанное дело на экране — его кнопка залита. */
@@ -98,12 +105,8 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
     );
   }
 
-  // Количество: число (тап — ввести значение) и одна кнопка «+N».
+  // Количество: полоса прогресса, карандаш (ввести любое число) и галочка (сделано целиком).
   const unit = task.unit ? ` ${task.unit}` : '';
-  const minus = () => {
-    const next = task.value - task.step;
-    onLog({ value: next > 0 ? next : null });
-  };
   const commit = () => {
     if (draft === null) return;
     setDraft(null);
@@ -112,19 +115,20 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
     if (next === task.value) return;
     onLog({ value: next > 0 ? next : null });
   };
+  const edit = () => setDraft(task.value > 0 ? String(task.value) : '');
   const rest = (
     <>
       {' '}
-      / {task.target}
+      {t.of} {task.target}
       {unit}
     </>
   );
   return (
-    <article className={`task${done ? ' done' : ''}`}>
+    <article className={`task count${done ? ' done' : ''}`}>
       <div className="task-main">
         <button onClick={onEdit}>{title}</button>
         {draft === null ? (
-          <button className="task-value" aria-label={`${task.title}: ${t.enterValue}`} onClick={() => setDraft(task.value > 0 ? String(task.value) : '')}>
+          <button className="task-value" aria-label={`${task.title}: ${t.enterValue}`} onClick={edit}>
             <b>{task.value}</b>
             {rest}
           </button>
@@ -151,17 +155,20 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
           </label>
         )}
       </div>
-      {task.value > 0 && (
-        <button className="act undo" aria-label="−" onClick={minus}>
-          −
-        </button>
-      )}
-      <button
-        className={`act ${done ? 'soft' : primary ? 'primary' : 'outline'}`}
-        onClick={() => onLog({ value: task.value + task.step })}
-      >
-        +{task.step}
+      <button className="act undo" aria-label={`${task.title}: ${t.enterValue}`} onClick={edit}>
+        <Pencil />
       </button>
+      <button
+        className={`act ${done ? 'soft' : primary ? 'primary' : 'todo'}`}
+        aria-pressed={done}
+        aria-label={task.title}
+        onClick={() => onLog({ value: done ? null : task.target })}
+      >
+        <Check />
+      </button>
+      <div className="progress" aria-hidden>
+        <i style={{ width: `${Math.min(100, (task.value / task.target) * 100)}%` }} />
+      </div>
     </article>
   );
 }

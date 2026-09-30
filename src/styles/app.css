@@ -119,6 +119,11 @@ h1, h2, p { margin: 0; }
 /* ── Дела ── */
 .tasks { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
 .task { display: flex; align-items: center; gap: 12px; min-height: 76px; padding: 12px 14px 12px 18px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
+/* Количество: кнопки в строке, полоса прогресса — отдельной строкой во всю ширину. */
+.task.count { flex-wrap: wrap; row-gap: 8px; padding-bottom: 14px; }
+.task.count .act.undo { min-width: 40px; margin-right: -6px; }
+.progress { flex: 0 0 100%; height: 6px; margin-right: 4px; border-radius: 3px; background: var(--heat-0); overflow: hidden; }
+.progress i { display: block; height: 100%; border-radius: 3px; background: var(--heat-3); transition: width 260ms var(--ease-out); }
 .task.stack { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px; }
 .task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .task-main h2 { font-size: 16px; line-height: 22px; font-weight: 500; overflow-wrap: anywhere; }
