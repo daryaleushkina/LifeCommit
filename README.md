@@ -2,7 +2,7 @@
 
 Telegram Mini App ([@LifeCommit_bot](https://t.me/LifeCommit_bot)): ежедневные дела без стыда, тепловая карта активности как в GitHub и сообщество.
 
-- Прод: https://lifecommit.darya-leushkina.workers.dev (открывать из Telegram)
+- Прод: https://lifecommit.audioguide-api.workers.dev (открывать из Telegram)
 - База: Supabase `lifecommit` (eu-central-1)
 
 ## Стек
@@ -38,6 +38,8 @@ APP_URL=http://localhost:5173
 ⚠️ Локальная разработка работает с боевой базой. Тестовый пользователь из mockEnv — `id = 1`.
 
 ## Деплой
+
+Автоматически: пуш в `main` → GitHub Actions (`.github/workflows/deploy.yml`) → Cloudflare (аккаунт darya.leushkina@gmail.com). Вручную:
 
 ```bash
 pnpm run deploy   # сборка + wrangler deploy
