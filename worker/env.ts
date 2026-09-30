@@ -2,6 +2,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export interface Env {
   ASSETS: Fetcher;
+  /** Workers AI: распознавание речи и разбор фраз (worker/voice.ts). */
+  AI: Ai;
   SUPABASE_URL: string;
   SUPABASE_SECRET_KEY: string;
   TELEGRAM_BOT_TOKEN: string;

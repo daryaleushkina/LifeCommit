@@ -21,7 +21,7 @@ import { db, type Env } from './env';
 
 type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
-interface UserRow {
+export interface UserRow {
   id: number;
   first_name: string;
   username: string | null;
@@ -52,11 +52,11 @@ interface TaskRow {
   last_slip_on: string | null;
 }
 
-const USER_COLS =
+export const USER_COLS =
   'id, first_name, username, photo_url, language_code, timezone, day_start_hour, remind_morning, remind_evening, bot_chat_ok, profile_mode, premium_until';
 const TASK_COLS = 'id, title, emoji, kind, unit, step, schedule, weekdays, per_week, visibility, challenge_id, position, last_slip_on';
 
-const isPremium = (u: UserRow) => u.premium_until !== null && new Date(u.premium_until) > new Date();
+export const isPremium = (u: UserRow) => u.premium_until !== null && new Date(u.premium_until) > new Date();
 const today = (u: UserRow) => logicalDay(u.timezone, u.day_start_hour);
 
 function must<T>(res: { data: T | null; error: { message: string } | null }): T {
@@ -263,7 +263,7 @@ function cleanTask(input: TaskInput, day: string) {
   };
 }
 
-async function countActive(sb: SupabaseClient, user: UserRow): Promise<number> {
+export async function countActive(sb: SupabaseClient, user: UserRow): Promise<number> {
   const { count, error } = await sb
     .from('tasks')
     .select('id', { count: 'exact', head: true })
@@ -279,7 +279,7 @@ async function assertCanAdd(sb: SupabaseClient, user: UserRow, adding: number) {
   if ((await countActive(sb, user)) + adding > FREE_TASK_LIMIT) throw new HTTPException(402, { message: 'task_limit' });
 }
 
-async function insertTasks(sb: SupabaseClient, user: UserRow, inputs: TaskInput[]) {
+export async function insertTasks(sb: SupabaseClient, user: UserRow, inputs: TaskInput[]) {
   const day = today(user);
   const cleaned = inputs.map((input) => cleanTask(input, day));
   const created = must(
