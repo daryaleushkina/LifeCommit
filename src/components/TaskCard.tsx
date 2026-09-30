@@ -56,10 +56,13 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
   const title = <h2>{task.title}</h2>;
 
   if (task.kind === 'abstain') {
+    // Срыв счёт не обнуляет: сегодняшний день прибавляется, только если он «без».
+    const cleanDays = task.clean_before + (task.status === 'clean' ? 1 : 0);
     return (
       <article className={`task stack${done ? ' done' : ''}`}>
         <button className="task-main" onClick={onEdit}>
           {title}
+          {cleanDays > 0 && <span className="task-value">{t.cleanDays(cleanDays)}</span>}
         </button>
         <div className="pair" role="group" aria-label={task.title}>
           <button

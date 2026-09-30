@@ -21,6 +21,8 @@ const task = (patch: Partial<TodayTask>): TodayTask => ({
   due: true,
   subtasks: [],
   challenge_id: null,
+  clean_before: 0,
+  last_slip_on: null,
   ...patch,
 });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { mainButton, miniApp, useSignal } from '@tma.js/sdk-react';
-import type { TaskTemplate, UserSettings } from '../shared/types';
+import type { TaskKind, UserSettings } from '../shared/types';
 import { api } from './api';
 import { Splash } from './components/Logo';
 import { LangContext, dictionaries, useT, type Lang } from './i18n';
@@ -11,7 +11,7 @@ import { TaskEditor } from './screens/TaskEditor';
 import { Today, type Cache } from './screens/Today';
 import { taskScore } from './components/TaskCard';
 
-type Route = { name: 'today' } | { name: 'me' } | { name: 'task'; id: number | null } | { name: 'archive' };
+type Route = { name: 'today' } | { name: 'me' } | { name: 'task'; id: number | null; kind?: TaskKind } | { name: 'archive' };
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
 const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [] };
 
@@ -35,7 +35,6 @@ export function App(): ReactNode {
   const [boot, setBoot] = useState<Boot>({ state: 'loading' });
   const [route, setRoute] = useState<Route>({ name: 'today' });
   const [cache, setCache] = useState<Cache>(EMPTY_CACHE);
-  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
 
   const load = useCallback(async () => {
     setBoot({ state: 'loading' });
@@ -43,9 +42,8 @@ export function App(): ReactNode {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       // Всё нужное первому экрану грузим, пока видна заставка: после неё ждать уже нечего.
       const { user } = await api.session(timezone);
-      const [today, heat, tpl] = await Promise.all([api.today(), api.heatmap(371), api.templates()]);
+      const [today, heat] = await Promise.all([api.today(), api.heatmap(371)]);
       setCache({ today, heat: heat.days });
-      setTemplates(tpl);
       setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 });
     } catch {
       setBoot({ state: 'error' });
@@ -87,15 +85,17 @@ export function App(): ReactNode {
     screen = (
       <TaskEditor
         id={route.id}
-        onSaved={refresh}
-        onClose={() => {
-          setBoot({ ...boot, onboarding: false });
-          home();
+        kind={route.kind}
+        onSaved={async () => {
+          await refresh();
+          // Первое дело сохранено — онбординг пройден; «Назад» без сохранения возвращает к нему.
+          setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
         }}
+        onClose={home}
       />
     );
   } else if (boot.onboarding) {
-    screen = <Onboarding templates={templates} onDone={async () => { await refresh(); setBoot({ ...boot, onboarding: false }); }} onCustom={() => setRoute({ name: 'task', id: null })} />;
+    screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} />;
   } else if (route.name === 'archive') {
     screen = <Archive onChanged={refresh} onClose={home} />;
   } else {
