@@ -198,7 +198,8 @@ export function TaskEditor({ task, day, kind, onClose, onBack, onSaved }: Props)
                 +
               </button>
             </div>
-            <input className="unit-input" value={form.unit} maxLength={12} placeholder={t.unitPh} aria-label={t.unitLabel} onChange={(e) => set('unit', e.target.value)} />
+            {/* Поля единицы нет: что считаем, понятно из названия («Читать» — страницы).
+                Единица, пришедшая из голоса или шаблона, сохраняется в form.unit и показывается на карточке. */}
           </div>
         )}
 

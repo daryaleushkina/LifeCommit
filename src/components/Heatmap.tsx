@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode } from 'react';
 import { heatLevel, type HeatDay } from '../../shared/types';
 
 export function addDays(day: string, n: number): string {
@@ -65,18 +65,43 @@ export function MonthCalendar({ days, today, month }: { days: HeatDay[]; today: 
   );
 }
 
-/** Сколько недель в каждой половине карты года. */
-export const HALF_YEAR_WEEKS = 26;
+/** Сколько недель в карте года (371 день — столько отдаёт /api/heatmap). */
+export const YEAR_WEEKS = 53;
 
 /** Первый день карты года (понедельник 52 недели назад). */
-export const yearStart = (today: string): string => addDays(today, -weekdayIndex(today) - (HALF_YEAR_WEEKS * 2 - 1) * 7);
+export const yearStart = (today: string): string => addDays(today, -weekdayIndex(today) - (YEAR_WEEKS - 1) * 7);
 
-/** Год двумя полосами по полгода: так клетки вдвое крупнее, чем в одной полосе на 53 недели. */
-export function YearMap({ days, today }: { days: HeatDay[]; today: string }): ReactNode {
+/**
+ * Год одной лентой, как в GitHub: колонка — неделя, над ней название месяца, в котором он начался.
+ * Клетки крупные, поэтому лента шире экрана: открывается на текущей неделе, назад листается пальцем.
+ */
+export function YearMap({ days, today, monthName }: { days: HeatDay[]; today: string; monthName: (month: string) => string }): ReactNode {
+  const levels = useLevels(days);
+  const scroller = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, []);
+  const start = yearStart(today);
+  const weeks: ReactNode[] = [];
+  for (let w = 0; w < YEAR_WEEKS; w++) {
+    const monday = addDays(start, w * 7);
+    // Подпись — у недели, в которой начался месяц (у первой колонки — всегда).
+    const firstOfMonth = Array.from({ length: 7 }, (_, d) => addDays(monday, d)).find((day) => day.endsWith('-01'));
+    const label = firstOfMonth ? monthName(monthOf(firstOfMonth)) : w === 0 ? monthName(monthOf(monday)) : '';
+    weeks.push(
+      <div key={monday} className="year-week">
+        <span>{label}</span>
+        {Array.from({ length: 7 }, (_, d) => {
+          const day = addDays(monday, d);
+          return <i key={day} className={day > today ? 'future' : `l${levels.get(day) ?? 0}${day === today ? ' today' : ''}`} />;
+        })}
+      </div>,
+    );
+  }
   return (
-    <div className="year-map">
-      <Heatmap days={days} today={today} end={addDays(today, -HALF_YEAR_WEEKS * 7)} weeks={HALF_YEAR_WEEKS} gap={2} />
-      <Heatmap days={days} today={today} weeks={HALF_YEAR_WEEKS} gap={2} />
+    <div className="year-map" ref={scroller} aria-hidden>
+      {weeks}
     </div>
   );
 }
