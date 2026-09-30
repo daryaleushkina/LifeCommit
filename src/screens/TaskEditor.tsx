@@ -3,13 +3,13 @@ import { hapticFeedback, popup } from '@tma.js/sdk-react';
 import type { Schedule, TaskInput, TaskKind, Visibility } from '../../shared/types';
 import { api, ApiError } from '../api';
 import { useT } from '../i18n';
+import { repeatLabel } from '../repeat';
 import { KindTile } from '../components/KindIcon';
 import { DateRow, SelectRow, Sheet } from '../components/Picker';
 import { useBackButton, useMainButton, type SubmitState } from '../telegram/hooks';
 
 const SCHEDULES: Schedule[] = ['daily', 'weekdays', 'per_week'];
 const VISIBILITY: Visibility[] = ['private', 'followers', 'public'];
-const ALL_DAYS = 127;
 
 interface Form {
   title: string;
@@ -71,7 +71,6 @@ export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): React
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [cleanDays, setCleanDays] = useState<number | null>(null);
 
   useBackButton(onBack ?? onClose);
 
@@ -91,7 +90,6 @@ export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): React
         visibility: task.visibility,
         last_slip_on: task.last_slip_on ?? '',
       });
-      if (task.kind === 'abstain') setCleanDays(task.clean_before + (task.status === 'clean' ? 1 : 0));
     });
   }, [id, isNew, onClose]);
 
@@ -159,19 +157,12 @@ export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): React
     }
   };
 
-  const dayNames = t.weekdaysShort.filter((_, i) => (form.weekdays & (1 << i)) !== 0);
-  const repeatLabel =
-    form.schedule === 'per_week'
-      ? t.perWeek(form.per_week)
-      : form.schedule === 'weekdays' && form.weekdays !== ALL_DAYS
-        ? dayNames.join(', ').toLowerCase().replace(/^./, (c) => c.toUpperCase())
-        : t.schedules.daily;
+  const repeat = repeatLabel(t, form.schedule, form.weekdays, form.per_week);
 
   return (
     <main className="app-shell">
       <header className="page-head">
         <h1>{isNew ? t.newTask : t.editTask}</h1>
-        {cleanDays !== null && cleanDays > 0 && <p>{t.cleanDays(cleanDays)}</p>}
       </header>
 
       {message && <p className="error">{message}</p>}
@@ -212,7 +203,7 @@ export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): React
         {form.kind !== 'abstain' && (
           <button className="row" aria-haspopup="dialog" onClick={() => setRepeatOpen(true)}>
             <span className="label">{t.repeat}</span>
-            <span className="value">{repeatLabel}</span>
+            <span className="value">{repeat}</span>
             <Chevron />
           </button>
         )}

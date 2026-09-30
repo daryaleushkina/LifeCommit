@@ -1,16 +1,9 @@
-import { useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { hapticFeedback } from '@tma.js/sdk-react';
-import type { HeatDay, TodayResponse, TodayTask } from '../../shared/types';
+import { useContext, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { api } from '../api';
 import { Heatmap } from '../components/Heatmap';
-import { isDone, TaskCard, taskScore, type LogChange } from '../components/TaskCard';
+import { isDone, TaskCard, taskScore } from '../components/TaskCard';
 import { LangContext, useT } from '../i18n';
-
-/** Данные, загруженные ещё на заставке: экран открывается сразу, без второго ожидания. */
-export interface Cache {
-  today: TodayResponse;
-  heat: HeatDay[];
-}
+import { currentChange, useTaskLog, type Cache } from '../useTaskLog';
 
 interface Props {
   cache: Cache;
@@ -24,51 +17,19 @@ export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props):
   const t = useT();
   const lang = useContext(LangContext);
   const data = cache.today;
-  const [error, setError] = useState<string | null>(null);
-
-  // Ответы могут прийти не по порядку (быстрые нажатия) — берём только самый свежий запрос.
-  const heatSeq = useRef(0);
-  const refreshHeat = useCallback(() => {
-    const seq = ++heatSeq.current;
-    api.heatmap(371).then((h) => seq === heatSeq.current && setCache((c) => ({ ...c, heat: h.days })), () => {});
-  }, [setCache]);
+  const { log, error, clearError } = useTaskLog(setCache, t.error);
 
   // Тихое обновление в фоне: после редактора или если день сменился.
   // Если за время запроса что-то отметили, ответ уже устарел — он затёр бы свежую отметку.
-  const logSeq = useRef(0);
   useEffect(() => {
-    const seq = logSeq.current;
-    api.today().then((today) => seq === logSeq.current && setCache((c) => ({ ...c, today })), () => {});
+    const seq = currentChange();
+    api.today().then((today) => seq === currentChange() && setCache((c) => ({ ...c, today })), () => {});
   }, [setCache]);
-
-  const patchTask = (id: number, patch: Partial<TodayTask>) =>
-    setCache((c) => ({ ...c, today: { ...c.today, tasks: c.today.tasks.map((x) => (x.id === id ? { ...x, ...patch } : x)) } }));
-
-  const log = async (task: TodayTask, change: LogChange) => {
-    const cleared = task.kind === 'abstain' ? !change.status : change.value === null;
-    const next: Partial<TodayTask> = {
-      value: change.value ?? (change.status === 'clean' ? 1 : 0),
-      status: change.status ?? null,
-      logged: !cleared,
-    };
-    const wasDone = isDone(task);
-    logSeq.current++;
-    patchTask(task.id, next);
-    if (!wasDone && isDone({ ...task, ...next })) hapticFeedback.notificationOccurred.ifAvailable('success');
-    try {
-      await api.log(task.id, change.value, change.status);
-      refreshHeat();
-    } catch {
-      patchTask(task.id, task); // откат
-      setError(t.error);
-    }
-  };
 
   // Несделанные сверху, сделанные тихо опускаются вниз.
   const due = data.tasks.filter((x) => x.due);
   const notDue = data.tasks.filter((x) => !x.due);
   const ordered = [...due.filter((x) => !isDone(x)), ...due.filter(isDone)];
-  const firstOpen = ordered.find((x) => !isDone(x))?.id;
   const canAdd = data.limits.max_tasks === null || data.limits.active < data.limits.max_tasks;
   // Сегодняшняя клетка зеленеет сразу, не дожидаясь сервера.
   const heatNow = [...cache.heat.filter((d) => d.day !== data.day), { day: data.day, score: data.tasks.reduce((sum, x) => sum + taskScore(x), 0) }];
@@ -90,7 +51,7 @@ export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props):
       </button>
 
       {error && (
-        <p className="error" onClick={() => setError(null)}>
+        <p className="error" onClick={clearError}>
           {error}
         </p>
       )}
@@ -100,7 +61,7 @@ export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props):
       ) : (
         <section className="tasks">
           {ordered.map((task) => (
-            <TaskCard key={task.id} task={task} primary={task.id === firstOpen} onLog={(c) => void log(task, c)} onEdit={() => onEdit(task.id)} />
+            <TaskCard key={task.id} task={task} onLog={(c) => void log(task, c)} onOpen={() => onEdit(task.id)} />
           ))}
         </section>
       )}

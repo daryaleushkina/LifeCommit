@@ -8,10 +8,18 @@ import { Archive } from './screens/Archive';
 import { Onboarding } from './screens/Onboarding';
 import { Profile } from './screens/Profile';
 import { TaskEditor } from './screens/TaskEditor';
-import { Today, type Cache } from './screens/Today';
+import { TaskDetail } from './screens/TaskDetail';
+import { Today } from './screens/Today';
+import { bumpChange, currentChange, type Cache } from './useTaskLog';
 import { taskScore } from './components/TaskCard';
 
-type Route = { name: 'today' } | { name: 'me' } | { name: 'pick' } | { name: 'task'; id: number | null; kind?: TaskKind } | { name: 'archive' };
+type Route =
+  | { name: 'today' }
+  | { name: 'me' }
+  | { name: 'pick' }
+  | { name: 'detail'; id: number }
+  | { name: 'task'; id: number | null; kind?: TaskKind }
+  | { name: 'archive' };
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
 const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [] };
 
@@ -63,8 +71,10 @@ export function App(): ReactNode {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       // Всё нужное первому экрану грузим, пока видна заставка: после неё ждать уже нечего.
       const { user } = await api.session(timezone);
+      const seq = currentChange();
       const [today, heat] = await Promise.all([api.today(), api.heatmap(371)]);
-      setCache({ today, heat: heat.days });
+      // Повторная загрузка не должна затереть то, что успели отметить, пока она шла.
+      if (seq === currentChange()) setCache({ today, heat: heat.days });
       setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 });
     } catch {
       setBoot({ state: 'error' });
@@ -96,13 +106,17 @@ export function App(): ReactNode {
   const lang: Lang = boot.user.language_code === 'en' ? 'en' : 'ru';
   /** Перечитать «Сегодня» до возврата на экран — чтобы он открылся уже со свежими данными. */
   const refresh = async () => {
+    // Привычки только что изменили — ответы, запрошенные раньше, уже устарели.
+    bumpChange();
     const today = await api.today().catch(() => null);
     if (today) setCache((c) => ({ ...c, today }));
   };
   const home = () => setRoute({ name: 'today' });
 
   let screen: ReactNode;
+  const detailTask = route.name === 'detail' ? cache.today.tasks.find((x) => x.id === route.id) : undefined;
   if (route.name === 'task') {
+    const editedId = route.id;
     screen = (
       <TaskEditor
         id={route.id}
@@ -112,26 +126,30 @@ export function App(): ReactNode {
           // Первая привычка сохранена — онбординг пройден; «Назад» без сохранения возвращает к нему.
           setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
         }}
-        onClose={home}
+        // Существующую привычку открывают с её экрана — туда и возвращаемся
+        // (если её отложили или удалили, экран привычки сам уйдёт на главную).
+        onClose={editedId === null ? home : () => setRoute({ name: 'detail', id: editedId })}
         // «Назад» у новой привычки — к выбору намерения (на первом запуске это и есть главный экран).
-        onBack={route.id === null && !boot.onboarding ? () => setRoute({ name: 'pick' }) : home}
+        onBack={editedId !== null ? () => setRoute({ name: 'detail', id: editedId }) : boot.onboarding ? home : () => setRoute({ name: 'pick' })}
       />
     );
   } else if (boot.onboarding) {
     screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} />;
   } else if (route.name === 'pick') {
     screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} onBack={home} />;
+  } else if (route.name === 'detail' && detailTask) {
+    screen = <TaskDetail task={detailTask} today={cache.today.day} setCache={setCache} onEdit={() => setRoute({ name: 'task', id: detailTask.id })} onClose={home} />;
   } else if (route.name === 'archive') {
     screen = <Archive onChanged={refresh} onClose={home} />;
   } else {
     screen = (
       <main className="app-shell with-tabs">
-        {route.name === 'today' ? (
-          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'task', id })} onProfile={() => setRoute({ name: 'me' })} onArchive={() => setRoute({ name: 'archive' })} />
+        {route.name !== 'me' ? (
+          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onProfile={() => setRoute({ name: 'me' })} onArchive={() => setRoute({ name: 'archive' })} />
         ) : (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         )}
-        <TabBar route={route.name} onRoute={(name) => setRoute(name === 'me' ? { name: 'me' } : { name: 'today' })} />
+        <TabBar route={route.name === 'me' ? 'me' : 'today'} onRoute={(name) => setRoute(name === 'me' ? { name: 'me' } : { name: 'today' })} />
       </main>
     );
   }

@@ -1,4 +1,5 @@
 import { retrieveRawInitData } from '@tma.js/sdk-react';
+import type { TaskHistory } from '../shared/stats';
 import type { HeatDay, TaskInput, TodayResponse, UserSettings } from '../shared/types';
 
 export class ApiError extends Error {
@@ -36,6 +37,7 @@ export const api = {
   deleteTask: (id: number) => call<{ ok: true }>('DELETE', `/tasks/${id}`),
   log: (task_id: number, value: number | null, status?: 'clean' | 'slip' | null) =>
     call<{ ok: true }>('PUT', '/logs', { task_id, value, status }),
+  history: (id: number) => call<TaskHistory>('GET', `/tasks/${id}/history`),
   heatmap: (days = 365) => call<{ today: string; days: HeatDay[] }>('GET', `/heatmap?days=${days}`),
   settings: (patch: Partial<UserSettings>) => call<UserSettings>('PATCH', '/settings', patch),
   writeAccess: () => call<{ ok: true }>('POST', '/write-access'),
