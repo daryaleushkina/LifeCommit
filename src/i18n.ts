@@ -9,9 +9,13 @@ const ru = {
   today: 'Сегодня',
   me: 'Я',
   // онбординг
-  onboardingTitle: 'С чего начнём?',
-  start: 'Начать',
-  custom: 'Своё',
+  onboardingTitle: 'Чего я хочу?',
+  intents: {
+    check: { title: 'Делать что-то каждый день', examples: 'зарядка, таблетки, уборка' },
+    count: { title: 'Набирать количество', examples: 'страницы, шаги, слова' },
+    limit: { title: 'Делать чего-то меньше', examples: 'соцсети, кофе, сладкое' },
+    abstain: { title: 'Бросить привычку', examples: 'курение, алкоголь' },
+  },
   // сегодня
   addTask: 'Добавить дело',
   nothingDue: 'На сегодня всё',
@@ -24,7 +28,8 @@ const ru = {
   // редактор
   newTask: 'Новое дело',
   editTask: 'Дело',
-  titlePh: 'Например, отжимания',
+  titlePh: { count: 'Например, читать', check: 'Например, зарядка', limit: 'Например, соцсети', abstain: 'Например, не курить' },
+  lastSlip: 'Последний раз',
   kindLabel: 'Тип цели',
   kinds: { count: 'Количество', check: 'Да или нет', limit: 'Лимит', abstain: 'Отказ' },
   kindHints: {
@@ -80,9 +85,13 @@ const en: Dict = {
   error: 'Something went wrong. Try again.',
   today: 'Today',
   me: 'Me',
-  onboardingTitle: 'Where do we start?',
-  start: 'Start',
-  custom: 'Custom',
+  onboardingTitle: 'What do I want?',
+  intents: {
+    check: { title: 'Do something every day', examples: 'workout, meds, tidying up' },
+    count: { title: 'Reach an amount', examples: 'pages, steps, words' },
+    limit: { title: 'Do less of something', examples: 'social media, coffee, sweets' },
+    abstain: { title: 'Quit a habit', examples: 'smoking, alcohol' },
+  },
   addTask: 'Add a habit',
   nothingDue: 'All done for today',
   archivedLink: (n) => `Postponed · ${n}`,
@@ -93,7 +102,8 @@ const en: Dict = {
   limitReached: (n) => `Free plan: up to ${n} habits. You can postpone one.`,
   newTask: 'New habit',
   editTask: 'Habit',
-  titlePh: 'e.g. push-ups',
+  titlePh: { count: 'e.g. reading', check: 'e.g. workout', limit: 'e.g. social media', abstain: 'e.g. no smoking' },
+  lastSlip: 'Last time',
   kindLabel: 'Goal type',
   kinds: { count: 'Amount', check: 'Yes or no', limit: 'Limit', abstain: 'Quit' },
   kindHints: {

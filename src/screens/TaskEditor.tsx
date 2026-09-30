@@ -18,6 +18,7 @@ interface Form {
   weekdays: number;
   per_week: number;
   visibility: Visibility;
+  last_slip_on: string;
 }
 
 const EMPTY: Form = {
@@ -29,7 +30,14 @@ const EMPTY: Form = {
   weekdays: 31,
   per_week: 3,
   visibility: 'private',
+  last_slip_on: '',
 };
+
+/** Сегодняшняя дата устройства, YYYY-MM-DD (граница для «последний раз»; точную проверку делает сервер). */
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 const Chevron = ({ open }: { open: boolean }) => (
   <svg className="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -37,10 +45,18 @@ const Chevron = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function TaskEditor({ id, onClose, onSaved }: { id: number | null; onClose: () => void; onSaved: () => Promise<void> }): ReactNode {
+interface Props {
+  id: number | null;
+  /** Тип цели, выбранный ещё до редактора (намерение на первом экране). */
+  kind?: TaskKind;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}
+
+export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
   const t = useT();
   const isNew = id === null;
-  const [form, setForm] = useState<Form>(EMPTY);
+  const [form, setForm] = useState<Form>(kind ? { ...EMPTY, kind } : EMPTY);
   const [open, setOpen] = useState<'when' | 'who' | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -62,8 +78,9 @@ export function TaskEditor({ id, onClose, onSaved }: { id: number | null; onClos
         weekdays: task.weekdays,
         per_week: task.per_week ?? 3,
         visibility: task.visibility,
+        last_slip_on: task.last_slip_on ?? '',
       });
-      if (task.kind === 'abstain') api.cleanDays(task.id).then((r) => setCleanDays(r.clean_days), () => {});
+      if (task.kind === 'abstain') setCleanDays(task.clean_before + (task.status === 'clean' ? 1 : 0));
     });
   }, [id, isNew, onClose]);
 
@@ -84,6 +101,7 @@ export function TaskEditor({ id, onClose, onSaved }: { id: number | null; onClos
         weekdays: form.weekdays,
         per_week: form.schedule === 'per_week' ? form.per_week : null,
         visibility: form.visibility,
+        last_slip_on: form.kind === 'abstain' ? form.last_slip_on || null : null,
       };
       if (isNew) {
         await api.createTask(input);
@@ -122,7 +140,7 @@ export function TaskEditor({ id, onClose, onSaved }: { id: number | null; onClos
 
       {message && <p className="error">{message}</p>}
 
-      <input className="title-input" value={form.title} maxLength={80} placeholder={t.titlePh} aria-label={t.newTask} onChange={(e) => set('title', e.target.value)} />
+      <input className="title-input" value={form.title} maxLength={80} placeholder={t.titlePh[form.kind]} aria-label={t.newTask} onChange={(e) => set('title', e.target.value)} />
 
       {isNew && (
         <>
@@ -141,6 +159,12 @@ export function TaskEditor({ id, onClose, onSaved }: { id: number | null; onClos
       )}
 
       <section className="card">
+        {form.kind === 'abstain' && (
+          <label className="row">
+            <span className="label">{t.lastSlip}</span>
+            <input type="date" className="date-input" max={localToday()} value={form.last_slip_on} onChange={(e) => set('last_slip_on', e.target.value)} />
+          </label>
+        )}
         {numeric && (
           <div className="row">
             <span className="label">{form.kind === 'limit' ? t.limitGoal : t.goal}</span>

@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   autoStep,
+  cleanDaysBeforeStart,
   FREE_TASK_LIMIT,
   type ArchivedTask,
   type HeatDay,
@@ -47,11 +48,12 @@ interface TaskRow {
   visibility: TodayTask['visibility'];
   challenge_id: number | null;
   position: number;
+  last_slip_on: string | null;
 }
 
 const USER_COLS =
   'id, first_name, username, photo_url, language_code, timezone, day_start_hour, remind_morning, remind_evening, bot_chat_ok, profile_mode, premium_until';
-const TASK_COLS = 'id, title, emoji, kind, unit, step, schedule, weekdays, per_week, visibility, challenge_id, position';
+const TASK_COLS = 'id, title, emoji, kind, unit, step, schedule, weekdays, per_week, visibility, challenge_id, position, last_slip_on';
 
 const isPremium = (u: UserRow) => u.premium_until !== null && new Date(u.premium_until) > new Date();
 const today = (u: UserRow) => logicalDay(u.timezone, u.day_start_hour);
@@ -158,9 +160,28 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
   ]);
 
   const goalOf = new Map<number, number>();
-  for (const g of must(goals) as { task_id: number; target: string }[]) {
+  // Первый день дела = самая ранняя цель (цели идут от новых к старым).
+  const startOf = new Map<number, string>();
+  for (const g of must(goals) as { task_id: number; effective_from: string; target: string }[]) {
     if (!goalOf.has(g.task_id)) goalOf.set(g.task_id, Number(g.target));
+    startOf.set(g.task_id, g.effective_from);
   }
+  // «N дней без…»: чистые дни до сегодня считаем в базе — строк может быть больше одной страницы.
+  const cleanBefore = new Map<number, number>();
+  await Promise.all(
+    tasks
+      .filter((t) => t.kind === 'abstain')
+      .map(async (t) => {
+        const { count, error } = await sb
+          .from('task_logs')
+          .select('day', { count: 'exact', head: true })
+          .eq('task_id', t.id)
+          .eq('status', 'clean')
+          .lt('day', day);
+        if (error) throw new HTTPException(500, { message: error.message });
+        cleanBefore.set(t.id, (count ?? 0) + cleanDaysBeforeStart(startOf.get(t.id) ?? day, t.last_slip_on));
+      }),
+  );
   const logRows = must(logs) as { task_id: number; day: string; value: string; status: 'clean' | 'slip' | null }[];
   const subRows = must(subtasks) as { id: number; task_id: number; title: string }[];
 
@@ -192,6 +213,8 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
       week_done: weekDone,
       due,
       subtasks: subRows.filter((s) => s.task_id === t.id).map(({ id, title }) => ({ id, title })),
+      clean_before: cleanBefore.get(t.id) ?? 0,
+      last_slip_on: t.last_slip_on,
     };
   });
 
@@ -204,7 +227,16 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
   };
 }
 
-function cleanTask(input: TaskInput) {
+/** Дата последнего срыва: не позже сегодняшнего логического дня. */
+function cleanSlipDate(value: string | null | undefined, day: string): string | null {
+  if (!value) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    throw new HTTPException(400, { message: 'bad_date' });
+  }
+  return value > day ? day : value;
+}
+
+function cleanTask(input: TaskInput, day: string) {
   const title = String(input.title ?? '').trim().slice(0, 80);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
   if (!['count', 'check', 'limit', 'abstain'].includes(input.kind)) throw new HTTPException(400, { message: 'bad_kind' });
@@ -223,6 +255,7 @@ function cleanTask(input: TaskInput) {
       weekdays: schedule === 'weekdays' ? Math.min(127, Math.max(1, input.weekdays ?? 127)) : 127,
       per_week: schedule === 'per_week' ? Math.min(7, Math.max(1, input.per_week ?? 3)) : null,
       visibility: input.visibility ?? 'private',
+      last_slip_on: input.kind === 'abstain' ? cleanSlipDate(input.last_slip_on, day) : null,
     },
     target,
     subtasks: (input.subtasks ?? []).map((s) => s.trim().slice(0, 80)).filter(Boolean).slice(0, 20),
@@ -247,7 +280,7 @@ async function assertCanAdd(sb: SupabaseClient, user: UserRow, adding: number) {
 
 async function insertTasks(sb: SupabaseClient, user: UserRow, inputs: TaskInput[]) {
   const day = today(user);
-  const cleaned = inputs.map(cleanTask);
+  const cleaned = inputs.map((input) => cleanTask(input, day));
   const created = must(
     await sb
       .from('tasks')
@@ -314,6 +347,7 @@ api.patch('/tasks/:id', async (c) => {
   if (patch.emoji !== undefined) fields.emoji = patch.emoji?.slice(0, 16) || null;
   if (patch.unit !== undefined) fields.unit = patch.unit?.trim().slice(0, 20) || null;
   if (patch.visibility !== undefined) fields.visibility = patch.visibility;
+  if (patch.last_slip_on !== undefined && task.kind === 'abstain') fields.last_slip_on = cleanSlipDate(patch.last_slip_on, today(user));
   if (patch.schedule !== undefined) {
     fields.schedule = patch.schedule;
     fields.weekdays = patch.schedule === 'weekdays' ? Math.min(127, Math.max(1, patch.weekdays ?? task.weekdays)) : 127;
@@ -390,20 +424,6 @@ api.put('/logs', async (c) => {
       : { value: Math.min(Number(value), 1_000_000), status: null };
   must(await sb.from('task_logs').upsert({ task_id, day, user_id: user.id, ...row, updated_at: new Date().toISOString() }));
   return c.json({ ok: true });
-});
-
-// «N дней без …» для задач-отказов: всего чистых дней, срыв не обнуляет.
-api.get('/tasks/:id/clean-days', async (c) => {
-  const id = Number(c.req.param('id'));
-  const { count, error } = await c
-    .get('sb')
-    .from('task_logs')
-    .select('day', { count: 'exact', head: true })
-    .eq('task_id', id)
-    .eq('user_id', c.get('user').id)
-    .eq('status', 'clean');
-  if (error) throw new HTTPException(500, { message: error.message });
-  return c.json({ clean_days: count ?? 0 });
 });
 
 api.get('/heatmap', async (c) => {

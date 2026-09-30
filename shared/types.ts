@@ -29,6 +29,10 @@ export interface TodayTask {
   due: boolean; // нужна ли сегодня
   subtasks: Subtask[];
   challenge_id: number | null;
+  /** Отказ: чистых дней до сегодняшнего (вместе с днями до появления дела в приложении). */
+  clean_before: number;
+  /** Отказ: когда это было в последний раз до начала учёта. */
+  last_slip_on: string | null;
 }
 
 export interface UserSettings {
@@ -86,6 +90,7 @@ export interface TaskInput {
   visibility?: Visibility;
   target: number;
   subtasks?: string[];
+  last_slip_on?: string | null;
 }
 
 /** Бесплатный лимит личных задач (задачи челленджей не считаются). */
@@ -98,6 +103,16 @@ export function heatLevel(score: number): 0 | 1 | 2 | 3 | 4 {
   if (score < 3) return 2;
   if (score < 5) return 3;
   return 4;
+}
+
+/**
+ * Отказ: сколько чистых дней было до первого дня дела в приложении.
+ * Последний раз вчера или в первый же день — ноль; неделю назад — шесть.
+ */
+export function cleanDaysBeforeStart(startDay: string, lastSlipOn: string | null): number {
+  if (!lastSlipOn) return 0;
+  const days = Math.round((Date.parse(`${startDay}T00:00:00Z`) - Date.parse(`${lastSlipOn}T00:00:00Z`)) / 86_400_000);
+  return Math.max(0, days - 1);
 }
 
 /** Шаг кнопки «+N» подбирается по цели: настройки «шаг» у пользователя нет. */
