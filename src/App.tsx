@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { mainButton, miniApp, useSignal } from '@tma.js/sdk-react';
-import type { UserSettings } from '../shared/types';
+import type { TaskTemplate, UserSettings } from '../shared/types';
 import { api } from './api';
 import { Splash } from './components/Logo';
 import { LangContext, dictionaries, useT, type Lang } from './i18n';
@@ -8,10 +8,12 @@ import { Archive } from './screens/Archive';
 import { Onboarding } from './screens/Onboarding';
 import { Profile } from './screens/Profile';
 import { TaskEditor } from './screens/TaskEditor';
-import { Today } from './screens/Today';
+import { Today, type Cache } from './screens/Today';
+import { taskScore } from './components/TaskCard';
 
 type Route = { name: 'today' } | { name: 'me' } | { name: 'task'; id: number | null } | { name: 'archive' };
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
+const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [] };
 
 /** Фон приложения (стиль A) — им же красим шапку и низ Telegram. */
 const BG = { light: '#F6F4EE', dark: '#121613' } as const;
@@ -32,14 +34,18 @@ export function App(): ReactNode {
 
   const [boot, setBoot] = useState<Boot>({ state: 'loading' });
   const [route, setRoute] = useState<Route>({ name: 'today' });
+  const [cache, setCache] = useState<Cache>(EMPTY_CACHE);
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
 
   const load = useCallback(async () => {
     setBoot({ state: 'loading' });
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      // Заставка успевает «напечатать» команду, даже если сеть быстрая.
-      const [{ user }] = await Promise.all([api.session(timezone), new Promise((r) => setTimeout(r, 1200))]);
-      const today = await api.today();
+      // Всё нужное первому экрану грузим, пока видна заставка: после неё ждать уже нечего.
+      const { user } = await api.session(timezone);
+      const [today, heat, tpl] = await Promise.all([api.today(), api.heatmap(371), api.templates()]);
+      setCache({ today, heat: heat.days });
+      setTemplates(tpl);
       setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 });
     } catch {
       setBoot({ state: 'error' });
@@ -69,6 +75,11 @@ export function App(): ReactNode {
   }
 
   const lang: Lang = boot.user.language_code === 'en' ? 'en' : 'ru';
+  /** Перечитать «Сегодня» до возврата на экран — чтобы он открылся уже со свежими данными. */
+  const refresh = async () => {
+    const today = await api.today().catch(() => null);
+    if (today) setCache((c) => ({ ...c, today }));
+  };
   const home = () => setRoute({ name: 'today' });
 
   let screen: ReactNode;
@@ -76,6 +87,7 @@ export function App(): ReactNode {
     screen = (
       <TaskEditor
         id={route.id}
+        onSaved={refresh}
         onClose={() => {
           setBoot({ ...boot, onboarding: false });
           home();
@@ -83,16 +95,16 @@ export function App(): ReactNode {
       />
     );
   } else if (boot.onboarding) {
-    screen = <Onboarding onDone={() => setBoot({ ...boot, onboarding: false })} onCustom={() => setRoute({ name: 'task', id: null })} />;
+    screen = <Onboarding templates={templates} onDone={async () => { await refresh(); setBoot({ ...boot, onboarding: false }); }} onCustom={() => setRoute({ name: 'task', id: null })} />;
   } else if (route.name === 'archive') {
-    screen = <Archive onClose={home} />;
+    screen = <Archive onChanged={refresh} onClose={home} />;
   } else {
     screen = (
       <main className="app-shell with-tabs">
         {route.name === 'today' ? (
-          <Today onEdit={(id) => setRoute({ name: 'task', id })} onProfile={() => setRoute({ name: 'me' })} onArchive={() => setRoute({ name: 'archive' })} />
+          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute({ name: 'task', id })} onProfile={() => setRoute({ name: 'me' })} onArchive={() => setRoute({ name: 'archive' })} />
         ) : (
-          <Profile user={boot.user} onUser={(user) => setBoot({ ...boot, user })} />
+          <Profile user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         )}
         <TabBar route={route.name} onRoute={(name) => setRoute(name === 'me' ? { name: 'me' } : { name: 'today' })} />
       </main>
@@ -100,6 +112,13 @@ export function App(): ReactNode {
   }
 
   return <LangContext.Provider value={lang}>{screen}</LangContext.Provider>;
+}
+
+/** Карта с сегодняшним днём, посчитанным из отметок на экране (без ожидания сервера). */
+function heatWithToday(cache: Cache) {
+  const day = cache.today.day;
+  const score = cache.today.tasks.reduce((sum, x) => sum + taskScore(x), 0);
+  return [...cache.heat.filter((d) => d.day !== day), { day, score }];
 }
 
 function TabBar({ route, onRoute }: { route: 'today' | 'me'; onRoute: (r: 'today' | 'me') => void }): ReactNode {

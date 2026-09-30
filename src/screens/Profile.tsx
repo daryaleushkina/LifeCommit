@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
 import type { HeatDay, UserSettings } from '../../shared/types';
 import { api } from '../api';
@@ -14,15 +14,10 @@ const Chevron = () => (
   </svg>
 );
 
-export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: UserSettings) => void }): ReactNode {
+export function Profile({ user, onUser, heat }: { user: UserSettings; onUser: (u: UserSettings) => void; heat: { today: string; days: HeatDay[] } }): ReactNode {
   const t = useT();
-  const [heat, setHeat] = useState<{ today: string; days: HeatDay[] } | null>(null);
   const [view, setView] = useState<'year' | 'months'>('year');
   const [error, setError] = useState(false);
-
-  useEffect(() => {
-    api.heatmap(371).then(setHeat, () => {});
-  }, []);
 
   const save = async (patch: Partial<UserSettings>) => {
     try {
@@ -51,7 +46,7 @@ export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: User
     window.location.reload();
   };
 
-  const active = heat ? heat.days.filter((d) => d.score > 0).length : 0;
+  const active = heat.days.filter((d) => d.score > 0).length;
 
   return (
     <>
@@ -72,20 +67,16 @@ export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: User
             {t.months}
           </button>
         </div>
-        {heat && (
-          <>
-            <p className="big-number" style={{ marginTop: 14 }}>
-              {t.activeDays(active)}
-            </p>
-            <div className="year">
-              {view === 'year' ? (
-                <Heatmap days={heat.days} today={heat.today} weeks={53} cell={5} gap={1} />
-              ) : (
-                <MonthGrid days={heat.days} today={heat.today} monthNames={t.monthNames} />
-              )}
-            </div>
-          </>
-        )}
+        <p className="big-number" style={{ marginTop: 14 }}>
+          {t.activeDays(active)}
+        </p>
+        <div className="year">
+          {view === 'year' ? (
+            <Heatmap days={heat.days} today={heat.today} weeks={53} gap={1.5} />
+          ) : (
+            <MonthGrid days={heat.days} today={heat.today} monthNames={t.monthNames} />
+          )}
+        </div>
       </section>
 
       {error && <p className="error">{t.error}</p>}

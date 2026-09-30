@@ -51,14 +51,7 @@ interface Props {
 export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
   const t = useT();
   const done = isDone(task);
-  const title = (
-    <>
-      <h2>
-        {task.emoji ? `${task.emoji} ` : ''}
-        {task.title}
-      </h2>
-    </>
-  );
+  const title = <h2>{task.title}</h2>;
 
   if (task.kind === 'abstain') {
     return (

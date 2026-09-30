@@ -6,7 +6,7 @@ import { useT } from '../i18n';
 import { useBackButton } from '../telegram/hooks';
 
 /** Отложенные дела: вернуть одним тапом или удалить насовсем. */
-export function Archive({ onClose }: { onClose: () => void }): ReactNode {
+export function Archive({ onClose, onChanged }: { onClose: () => void; onChanged: () => Promise<void> }): ReactNode {
   const t = useT();
   const [items, setItems] = useState<ArchivedTask[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -27,6 +27,7 @@ export function Archive({ onClose }: { onClose: () => void }): ReactNode {
   const restore = async (id: number) => {
     try {
       await api.restoreTask(id);
+      await onChanged();
       drop(id);
     } catch (e) {
       setMessage(e instanceof ApiError && e.code === 'task_limit' ? t.limitReached(5) : t.error);
@@ -42,6 +43,7 @@ export function Archive({ onClose }: { onClose: () => void }): ReactNode {
       if (answer !== 'delete') return;
     }
     await api.deleteTask(id);
+    await onChanged();
     drop(id);
   };
 
@@ -55,10 +57,7 @@ export function Archive({ onClose }: { onClose: () => void }): ReactNode {
         <section className="card">
           {items.map((task) => (
             <div key={task.id} className="archive-item">
-              <span className="label">
-                {task.emoji ? `${task.emoji} ` : ''}
-                {task.title}
-              </span>
+              <span className="label">{task.title}</span>
               <button className="act undo" onClick={() => void remove(task.id)}>
                 {t.deleteForever}
               </button>

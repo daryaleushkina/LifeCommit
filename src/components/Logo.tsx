@@ -34,7 +34,7 @@ export function Splash({ lang }: { lang: 'ru' | 'en' }): ReactNode {
             <i
               key={i}
               className={i === row.length - 1 ? 'today' : undefined}
-              style={{ '--c': l ? HEAT[l - 1] : 'var(--heat-0)', animationDelay: `${2 + i * 0.07}s` } as CSSProperties}
+              style={{ '--c': l ? HEAT[l - 1] : 'var(--heat-0)', animationDelay: `${0.95 + i * 0.04}s` } as CSSProperties}
             />
           ))}
         </div>

@@ -11,7 +11,6 @@ const VISIBILITY: Visibility[] = ['private', 'followers', 'public'];
 
 interface Form {
   title: string;
-  emoji: string;
   kind: TaskKind;
   target: number;
   unit: string;
@@ -23,7 +22,6 @@ interface Form {
 
 const EMPTY: Form = {
   title: '',
-  emoji: '',
   kind: 'count',
   target: 10,
   unit: '',
@@ -39,7 +37,7 @@ const Chevron = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function TaskEditor({ id, onClose }: { id: number | null; onClose: () => void }): ReactNode {
+export function TaskEditor({ id, onClose, onSaved }: { id: number | null; onClose: () => void; onSaved: () => Promise<void> }): ReactNode {
   const t = useT();
   const isNew = id === null;
   const [form, setForm] = useState<Form>(EMPTY);
@@ -57,7 +55,6 @@ export function TaskEditor({ id, onClose }: { id: number | null; onClose: () => 
       if (!task) return onClose();
       setForm({
         title: task.title,
-        emoji: task.emoji ?? '',
         kind: task.kind,
         target: task.target,
         unit: task.unit ?? '',
@@ -80,7 +77,6 @@ export function TaskEditor({ id, onClose }: { id: number | null; onClose: () => 
     try {
       const input: TaskInput = {
         title: form.title.trim(),
-        emoji: form.emoji.trim() || null,
         kind: form.kind,
         target: numeric ? form.target : 1,
         unit: numeric ? form.unit.trim() || null : null,
@@ -99,6 +95,7 @@ export function TaskEditor({ id, onClose }: { id: number | null; onClose: () => 
           await popup.show({ message: t.goalTomorrow, buttons: [{ type: 'ok' }] });
         }
       }
+      await onSaved();
       hapticFeedback.notificationOccurred.ifAvailable('success');
       onClose();
     } catch (e) {
@@ -110,6 +107,7 @@ export function TaskEditor({ id, onClose }: { id: number | null; onClose: () => 
   const postpone = async () => {
     if (id === null) return;
     await api.archiveTask(id);
+    await onSaved();
     onClose();
   };
 
@@ -124,19 +122,22 @@ export function TaskEditor({ id, onClose }: { id: number | null; onClose: () => 
 
       {message && <p className="error">{message}</p>}
 
-      <div className="title-row">
-        <input className="emoji-btn" value={form.emoji} maxLength={4} placeholder="🙂" aria-label="emoji" onChange={(e) => set('emoji', e.target.value)} />
-        <input className="title-input" value={form.title} maxLength={80} placeholder={t.titlePh} aria-label={t.newTask} onChange={(e) => set('title', e.target.value)} />
-      </div>
+      <input className="title-input" value={form.title} maxLength={80} placeholder={t.titlePh} aria-label={t.newTask} onChange={(e) => set('title', e.target.value)} />
 
       {isNew && (
-        <div className="segmented" role="radiogroup">
-          {KINDS.map((k) => (
-            <button key={k} role="radio" aria-checked={form.kind === k} className={form.kind === k ? 'on' : ''} onClick={() => set('kind', k)}>
-              {t.kinds[k]}
-            </button>
-          ))}
-        </div>
+        <>
+          <p className="field-label" id="kind-label">
+            {t.kindLabel}
+          </p>
+          <div className="segmented" role="radiogroup" aria-labelledby="kind-label">
+            {KINDS.map((k) => (
+              <button key={k} role="radio" aria-checked={form.kind === k} className={form.kind === k ? 'on' : ''} onClick={() => set('kind', k)}>
+                {t.kinds[k]}
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">{t.kindHints[form.kind]}</p>
+        </>
       )}
 
       <section className="card">
