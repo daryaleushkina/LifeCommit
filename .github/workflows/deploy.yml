@@ -11,6 +11,9 @@ concurrency:
 
 jobs:
   deploy:
+    # Пуш с машины, где включён scripts/hooks/pre-push, уже задеплоен оттуда — задачу пропускаем
+    # (пропущенная задача не тратит минуты). Ручной запуск деплоит всегда.
+    if: github.event_name == 'workflow_dispatch' || vars.LOCAL_DEPLOYED_SHA != github.sha
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

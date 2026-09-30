@@ -45,7 +45,11 @@ pnpm build
 pnpm bot:setup    # webhook, кнопка меню, команды и описания бота
 ```
 
-**Деплой автоматический:** пуш в `main` → GitHub Actions (`.github/workflows/deploy.yml`: typecheck, тесты, сборка, деплой) → Cloudflare. Секреты репозитория: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Вручную: `pnpm run deploy`.
+**Деплой — при пуше в `main`, двумя путями:**
+- **С Мака** (включён хук `scripts/hooks/pre-push`, один раз: `pnpm hooks:install`): перед пушем на самой машине идут typecheck, тесты, сборка и `wrangler deploy`; упало — пуш отменяется. Хук записывает SHA в переменную репозитория `LOCAL_DEPLOYED_SHA`, и GitHub Actions свою задачу пропускает — минуты не тратятся.
+- **Из облачной разработки** (хука нет): деплоит GitHub Actions (`.github/workflows/deploy.yml`: typecheck, тесты, сборка, деплой). Одна минута на релиз.
+
+`git push --no-verify` с Мака отдаёт деплой в Actions. Секреты репозитория: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Вручную: `pnpm run deploy`.
 
 Секреты Worker'а лежат в Cloudflare: `TELEGRAM_BOT_TOKEN`, `SUPABASE_SECRET_KEY`, `TELEGRAM_WEBHOOK_SECRET`. Локально — `.env.local` и `.dev.vars` (в git не попадают).
 
