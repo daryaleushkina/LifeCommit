@@ -105,11 +105,12 @@ h1, h2, p { margin: 0; }
 .month-nav span::first-letter { text-transform: uppercase; }
 .month-nav button { width: 40px; height: 44px; border-radius: 12px; font-size: 22px; line-height: 1; color: var(--muted); }
 .month-nav button[hidden] { display: block !important; visibility: hidden; }
-.views { margin-top: 12px; display: grid; align-items: center; }
+.views { margin-top: 12px; display: grid; }
 .views > * { grid-area: 1 / 1; min-width: 0; }
 .views > .off { visibility: hidden; }
-.cal { display: grid; grid-template-columns: repeat(7, 22px); gap: 5px; justify-content: center; }
-.cal i { aspect-ratio: 1; border-radius: 6px; background: var(--heat-0); }
+/* Месяц занимает весь блок: семь колонок во всю ширину, всегда шесть строк — клетки одного размера в любом месяце. */
+.cal { height: 100%; min-height: 160px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: repeat(6, minmax(0, 1fr)); gap: 5px; }
+.cal i { border-radius: 7px; background: var(--heat-0); }
 .cal i.blank { background: transparent; }
 .cal i.l1 { background: var(--heat-1); } .cal i.l2 { background: var(--heat-2); } .cal i.l3 { background: var(--heat-3); } .cal i.l4 { background: var(--heat-4); }
 .cal i.today { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2.5px var(--text); }

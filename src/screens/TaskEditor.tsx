@@ -98,9 +98,9 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
         kind: form.kind,
         target: numeric ? form.target : 1,
         unit: numeric ? form.unit.trim() || null : null,
-        schedule: form.schedule,
+        schedule: form.kind === 'abstain' ? 'daily' : form.schedule,
         weekdays: form.weekdays,
-        per_week: form.schedule === 'per_week' ? form.per_week : null,
+        per_week: form.kind !== 'abstain' && form.schedule === 'per_week' ? form.per_week : null,
         visibility: form.visibility,
         last_slip_on: form.kind === 'abstain' ? form.last_slip_on || null : null,
       };
@@ -206,12 +206,15 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
           </div>
         )}
 
+        {/* Отказ — это про каждый день, расписания у него нет. */}
+        {form.kind !== 'abstain' && (
         <button className="row" onClick={() => setOpen(open === 'when' ? null : 'when')} aria-expanded={open === 'when'}>
           <span className="label">{t.when}</span>
           <span className="value">{whenLabel}</span>
           <Chevron open={open === 'when'} />
         </button>
-        {open === 'when' && (
+        )}
+        {form.kind !== 'abstain' && open === 'when' && (
           <div className="sub">
             <div className="segmented three">
               {SCHEDULES.map((s) => (
