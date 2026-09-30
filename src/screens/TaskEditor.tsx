@@ -168,7 +168,7 @@ export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): React
       {message && <p className="error">{message}</p>}
 
       <div className="kind-chip">
-        <KindTile kind={form.kind} size="sm" />
+        <KindTile kind={form.kind} title={form.title} size="sm" />
         {t.intents[form.kind].title}
       </div>
 

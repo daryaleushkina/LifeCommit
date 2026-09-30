@@ -99,7 +99,7 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
   return (
     <main className="app-shell">
       <header className="detail-head">
-        <KindTile kind={task.kind} size="lg" />
+        <KindTile kind={task.kind} title={task.title} size="lg" />
         <div>
           <h1>{task.title}</h1>
           <p>{sub}</p>
