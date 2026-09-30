@@ -140,51 +140,23 @@ api.get('/templates', async (c) => {
 
 api.get('/today', async (c) => c.json(await loadToday(c.get('sb'), c.get('user'))));
 
+/** Строка дела из `today_screen`: цель, первый день, чистые дни и подзадачи база считает сама. */
+interface TodayRow extends TaskRow {
+  target: number | null;
+  start: string | null;
+  clean_count: number;
+  subtasks: { id: number; title: string }[];
+}
+
 async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayResponse> {
   const day = today(user);
-  const from = weekStart(day);
-  const [taskRes, archivedRes] = await Promise.all([
-    sb.from('tasks').select(TASK_COLS).eq('user_id', user.id).is('archived_at', null).order('position').order('id'),
-    sb.from('tasks').select('id, title, emoji').eq('user_id', user.id).not('archived_at', 'is', null).order('archived_at', { ascending: false }),
-  ]);
-  const tasks = must(taskRes) as TaskRow[];
-  const archived = must(archivedRes) as ArchivedTask[];
-  const ids = tasks.map((t) => t.id);
-
-  const empty = { data: [], error: null };
-  const [goals, logs, subtasks] = await Promise.all([
-    ids.length
-      ? sb.from('task_goals').select('task_id, effective_from, target').in('task_id', ids).lte('effective_from', day).order('effective_from', { ascending: false })
-      : empty,
-    ids.length ? sb.from('task_logs').select('task_id, day, value, status').in('task_id', ids).gte('day', from).lte('day', day) : empty,
-    ids.length ? sb.from('task_subtasks').select('id, task_id, title').in('task_id', ids).order('position') : empty,
-  ]);
-
-  const goalOf = new Map<number, number>();
-  // Первый день дела = самая ранняя цель (цели идут от новых к старым).
-  const startOf = new Map<number, string>();
-  for (const g of must(goals) as { task_id: number; effective_from: string; target: string }[]) {
-    if (!goalOf.has(g.task_id)) goalOf.set(g.task_id, Number(g.target));
-    startOf.set(g.task_id, g.effective_from);
-  }
-  // «N дней без…»: чистые дни до сегодня считаем в базе — строк может быть больше одной страницы.
-  const cleanBefore = new Map<number, number>();
-  await Promise.all(
-    tasks
-      .filter((t) => t.kind === 'abstain')
-      .map(async (t) => {
-        const { count, error } = await sb
-          .from('task_logs')
-          .select('day', { count: 'exact', head: true })
-          .eq('task_id', t.id)
-          .eq('status', 'clean')
-          .lt('day', day);
-        if (error) throw new HTTPException(500, { message: error.message });
-        cleanBefore.set(t.id, (count ?? 0) + cleanDaysBeforeStart(startOf.get(t.id) ?? day, t.last_slip_on));
-      }),
-  );
-  const logRows = must(logs) as { task_id: number; day: string; value: string; status: 'clean' | 'slip' | null }[];
-  const subRows = must(subtasks) as { id: number; task_id: number; title: string }[];
+  // Весь экран — один запрос к базе (в Франкфурт), а не три круга подряд.
+  const screen = must(await sb.rpc('today_screen', { p_user: user.id, p_day: day, p_from: weekStart(day) })) as {
+    tasks: TodayRow[];
+    archived: ArchivedTask[];
+    logs: { task_id: number; day: string; value: number; status: 'clean' | 'slip' | null }[];
+  };
+  const { tasks, archived, logs: logRows } = screen;
 
   const result: TodayTask[] = tasks.map((t) => {
     const todayLog = logRows.find((l) => l.task_id === t.id && l.day === day);
@@ -207,14 +179,15 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
       per_week: t.per_week,
       visibility: t.visibility,
       challenge_id: t.challenge_id,
-      target: goalOf.get(t.id) ?? 1,
+      target: t.target === null ? 1 : Number(t.target),
       value: todayLog ? Number(todayLog.value) : 0,
       logged: todayLog !== undefined,
       status: todayLog?.status ?? null,
       week_done: weekDone,
       due,
-      subtasks: subRows.filter((s) => s.task_id === t.id).map(({ id, title }) => ({ id, title })),
-      clean_before: cleanBefore.get(t.id) ?? 0,
+      subtasks: t.subtasks,
+      // «N дней без…»: чистые дни в приложении плюс дни до его появления, если указан «последний раз».
+      clean_before: t.kind === 'abstain' ? Number(t.clean_count) + cleanDaysBeforeStart(t.start ?? day, t.last_slip_on) : 0,
       last_slip_on: t.last_slip_on,
     };
   });

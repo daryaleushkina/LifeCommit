@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { hapticFeedback, popup } from '@tma.js/sdk-react';
-import type { Schedule, TaskInput, TaskKind, Visibility } from '../../shared/types';
+import type { Schedule, TaskInput, TaskKind, TodayTask, Visibility } from '../../shared/types';
 import { api, ApiError } from '../api';
 import { useT } from '../i18n';
 import { repeatLabel } from '../repeat';
@@ -53,21 +53,40 @@ const Tick = () => (
   </svg>
 );
 
+function formOf(task: TodayTask): Form {
+  return {
+    title: task.title,
+    kind: task.kind,
+    target: task.target,
+    unit: task.unit ?? '',
+    schedule: task.schedule,
+    weekdays: task.weekdays,
+    per_week: task.per_week ?? 3,
+    visibility: task.visibility,
+    last_slip_on: task.last_slip_on ?? '',
+  };
+}
+
 interface Props {
-  id: number | null;
+  /** null — новая привычка; undefined — её уже нет (отложили или удалили), редактор закроется. Берётся из кэша, без загрузки. */
+  task: TodayTask | null | undefined;
+  /** Сегодняшний логический день из кэша: с ним сравнивается дата, с которой действует новая цель. */
+  day: string;
   /** Вид новой привычки: его выбирают на экране «Чего я хочу?», в редакторе он уже не меняется. */
   kind?: TaskKind;
   /** Закрыть после сохранения, удаления или «Отложить». */
   onClose: () => void;
   /** Кнопка «назад»: у новой привычки возвращает к выбору намерения. */
   onBack?: () => void;
-  onSaved: () => Promise<void>;
+  /** Перечитать «Сегодня»; deleted — привычку удалили вместе с историей. */
+  onSaved: (deleted?: boolean) => Promise<void>;
 }
 
-export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): ReactNode {
+export function TaskEditor({ task, day, kind, onClose, onBack, onSaved }: Props): ReactNode {
   const t = useT();
-  const isNew = id === null;
-  const [form, setForm] = useState<Form>(kind ? { ...EMPTY, kind } : EMPTY);
+  const id = task?.id ?? null;
+  const isNew = task === null;
+  const [form, setForm] = useState<Form>(() => (task ? formOf(task) : kind ? { ...EMPTY, kind } : EMPTY));
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -75,23 +94,8 @@ export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): React
   useBackButton(onBack ?? onClose);
 
   useEffect(() => {
-    if (isNew) return;
-    api.today().then((d) => {
-      const task = d.tasks.find((x) => x.id === id);
-      if (!task) return onClose();
-      setForm({
-        title: task.title,
-        kind: task.kind,
-        target: task.target,
-        unit: task.unit ?? '',
-        schedule: task.schedule,
-        weekdays: task.weekdays,
-        per_week: task.per_week ?? 3,
-        visibility: task.visibility,
-        last_slip_on: task.last_slip_on ?? '',
-      });
-    });
-  }, [id, isNew, onClose]);
+    if (task === undefined) onClose();
+  }, [task, onClose]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
   const numeric = form.kind === 'count';
@@ -112,13 +116,12 @@ export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): React
         visibility: form.visibility,
         last_slip_on: form.kind === 'abstain' ? form.last_slip_on || null : null,
       };
-      if (isNew) {
+      if (id === null) {
         await api.createTask(input);
       } else {
         const { kind: _kind, ...patch } = input;
         const res = await api.updateTask(id, patch);
-        const today = (await api.today()).day;
-        if (res.goal_effective_from && res.goal_effective_from > today && popup.show.isAvailable()) {
+        if (res.goal_effective_from && res.goal_effective_from > day && popup.show.isAvailable()) {
           await popup.show({ message: t.goalTomorrow, buttons: [{ type: 'ok' }] });
         }
       }
@@ -150,7 +153,7 @@ export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): React
     }
     try {
       await api.deleteTask(id);
-      await onSaved();
+      await onSaved(true);
       onClose();
     } catch {
       setMessage(t.error);

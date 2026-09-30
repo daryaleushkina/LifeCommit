@@ -5,6 +5,9 @@ import { isDone, TaskCard, taskScore } from '../components/TaskCard';
 import { LangContext, useT } from '../i18n';
 import { currentChange, useTaskLog, type Cache } from '../useTaskLog';
 
+/** Сколько данные «Сегодня» считаются свежими при возврате на экран. */
+const FRESH_MS = 60_000;
+
 interface Props {
   cache: Cache;
   setCache: Dispatch<SetStateAction<Cache>>;
@@ -19,11 +22,15 @@ export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props):
   const data = cache.today;
   const { log, error, clearError } = useTaskLog(setCache, t.error);
 
-  // Тихое обновление в фоне: после редактора или если день сменился.
+  // Тихое обновление в фоне, если данные уже не свежие (например, день сменился).
+  // Сразу после заставки или редактора они только что пришли — повторный запрос не нужен.
   // Если за время запроса что-то отметили, ответ уже устарел — он затёр бы свежую отметку.
+  const loadedAt = cache.loadedAt;
   useEffect(() => {
+    if (Date.now() - loadedAt < FRESH_MS) return;
     const seq = currentChange();
-    api.today().then((today) => seq === currentChange() && setCache((c) => ({ ...c, today })), () => {});
+    api.today().then((today) => seq === currentChange() && setCache((c) => ({ ...c, today, loadedAt: Date.now() })), () => {});
+    // Только при открытии экрана: loadedAt нужен как значение на этот момент.
   }, [setCache]);
 
   // Несделанные сверху, сделанные тихо опускаются вниз.

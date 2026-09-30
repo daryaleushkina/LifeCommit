@@ -1,25 +1,29 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { popup } from '@tma.js/sdk-react';
 import type { ArchivedTask } from '../../shared/types';
 import { api, ApiError } from '../api';
 import { useT } from '../i18n';
 import { useBackButton } from '../telegram/hooks';
 
+interface Props {
+  /** Список уже лежит в кэше «Сегодня» — экран открывается без загрузки. */
+  archived: ArchivedTask[];
+  onClose: () => void;
+  /** Перечитать «Сегодня»; deleted — привычку удалили вместе с историей. */
+  onChanged: (deleted?: boolean) => Promise<void>;
+}
+
 /** Отложенные дела: вернуть одним тапом или удалить насовсем. */
-export function Archive({ onClose, onChanged }: { onClose: () => void; onChanged: () => Promise<void> }): ReactNode {
+export function Archive({ archived, onClose, onChanged }: Props): ReactNode {
   const t = useT();
-  const [items, setItems] = useState<ArchivedTask[] | null>(null);
+  const [items, setItems] = useState<ArchivedTask[]>(archived);
   const [message, setMessage] = useState<string | null>(null);
 
   useBackButton(onClose);
 
-  useEffect(() => {
-    api.today().then((d) => setItems(d.archived), () => setMessage(t.error));
-  }, [t.error]);
-
   const drop = (id: number) =>
     setItems((list) => {
-      const next = (list ?? []).filter((x) => x.id !== id);
+      const next = list.filter((x) => x.id !== id);
       if (next.length === 0) onClose();
       return next;
     });
@@ -43,7 +47,7 @@ export function Archive({ onClose, onChanged }: { onClose: () => void; onChanged
       if (answer !== 'delete') return;
     }
     await api.deleteTask(id);
-    await onChanged();
+    await onChanged(true);
     drop(id);
   };
 
@@ -53,7 +57,7 @@ export function Archive({ onClose, onChanged }: { onClose: () => void; onChanged
         <h1>{t.archive}</h1>
       </header>
       {message && <p className="error">{message}</p>}
-      {items && items.length > 0 && (
+      {items.length > 0 && (
         <section className="card">
           {items.map((task) => (
             <div key={task.id} className="archive-item">
