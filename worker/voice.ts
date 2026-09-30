@@ -4,6 +4,7 @@ import type { Schedule, TaskInput, TaskKind } from '../shared/types';
 import type { Env } from './env';
 
 const WHISPER = '@cf/openai/whisper-large-v3-turbo';
+const WHISPER_FALLBACK = '@cf/openai/whisper';
 const LLM = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 /** Больше не разбираем за раз: длинное перечисление почти наверняка ошибка распознавания. */
@@ -16,15 +17,27 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-/** Распознать речь. Telegram присылает голосовые в OGG/Opus — Whisper принимает их как есть. */
+/**
+ * Распознать речь. Telegram присылает голосовые в OGG/Opus, мини-апп — то, что пишет браузер
+ * (webm/Opus в Android и Chrome, mp4/AAC на iPhone); обе модели принимают всё это как есть.
+ *
+ * Whisper turbo распознаёт лучше, но в Workers AI часто отвечает «Failed to decode audio file»
+ * на исправный файл (01.10.2026 — две трети запросов, на всех форматах; повтор не помогает).
+ * Старый Whisper на тех же файлах не ошибся ни разу — он и подхватывает. Цена у обоих одна
+ * (~41 нейрон за минуту речи); Deepgram Nova-3 надёжен, но в десять раз дороже.
+ */
 export async function transcribe(env: Env, audio: ArrayBuffer, lang: 'ru' | 'en'): Promise<string> {
-  const input = { audio: toBase64(new Uint8Array(audio)), language: lang };
-  // Whisper в Workers AI изредка отвечает «Failed to decode audio file» на тот же самый файл
-  // (на проверке — примерно раз из семи), повтор проходит. Пробуем до трёх раз.
+  try {
+    const res = (await env.AI.run(WHISPER as never, { audio: toBase64(new Uint8Array(audio)), language: lang } as never)) as { text?: string };
+    return (res.text ?? '').trim();
+  } catch (e) {
+    console.warn('whisper turbo failed, falling back to whisper', e);
+  }
+  const bytes = [...new Uint8Array(audio)];
   let last: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const res = (await env.AI.run(WHISPER as never, input as never)) as { text?: string };
+      const res = (await env.AI.run(WHISPER_FALLBACK as never, { audio: bytes } as never)) as { text?: string };
       return (res.text ?? '').trim();
     } catch (e) {
       last = e;

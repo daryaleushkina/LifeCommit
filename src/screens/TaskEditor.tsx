@@ -67,6 +67,20 @@ function formOf(task: TodayTask): Form {
   };
 }
 
+/** Черновик из голосового разбора — в форму, как новую привычку. */
+function formOfInput(input: TaskInput): Form {
+  return {
+    ...EMPTY,
+    title: input.title,
+    kind: input.kind,
+    target: input.kind === 'count' ? input.target : EMPTY.target,
+    unit: input.unit ?? '',
+    schedule: input.schedule ?? 'daily',
+    weekdays: input.weekdays ?? EMPTY.weekdays,
+    per_week: input.per_week ?? EMPTY.per_week,
+  };
+}
+
 interface Props {
   /** null — новая привычка; undefined — её уже нет (отложили или удалили), редактор закроется. Берётся из кэша, без загрузки. */
   task: TodayTask | null | undefined;
@@ -80,13 +94,20 @@ interface Props {
   onBack?: () => void;
   /** Перечитать «Сегодня»; deleted — привычку удалили вместе с историей. */
   onSaved: (deleted?: boolean) => Promise<void>;
+  /**
+   * Правка черновика из голосового разбора: форма заполнена им, а «Готово» ничего не сохраняет —
+   * возвращает исправленный черновик в список, добавляет его уже сам список.
+   */
+  draft?: TaskInput;
+  onDraft?: (input: TaskInput) => void;
 }
 
-export function TaskEditor({ task, day, kind, onClose, onBack, onSaved }: Props): ReactNode {
+export function TaskEditor({ task, day, kind, onClose, onBack, onSaved, draft, onDraft }: Props): ReactNode {
   const t = useT();
   const id = task?.id ?? null;
   const isNew = task === null;
-  const [form, setForm] = useState<Form>(() => (task ? formOf(task) : kind ? { ...EMPTY, kind } : EMPTY));
+  const isDraft = draft !== undefined;
+  const [form, setForm] = useState<Form>(() => (draft ? formOfInput(draft) : task ? formOf(task) : kind ? { ...EMPTY, kind } : EMPTY));
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -102,8 +123,8 @@ export function TaskEditor({ task, day, kind, onClose, onBack, onSaved }: Props)
   const valid = form.title.trim().length > 0 && (!numeric || form.target > 0) && (form.schedule !== 'weekdays' || form.weekdays > 0);
   const state: SubmitState = busy ? 'submitting' : valid ? 'idle' : 'blocked';
 
-  useMainButton(isNew ? t.add : t.save, state, async () => {
-    setBusy(true);
+  useMainButton(isDraft ? t.done : isNew ? t.add : t.save, state, async () => {
+    if (!isDraft) setBusy(true);
     try {
       const input: TaskInput = {
         title: form.title.trim(),
@@ -116,6 +137,10 @@ export function TaskEditor({ task, day, kind, onClose, onBack, onSaved }: Props)
         visibility: form.visibility,
         last_slip_on: form.kind === 'abstain' ? form.last_slip_on || null : null,
       };
+      if (isDraft) {
+        onDraft?.(input);
+        return;
+      }
       if (id === null) {
         await api.createTask(input);
       } else {
@@ -165,7 +190,7 @@ export function TaskEditor({ task, day, kind, onClose, onBack, onSaved }: Props)
   return (
     <main className="app-shell">
       <header className="page-head">
-        <h1>{isNew ? t.newTask : t.editTask}</h1>
+        <h1>{isNew && !isDraft ? t.newTask : t.editTask}</h1>
       </header>
 
       {message && <p className="error">{message}</p>}

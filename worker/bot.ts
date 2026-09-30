@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { TaskInput } from '../shared/types';
-import { FREE_TASK_LIMIT } from '../shared/types';
-import { countActive, insertTasks, isPremium, USER_COLS, type UserRow } from './api';
+import { FREE_TASK_LIMIT, MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT } from '../shared/types';
+import { countActive, insertTasks, isPremium, takeVoiceQuota, USER_COLS, type UserRow } from './api';
 import { db, tg, type Env } from './env';
 import { parseHabits, transcribe } from './voice';
 
@@ -29,9 +29,6 @@ interface Update {
   };
 }
 
-/** Голосовые длиннее не разбираем: это уже не список привычек, а бесплатный лимит распознавания общий. */
-const MAX_VOICE_SECONDS = 90;
-
 export const bot = new Hono<{ Bindings: Env }>();
 
 const texts = {
@@ -48,6 +45,7 @@ const texts = {
     undo: 'Отменить',
     undone: 'Отменено — эти привычки удалены.',
     failed: 'Не получилось разобрать сообщение. Попробуй ещё раз чуть позже.',
+    limit: (n: number) => `На сегодня хватит: разбираю до ${n} сообщений в день. Завтра — снова можно, а пока привычки можно добавить в приложении.`,
     daily: 'каждый день',
     perWeek: (n: number) => `${n} ${n === 1 ? 'раз' : n < 5 ? 'раза' : 'раз'} в неделю`,
     days: ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'],
@@ -67,6 +65,7 @@ const texts = {
     undo: 'Undo',
     undone: 'Undone — these habits were removed.',
     failed: 'Could not process the message. Please try again a bit later.',
+    limit: (n: number) => `That's enough for today: I process up to ${n} messages a day. Try again tomorrow, or add habits in the app.`,
     daily: 'every day',
     perWeek: (n: number) => `${n} ${n === 1 ? 'time' : 'times'} a week`,
     days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -148,11 +147,16 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
 
   try {
     let text = msg.text ?? '';
+    if (msg.voice && msg.voice.duration > MAX_VOICE_SECONDS) {
+      await say(tt.tooLong);
+      return;
+    }
+    // Лимит общий с голосом в мини-аппе.
+    if (!(await takeVoiceQuota(sb, user.id))) {
+      await say(tt.limit(VOICE_DAILY_LIMIT), { reply_markup: { inline_keyboard: [[{ text: tt.open, web_app: { url: appUrl } }]] } });
+      return;
+    }
     if (msg.voice) {
-      if (msg.voice.duration > MAX_VOICE_SECONDS) {
-        await say(tt.tooLong);
-        return;
-      }
       await tg(env, 'sendChatAction', { chat_id: chat, action: 'typing' });
       const file = await tg<{ file_path: string }>(env, 'getFile', { file_id: msg.voice.file_id });
       const audio = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${file.file_path}`);
@@ -201,9 +205,13 @@ async function undo(env: Env, q: NonNullable<Update['callback_query']>): Promise
 // POST /bot/dev-voice с аудио в теле → { text, habits }; с text/plain → { habits }. Ничего не создаёт.
 bot.post('/dev-voice', async (c) => {
   if (c.env.DEV_AUTH_BYPASS !== '1') return c.text('not found', 404);
-  const isText = (c.req.header('content-type') ?? '').startsWith('text/');
+  const type = c.req.header('content-type') ?? '';
+  const isText = type.startsWith('text/');
   const text = isText ? await c.req.text() : await transcribe(c.env, await c.req.arrayBuffer(), 'ru');
+  // ?parse=0 — только распознавание: проверить Whisper, не тратя квоту разбора.
+  if (c.req.query('parse') === '0') return c.json({ text });
   const started = Date.now();
   const parsed = await parseHabits(c.env, text);
   return c.json({ text, ...parsed, ms: Date.now() - started });
 });
+

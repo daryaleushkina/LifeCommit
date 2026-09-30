@@ -12,6 +12,7 @@ import { TaskDetail } from './screens/TaskDetail';
 import { Today } from './screens/Today';
 import { bumpChange, currentChange, type Cache } from './useTaskLog';
 import { taskScore } from './components/TaskCard';
+import { MicIcon, VoiceSheet, type VoicePreview } from './components/VoiceSheet';
 
 type Route =
   | { name: 'today' }
@@ -19,7 +20,9 @@ type Route =
   | { name: 'pick' }
   | { name: 'detail'; id: number }
   | { name: 'task'; id: number | null; kind?: TaskKind }
-  | { name: 'archive' };
+  | { name: 'archive' }
+  // Правка привычки из голосового разбора; back — вкладка, с которой открыли шторку.
+  | { name: 'draft'; index: number; back: 'today' | 'me' };
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
 const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [], loadedAt: 0 };
 
@@ -64,6 +67,9 @@ export function App(): ReactNode {
   const [boot, setBoot] = useState<Boot>({ state: 'loading' });
   const [route, setRoute] = useState<Route>({ name: 'today' });
   const [cache, setCache] = useState<Cache>(EMPTY_CACHE);
+  // Шторка голоса и её список — здесь, а не в шторке: пока привычку из списка правят в редакторе, шторки нет.
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voicePreview, setVoicePreview] = useState<VoicePreview | null>(null);
 
   const load = useCallback(async () => {
     setBoot({ state: 'loading' });
@@ -115,6 +121,13 @@ export function App(): ReactNode {
   };
   const home = () => setRoute({ name: 'today' });
 
+  const tab = (name: 'today' | 'me'): Route => (name === 'me' ? { name: 'me' } : { name: 'today' });
+  const closeVoice = () => {
+    setVoiceOpen(false);
+    setVoicePreview(null);
+  };
+  const limits = cache.today.limits;
+
   let screen: ReactNode;
   const detailTask = route.name === 'detail' ? cache.today.tasks.find((x) => x.id === route.id) : undefined;
   if (route.name === 'task') {
@@ -136,6 +149,23 @@ export function App(): ReactNode {
         onBack={editedId !== null ? () => setRoute({ name: 'detail', id: editedId }) : boot.onboarding ? home : () => setRoute({ name: 'pick' })}
       />
     );
+  } else if (route.name === 'draft' && voicePreview?.habits[route.index]) {
+    const { index, back } = route;
+    screen = (
+      <TaskEditor
+        key={`draft-${index}`}
+        task={null}
+        day={cache.today.day}
+        draft={voicePreview.habits[index]}
+        onDraft={(input) => {
+          setVoicePreview((p) => p && { ...p, habits: p.habits.map((h, i) => (i === index ? input : h)) });
+          setRoute(tab(back));
+        }}
+        onSaved={async () => {}}
+        onClose={() => setRoute(tab(back))}
+        onBack={() => setRoute(tab(back))}
+      />
+    );
   } else if (boot.onboarding) {
     screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} />;
   } else if (route.name === 'pick') {
@@ -152,7 +182,26 @@ export function App(): ReactNode {
         ) : (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         )}
-        <TabBar route={route.name === 'me' ? 'me' : 'today'} onRoute={(name) => setRoute(name === 'me' ? { name: 'me' } : { name: 'today' })} />
+        <TabBar route={route.name === 'me' ? 'me' : 'today'} onRoute={(name) => setRoute(tab(name))} onMic={() => setVoiceOpen(true)} />
+        {voiceOpen && (
+          <VoiceSheet
+            preview={voicePreview}
+            setPreview={setVoicePreview}
+            room={limits.max_tasks === null ? null : Math.max(0, limits.max_tasks - limits.active)}
+            onEdit={(index) => setRoute({ name: 'draft', index, back: route.name === 'me' ? 'me' : 'today' })}
+            onAdd={async (habits) => {
+              await api.createTasks(habits);
+              await refresh();
+              closeVoice();
+              setRoute({ name: 'today' });
+            }}
+            onManual={() => {
+              closeVoice();
+              setRoute({ name: 'pick' });
+            }}
+            onClose={closeVoice}
+          />
+        )}
       </main>
     );
   }
@@ -167,10 +216,14 @@ function heatWithToday(cache: Cache) {
   return [...cache.heat.filter((d) => d.day !== day), { day, score }];
 }
 
-function TabBar({ route, onRoute }: { route: 'today' | 'me'; onRoute: (r: 'today' | 'me') => void }): ReactNode {
+function TabBar({ route, onRoute, onMic }: { route: 'today' | 'me'; onRoute: (r: 'today' | 'me') => void; onMic: () => void }): ReactNode {
   const t = useT();
   return (
     <nav className="tabbar">
+      {/* Голос — главное действие приложения: крупная кнопка посередине, между вкладками. */}
+      <button className="tab-mic" aria-label={t.voice.mic} onClick={onMic}>
+        <MicIcon size={28} />
+      </button>
       <button className={route === 'today' ? 'active' : ''} aria-current={route === 'today' ? 'page' : undefined} onClick={() => onRoute('today')}>
         <span className="pill">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>

@@ -1,6 +1,6 @@
 import { retrieveRawInitData } from '@tma.js/sdk-react';
 import type { TaskHistory } from '../shared/stats';
-import type { HeatDay, TaskInput, TodayResponse, UserSettings } from '../shared/types';
+import type { HeatDay, TaskInput, TodayResponse, UserSettings, VoiceAction, VoiceEvent } from '../shared/types';
 
 export class ApiError extends Error {
   constructor(
@@ -11,11 +11,13 @@ export class ApiError extends Error {
   }
 }
 
+const auth = () => `tma ${retrieveRawInitData() ?? ''}`;
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     headers: {
-      Authorization: `tma ${retrieveRawInitData() ?? ''}`,
+      Authorization: auth(),
       ...(body !== undefined && { 'content-type': 'application/json' }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -30,6 +32,8 @@ export const api = {
     call<{ user: UserSettings; start_param: string | null; is_new: boolean }>('POST', '/session', { timezone }),
   today: () => call<TodayResponse>('GET', '/today'),
   createTask: (input: TaskInput) => call<{ id: number }>('POST', '/tasks', input),
+  createTasks: (tasks: TaskInput[]) => call<{ ids: number[] }>('POST', '/tasks/batch', { tasks }),
+  voice,
   updateTask: (id: number, patch: Partial<TaskInput>) =>
     call<{ ok: true; goal_effective_from: string | null }>('PATCH', `/tasks/${id}`, patch),
   archiveTask: (id: number) => call<{ ok: true }>('POST', `/tasks/${id}/archive`),
@@ -43,3 +47,46 @@ export const api = {
   writeAccess: () => call<{ ok: true }>('POST', '/write-access'),
   deleteAccount: () => call<{ ok: true }>('DELETE', '/account'),
 };
+
+/**
+ * Голос → действия. Ответ сервера построчный: сначала расслышанная фраза (onText — показать её,
+ * пока модель ещё думает), потом список действий. Ошибки — ApiError с кодом (`voice_limit`, `failed`…).
+ */
+async function voice(audio: Blob, onText: (text: string) => void): Promise<VoiceAction[]> {
+  const res = await fetch('/api/voice', {
+    method: 'POST',
+    headers: { Authorization: auth(), 'content-type': audio.type || 'application/octet-stream' },
+    body: audio,
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(res.status, data.error ?? 'network');
+  }
+  let actions: VoiceAction[] | null = null;
+  const take = (line: string) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line) as VoiceEvent;
+    if ('text' in event) onText(event.text);
+    else if ('actions' in event) actions = event.actions;
+    else throw new ApiError(500, event.error);
+  };
+  if (res.body) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      lines.forEach(take);
+      if (done) break;
+    }
+    take(buffer);
+  } else {
+    // Старый WebView без потокового чтения ответа: фраза и список придут вместе.
+    (await res.text()).split('\n').forEach(take);
+  }
+  if (actions === null) throw new ApiError(500, 'failed');
+  return actions;
+}
