@@ -84,9 +84,9 @@ h1, h2, p { margin: 0; }
 .logo i.l1 { background: var(--heat-1); } .logo i.l2 { background: var(--heat-2); } .logo i.l3 { background: var(--heat-3); } .logo i.l4 { background: var(--heat-4); }
 .term { width: min(320px, 100%); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); padding: 14px 16px 16px; text-align: left; font-family: var(--mono); font-size: 13px; line-height: 20px; }
 .term-bar { color: var(--muted); margin-bottom: 8px; }
-.term-cmd { white-space: nowrap; overflow: hidden; width: 0; animation: type 1.4s steps(26, end) 0.2s forwards; }
+.term-cmd { white-space: nowrap; overflow: hidden; width: 0; animation: type 0.7s steps(26, end) 0.1s forwards; }
 .term-cmd::after { content: '▌'; color: var(--accent); animation: blink 0.8s step-end infinite; }
-.term-out { color: var(--muted); opacity: 0; animation: show 0.1s linear 1.8s forwards; }
+.term-out { color: var(--muted); opacity: 0; animation: show 0.1s linear 0.85s forwards; }
 .term-row { display: flex; gap: 3px; margin-top: 10px; }
 .term-row i { width: 12px; height: 12px; border-radius: 3px; background: var(--heat-0); animation: fill 0.3s var(--ease-out) forwards; }
 .term-row i.today { outline: 1.5px solid var(--text); outline-offset: 1px; }
@@ -101,12 +101,13 @@ h1, h2, p { margin: 0; }
 }
 
 /* ── Тепловая карта ── */
-.heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, var(--cell)); grid-auto-columns: var(--cell); gap: var(--gap); width: max-content; }
-.heat i { display: block; border-radius: 2px; background: var(--heat-0); }
+.heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, auto); grid-template-columns: repeat(var(--weeks), minmax(0, 1fr)); gap: var(--gap); width: 100%; }
+.heat i { display: block; aspect-ratio: 1; border-radius: 22%; background: var(--heat-0); }
 .heat i.l1 { background: var(--heat-1); } .heat i.l2 { background: var(--heat-2); } .heat i.l3 { background: var(--heat-3); } .heat i.l4 { background: var(--heat-4); }
 .heat i.future { background: transparent; }
-.heat i.today { outline: 1.5px solid var(--text); outline-offset: 1px; }
-.heat-strip { margin-top: 20px; display: flex; justify-content: flex-end; overflow: hidden; padding: 3px; width: 100%; }
+.heat i.today { box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--text); }
+.card .heat i.today { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2px var(--text); }
+.heat-strip { margin-top: 20px; display: block; width: 100%; padding: 0; }
 .months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 10px; }
 .month { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
@@ -159,15 +160,15 @@ h1, h2, p { margin: 0; }
 .row .value { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
 .row .chev { color: var(--muted); flex: none; }
 .row select, .row input[type='time'] { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
-.title-row { display: flex; gap: 10px; margin-top: 20px; }
-.emoji-btn { flex: none; width: 56px; height: 56px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 24px; text-align: center; border: 0; }
-.title-input { flex: 1; height: 56px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 17px; font-weight: 500; outline: none; }
-.title-input:focus, .emoji-btn:focus { box-shadow: inset 0 0 0 2px var(--accent); }
-.segmented { margin-top: 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--heat-0); }
+.title-input { margin-top: 20px; width: 100%; height: 56px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 17px; font-weight: 500; outline: none; }
+.title-input:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+.field-label { margin: 20px 4px 8px; font-size: 14px; color: var(--muted); }
+.field-hint { margin: 8px 4px 0; font-size: 14px; line-height: 20px; color: var(--muted); }
+.segmented { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--heat-0); }
 .segmented.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
 .segmented.three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
-.segmented button { min-height: 44px; padding: 0 4px; border-radius: 12px; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.segmented button.on { background: var(--surface); box-shadow: var(--shadow); font-weight: 700; }
+.segmented button { min-height: 44px; padding: 0 2px; border-radius: 12px; font-size: 13px; font-weight: 500; letter-spacing: -0.02em; white-space: nowrap; }
+.segmented button.on { background: var(--surface); box-shadow: var(--shadow); font-weight: 600; }
 .stepper { display: flex; align-items: center; gap: 2px; }
 .stepper button { width: 40px; height: 40px; border-radius: 12px; background: var(--heat-0); font-size: 20px; font-weight: 500; }
 .stepper input { width: 48px; height: 40px; border: 0; background: none; text-align: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; outline: none; }
@@ -186,8 +187,7 @@ h1, h2, p { margin: 0; }
 .profile-head h1 { font-size: 22px; line-height: 28px; font-weight: 700; }
 .big-number { font-size: 17px; font-weight: 700; }
 .big-number span { color: var(--muted); font-weight: 500; }
-.year { margin-top: 14px; overflow: hidden; display: flex; justify-content: flex-end; padding: 3px; }
-.year:has(.months) { display: block; }
+.year { margin-top: 14px; }
 
 /* ── Архив ── */
 .archive-item { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 0 14px 0 18px; }

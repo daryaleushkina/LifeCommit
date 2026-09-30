@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { hapticFeedback } from '@tma.js/sdk-react';
 import type { TaskTemplate } from '../../shared/types';
 import { api } from '../api';
@@ -9,19 +9,12 @@ const MAX_PICK = 3;
 /** Восемь плиток покрывают все 4 типа дел. */
 const SHOWN = ['pushups', 'tidy', 'no_smoke', 'social', 'words', 'water', 'walk', 'read'];
 
-export function Onboarding({ onDone, onCustom }: { onDone: () => void; onCustom: () => void }): ReactNode {
+export function Onboarding({ templates: all, onDone, onCustom }: { templates: TaskTemplate[]; onDone: () => Promise<void>; onCustom: () => void }): ReactNode {
   const t = useT();
-  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const templates = SHOWN.map((slug) => all.find((x) => x.slug === slug)).filter((x): x is TaskTemplate => !!x);
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
-
-  useEffect(() => {
-    api.templates().then(
-      (all) => setTemplates(SHOWN.map((s) => all.find((x) => x.slug === s)).filter((x): x is TaskTemplate => !!x)),
-      () => setError(true),
-    );
-  }, []);
 
   const toggle = (slug: string) =>
     setPicked((p) => (p.includes(slug) ? p.filter((s) => s !== slug) : p.length < MAX_PICK ? [...p, slug] : p));
@@ -32,7 +25,7 @@ export function Onboarding({ onDone, onCustom }: { onDone: () => void; onCustom:
     try {
       await api.fromTemplates(picked);
       hapticFeedback.notificationOccurred.ifAvailable('success');
-      onDone();
+      await onDone();
     } catch {
       setError(true);
       setBusy(false);

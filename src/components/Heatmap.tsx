@@ -12,8 +12,11 @@ function useLevels(days: HeatDay[]) {
   return useMemo(() => new Map(days.map((d) => [d.day, heatLevel(d.score)])), [days]);
 }
 
-/** Карта как в GitHub: колонка — неделя (пн сверху), клетка — день. Без подписей и легенд. */
-export function Heatmap({ days, today, weeks, cell, gap }: { days: HeatDay[]; today: string; weeks: number; cell: number; gap: number }): ReactNode {
+/**
+ * Карта как в GitHub: колонка — неделя (пн сверху), клетка — день.
+ * Растягивается на всю ширину родителя: края совпадают с краями карточек.
+ */
+export function Heatmap({ days, today, weeks, gap }: { days: HeatDay[]; today: string; weeks: number; gap: number }): ReactNode {
   const levels = useLevels(days);
   const start = addDays(today, -weekdayIndex(today) - (weeks - 1) * 7);
   const cells: ReactNode[] = [];
@@ -23,7 +26,7 @@ export function Heatmap({ days, today, weeks, cell, gap }: { days: HeatDay[]; to
     cells.push(<i key={day} className={cls} />);
   }
   return (
-    <div className="heat" style={{ '--cell': `${cell}px`, '--gap': `${gap}px` } as CSSProperties} aria-hidden>
+    <div className="heat" style={{ '--weeks': weeks, '--gap': `${gap}px` } as CSSProperties} aria-hidden>
       {cells}
     </div>
   );
