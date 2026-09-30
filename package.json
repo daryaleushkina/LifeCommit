@@ -8,6 +8,7 @@
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler deploy",
     "typecheck": "tsc -b",
+    "test": "vitest run",
     "check:tma": "bash .claude/skills/telegram-mini-app/scripts/check.sh src",
     "bot:setup": "node scripts/setup-bot.mjs"
   },
@@ -28,6 +29,7 @@
     "playwright": "^1.63.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
+    "vitest": "^5.0.2",
     "wrangler": "^4.143.0"
   },
   "packageManager": "pnpm@11.17.0"
