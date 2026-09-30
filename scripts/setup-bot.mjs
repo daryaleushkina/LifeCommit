@@ -27,7 +27,7 @@ async function call(method, payload) {
 await call('setWebhook', {
   url: `${APP_URL}/bot/webhook`,
   secret_token: SECRET,
-  allowed_updates: ['message', 'pre_checkout_query', 'my_chat_member', 'callback_query'],
+  allowed_updates: ['message', 'my_chat_member', 'callback_query'],
   drop_pending_updates: true,
 });
 
@@ -39,14 +39,14 @@ for (const [lang, cmds, description, short] of [
   [
     'ru',
     [{ command: 'start', description: 'Открыть LifeCommit' }],
-    'LifeCommit — ежедневные дела без стыда.\n\n✅ Отмечай, что успел — даже чуть-чуть засчитывается\n🟩 Смотри, как зеленеет твоя карта, как в GitHub\n🤝 Делай вместе с друзьями и командой\n🌧 Тяжёлый день? Есть режим минимума и пауза',
-    'Ежедневные дела без стыда: карта активности, друзья и челленджи.',
+    'LifeCommit — ежедневные дела и карта активности, как в GitHub.\n\n✅ Отмечай, что успел — даже чуть-чуть засчитывается\n🟩 Смотри, как зеленеет твоя карта\n🤝 Скоро — друзья, команды и челленджи',
+    'Ежедневные дела и карта активности, как в GitHub.',
   ],
   [
     '',
     [{ command: 'start', description: 'Open LifeCommit' }],
-    'LifeCommit — daily habits without shame.\n\n✅ Log what you did — even a little counts\n🟩 Watch your map turn green, GitHub-style\n🤝 Do it together with friends and your team\n🌧 Hard day? There is minimum mode and pause',
-    'Daily habits without shame: activity map, friends and challenges.',
+    'LifeCommit — daily habits and a GitHub-style activity map.\n\n✅ Log what you did — even a little counts\n🟩 Watch your map turn green\n🤝 Coming soon: friends, teams and challenges',
+    'Daily habits and a GitHub-style activity map.',
   ],
 ]) {
   const language_code = lang || undefined;

@@ -54,6 +54,8 @@ export function useBackButton(onBack: (() => void) | null): void {
     const sub = backButton.onClick.ifAvailable(() => handler.current?.());
     return () => {
       if (sub.ok) sub.data();
+      // Экран закрылся — на корневом экране кнопки «назад» быть не должно.
+      backButton.hide.ifAvailable();
     };
   }, [visible]);
 }
