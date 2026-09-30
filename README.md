@@ -22,6 +22,7 @@ Telegram Mini App ([@LifeCommit_bot](https://t.me/LifeCommit_bot)): ежедне
 pnpm install
 pnpm dev          # http://localhost:5173 — мини-апп + Worker, подменённый Telegram
 pnpm typecheck
+pnpm test         # vitest
 pnpm check:tma    # проверки платформенного слоя Telegram
 ```
 
