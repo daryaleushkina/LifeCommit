@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { hapticFeedback, popup } from '@tma.js/sdk-react';
-import type { Schedule, TaskInput, TaskKind, Visibility } from '../../shared/types';
+import { KIND_EMOJI, type Schedule, type TaskInput, type TaskKind, type Visibility } from '../../shared/types';
 import { api, ApiError } from '../api';
 import { useT } from '../i18n';
 import { useBackButton, useMainButton, type SubmitState } from '../telegram/hooks';
@@ -129,6 +129,25 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
     onClose();
   };
 
+  // Удаление стирает и историю дела — поэтому с подтверждением.
+  const remove = async () => {
+    if (id === null) return;
+    if (popup.show.isAvailable()) {
+      const answer = await popup.show({
+        message: t.deleteForeverConfirm,
+        buttons: [{ id: 'delete', type: 'destructive', text: t.deleteForever }, { type: 'cancel' }],
+      });
+      if (answer !== 'delete') return;
+    }
+    try {
+      await api.deleteTask(id);
+      await onSaved();
+      onClose();
+    } catch {
+      setMessage(t.error);
+    }
+  };
+
   const whenLabel = form.schedule === 'per_week' ? t.perWeek(form.per_week) : t.schedules[form.schedule];
 
   return (
@@ -147,9 +166,12 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
           <p className="field-label" id="kind-label">
             {t.kindLabel}
           </p>
-          <div className="segmented" role="radiogroup" aria-labelledby="kind-label">
+          <div className="segmented kinds" role="radiogroup" aria-labelledby="kind-label">
             {KINDS.map((k) => (
               <button key={k} role="radio" aria-checked={form.kind === k} className={form.kind === k ? 'on' : ''} onClick={() => set('kind', k)}>
+                <span className="emoji" aria-hidden>
+                  {KIND_EMOJI[k]}
+                </span>
                 {t.kinds[k]}
               </button>
             ))}
@@ -245,9 +267,14 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
       </section>
 
       {!isNew && (
-        <button className="quiet-link" onClick={() => void postpone()}>
-          {t.postpone}
-        </button>
+        <div className="quiet-links">
+          <button className="quiet-link" onClick={() => void postpone()}>
+            {t.postpone}
+          </button>
+          <button className="quiet-link danger" onClick={() => void remove()}>
+            {t.deleteTask}
+          </button>
+        </div>
       )}
     </main>
   );

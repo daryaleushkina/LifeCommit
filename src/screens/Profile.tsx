@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useContext, useState, type ReactNode } from 'react';
 import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
 import type { HeatDay, UserSettings } from '../../shared/types';
 import { api } from '../api';
-import { Heatmap, MonthGrid } from '../components/Heatmap';
-import { useT } from '../i18n';
+import type { Theme } from '../App';
+import { Heatmap, MonthCalendar, monthOf, shiftMonth } from '../components/Heatmap';
+import { LangContext, useT } from '../i18n';
 
 /** Страница донатов в Tribute (открывается внутри Telegram). */
 const SUPPORT_URL = 'https://t.me/tribute/app?startapp=dRk2';
@@ -14,9 +15,23 @@ const Chevron = () => (
   </svg>
 );
 
-export function Profile({ user, onUser, heat }: { user: UserSettings; onUser: (u: UserSettings) => void; heat: { today: string; days: HeatDay[] } }): ReactNode {
+interface Props {
+  user: UserSettings;
+  onUser: (u: UserSettings) => void;
+  heat: { today: string; days: HeatDay[] };
+  theme: Theme;
+  onTheme: (theme: Theme) => void;
+}
+
+/** Сколько месяцев назад можно листать: столько истории загружено для карты года. */
+const MONTHS_BACK = 11;
+
+export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNode {
   const t = useT();
-  const [view, setView] = useState<'year' | 'months'>('year');
+  const lang = useContext(LangContext);
+  const [view, setView] = useState<'month' | 'year'>('month');
+  // Сдвиг от текущего месяца: 0 — этот, -1 — прошлый.
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState(false);
 
   const save = async (patch: Partial<UserSettings>) => {
@@ -46,7 +61,11 @@ export function Profile({ user, onUser, heat }: { user: UserSettings; onUser: (u
     window.location.reload();
   };
 
-  const active = heat.days.filter((d) => d.score > 0).length;
+  const month = shiftMonth(monthOf(heat.today), offset);
+  const shown = view === 'year' ? heat.days : heat.days.filter((d) => d.day.startsWith(month));
+  const active = shown.filter((d) => d.score > 0).length;
+  // Месяц и год собираем сами: в русской локали «long + numeric» даёт «сентябрь 2026 г.».
+  const monthLabel = `${new Date(`${month}-15T12:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', { month: 'long' })} ${month.slice(0, 4)}`;
 
   return (
     <>
@@ -60,13 +79,24 @@ export function Profile({ user, onUser, heat }: { user: UserSettings; onUser: (u
 
       <section className="card pad">
         <div className="segmented two">
+          <button className={view === 'month' ? 'on' : ''} onClick={() => setView('month')}>
+            {t.month}
+          </button>
           <button className={view === 'year' ? 'on' : ''} onClick={() => setView('year')}>
             {t.year}
           </button>
-          <button className={view === 'months' ? 'on' : ''} onClick={() => setView('months')}>
-            {t.months}
-          </button>
         </div>
+        {view === 'month' && (
+          <div className="month-nav">
+            <button aria-label={t.prevMonth} disabled={offset <= -MONTHS_BACK} onClick={() => setOffset(offset - 1)}>
+              ‹
+            </button>
+            <span>{monthLabel}</span>
+            <button aria-label={t.nextMonth} disabled={offset >= 0} onClick={() => setOffset(offset + 1)}>
+              ›
+            </button>
+          </div>
+        )}
         <p className="big-number" style={{ marginTop: 14 }}>
           {t.activeDays(active)}
         </p>
@@ -74,7 +104,7 @@ export function Profile({ user, onUser, heat }: { user: UserSettings; onUser: (u
           {view === 'year' ? (
             <Heatmap days={heat.days} today={heat.today} weeks={53} gap={1.5} />
           ) : (
-            <MonthGrid days={heat.days} today={heat.today} monthNames={t.monthNames} />
+            <MonthCalendar days={heat.days} today={heat.today} month={month} weekdays={t.weekdaysShort} />
           )}
         </div>
       </section>
@@ -113,6 +143,16 @@ export function Profile({ user, onUser, heat }: { user: UserSettings; onUser: (u
           <select value={user.profile_mode} aria-label={t.privacy} onChange={(e) => void save({ profile_mode: e.target.value as 'open' | 'closed' })}>
             <option value="closed">{t.closed}</option>
             <option value="open">{t.open}</option>
+          </select>
+        </label>
+        <label className="row">
+          <span className="label">{t.theme}</span>
+          <span className="value">{t.themes[theme]}</span>
+          <Chevron />
+          <select value={theme} aria-label={t.theme} onChange={(e) => onTheme(e.target.value as Theme)}>
+            <option value="auto">{t.themes.auto}</option>
+            <option value="light">{t.themes.light}</option>
+            <option value="dark">{t.themes.dark}</option>
           </select>
         </label>
         <label className="row">

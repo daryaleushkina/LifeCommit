@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { TaskKind } from '../../shared/types';
+import { KIND_EMOJI, type TaskKind } from '../../shared/types';
 import { useT } from '../i18n';
 
 /** Четыре намерения = четыре типа цели; тап открывает редактор с уже выбранным типом. */
@@ -15,8 +15,13 @@ export function Onboarding({ onPick }: { onPick: (kind: TaskKind) => void }): Re
       <div className="intents">
         {INTENTS.map((kind) => (
           <button key={kind} className="intent" onClick={() => onPick(kind)}>
-            <b>{t.intents[kind].title}</b>
-            <span>{t.intents[kind].examples}</span>
+            <span className="emoji" aria-hidden>
+              {KIND_EMOJI[kind]}
+            </span>
+            <span className="text">
+              <b>{t.intents[kind].title}</b>
+              <span>{t.intents[kind].examples}</span>
+            </span>
           </button>
         ))}
       </div>
