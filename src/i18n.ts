@@ -21,6 +21,7 @@ const ru = {
   archivedLink: (n: number) => `Отложенные · ${n}`,
   clean: 'Сегодня без',
   slip: 'Сегодня было',
+  of: 'из',
   enterValue: 'ввести число',
   limitReached: (n: number) => `Бесплатно — до ${n} дел. Можно отложить какое-то дело.`,
   // редактор
@@ -104,6 +105,7 @@ const en: Dict = {
   archivedLink: (n) => `Postponed · ${n}`,
   clean: 'Not today',
   slip: 'It happened',
+  of: 'of',
   enterValue: 'enter a number',
   limitReached: (n) => `Free plan: up to ${n} habits. You can postpone one.`,
   newTask: 'New habit',
