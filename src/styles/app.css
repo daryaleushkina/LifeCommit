@@ -174,9 +174,16 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .options button { min-height: 52px; padding: 0 4px; display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 500; text-align: left; }
 .options button + button { border-top: 1px solid var(--line); }
 .options button.on { color: var(--accent); font-weight: 600; }
-.options.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.options.grid button { min-height: 48px; justify-content: center; border: 0; border-radius: var(--radius-btn); background: var(--heat-0); font-variant-numeric: tabular-nums; }
-.options.grid button.on { background: var(--accent); color: var(--accent-text); }
+.wheels { position: relative; align-self: center; display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Полоса под выбранной строкой: барабаны прокручиваются сквозь неё. */
+.wheels::before { content: ''; position: absolute; inset: 88px -22px; border-radius: 14px; background: var(--heat-0); }
+.wheels > span { position: relative; width: 12px; text-align: center; }
+.wheels > span.fixed { width: 72px; }
+.wheel { position: relative; width: 72px; height: 220px; padding: 88px 0; overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none; outline: none; -webkit-mask-image: linear-gradient(transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(transparent, #000 35%, #000 65%, transparent); }
+.wheel::-webkit-scrollbar { display: none; }
+.wheel button { display: block; width: 100%; height: 44px; scroll-snap-align: center; font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+.wheel button.on { color: var(--text); font-weight: 700; }
+.act.wide { width: 100%; }
 .date-grid { margin-top: 6px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .date-grid span { text-align: center; font-size: 12px; line-height: 20px; color: var(--muted); }
 .date-grid button { height: 42px; border-radius: 12px; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
