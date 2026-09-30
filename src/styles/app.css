@@ -108,14 +108,18 @@ h1, h2, p { margin: 0; }
 .heat i.today { box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--text); }
 .card .heat i.today { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2px var(--text); }
 .heat-strip { margin-top: 20px; display: block; width: 100%; padding: 0; }
-.months { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 10px; }
-.month { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.month-grid i { aspect-ratio: 1; border-radius: 2px; background: var(--heat-0); }
-.month-grid i.blank { background: transparent; }
-.month-grid i.l1 { background: var(--heat-1); } .month-grid i.l2 { background: var(--heat-2); } .month-grid i.l3 { background: var(--heat-3); } .month-grid i.l4 { background: var(--heat-4); }
-.month-grid i.today { outline: 1.5px solid var(--text); outline-offset: 1px; }
-.month-grid i.future { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.month-nav { margin-top: 14px; display: flex; align-items: center; justify-content: space-between; }
+.month-nav span { font-size: 15px; font-weight: 600; }
+.month-nav span::first-letter { text-transform: uppercase; }
+.month-nav button { width: 44px; height: 44px; border-radius: 12px; font-size: 22px; line-height: 1; color: var(--muted); }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.cal span { text-align: center; font-size: 12px; line-height: 16px; color: var(--muted); }
+.cal i { aspect-ratio: 1; display: grid; place-items: center; border-radius: 10px; background: var(--heat-0); font-style: normal; font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+.cal i.blank { background: transparent; }
+.cal i.l1 { background: var(--heat-1); color: var(--text); } .cal i.l2 { background: var(--heat-2); color: var(--text); } .cal i.l3 { background: var(--heat-3); color: var(--text); } .cal i.l4 { background: var(--heat-4); color: var(--accent-text); }
+:root[data-color-scheme='dark'] .cal i.l3 { color: var(--accent-text); }
+.cal i.today { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2.5px var(--text); }
+.cal i.future { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
 
 /* ── Дела ── */
 .tasks { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
@@ -149,10 +153,12 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 /* ── Онбординг ── */
 .intents { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
-.intent { min-height: 76px; padding: 14px 18px; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: left; transition: transform 160ms var(--ease-out); }
+.intent { min-height: 76px; padding: 14px 18px; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); display: flex; align-items: center; gap: 14px; text-align: left; transition: transform 160ms var(--ease-out); }
 .intent:active { transform: scale(0.98); }
+.intent .emoji { flex: none; font-size: 26px; line-height: 1; }
+.intent .text { display: flex; flex-direction: column; gap: 2px; }
 .intent b { font-size: 16px; line-height: 22px; font-weight: 600; }
-.intent span { font-size: 14px; line-height: 18px; color: var(--muted); }
+.intent .text span { font-size: 14px; line-height: 18px; color: var(--muted); }
 
 /* ── Формы и списки настроек ── */
 .card { margin-top: 16px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -172,6 +178,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .segmented.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
 .segmented.three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
 .segmented button { min-height: 44px; padding: 0 2px; border-radius: 12px; font-size: 13px; font-weight: 500; letter-spacing: -0.02em; white-space: nowrap; }
+.segmented.kinds button { min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.segmented.kinds .emoji { font-size: 18px; line-height: 22px; }
 .segmented button.on { background: var(--surface); box-shadow: var(--shadow); font-weight: 600; }
 .stepper { display: flex; align-items: center; gap: 2px; }
 .stepper button { width: 40px; height: 40px; border-radius: 12px; background: var(--heat-0); font-size: 20px; font-weight: 500; }
@@ -183,6 +191,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .weekdays button.on { background: var(--accent); color: var(--accent-text); }
 .quiet-link { align-self: center; margin-top: 20px; min-height: var(--tap); padding: 0 12px; color: var(--muted); font-size: 15px; }
 .quiet-link.danger { color: var(--warn); }
+.quiet-links { display: flex; justify-content: center; gap: 12px; }
 .note { margin-top: 12px; padding: 0 4px; font-size: 14px; color: var(--muted); }
 
 /* ── Профиль ── */

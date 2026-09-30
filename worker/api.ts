@@ -392,11 +392,11 @@ api.post('/tasks/:id/restore', async (c) => {
   return c.json({ ok: true });
 });
 
-// Удалить совсем (вместе с историей) — только из архива.
+// Удалить совсем, вместе с историей: из редактора дела или из отложенных.
 api.delete('/tasks/:id', async (c) => {
   const id = Number(c.req.param('id'));
   must(
-    await c.get('sb').from('tasks').delete().eq('id', id).eq('user_id', c.get('user').id).not('archived_at', 'is', null),
+    await c.get('sb').from('tasks').delete().eq('id', id).eq('user_id', c.get('user').id),
   );
   return c.json({ ok: true });
 });

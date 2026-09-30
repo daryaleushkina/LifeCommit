@@ -32,34 +32,35 @@ export function Heatmap({ days, today, weeks, gap }: { days: HeatDay[]; today: s
   );
 }
 
-/** 12 мини-календарей: последние 12 месяцев, текущий — последний. */
-export function MonthGrid({ days, today, monthNames }: { days: HeatDay[]; today: string; monthNames: string[] }): ReactNode {
+/** «2026-09» из дня «2026-09-30». */
+export const monthOf = (day: string): string => day.slice(0, 7);
+
+/** Месяц со сдвигом: shiftMonth('2026-01', -1) → '2025-12'. */
+export function shiftMonth(month: string, n: number): string {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7);
+}
+
+/** Один месяц календарём: пн слева, в клетке — число, цвет — уровень дня. */
+export function MonthCalendar({ days, today, month, weekdays }: { days: HeatDay[]; today: string; month: string; weekdays: string[] }): ReactNode {
   const levels = useLevels(days);
-  const [y, m] = today.split('-').map(Number) as [number, number];
-  const months = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(Date.UTC(y, m - 1 - (11 - i), 1));
-    return { year: d.getUTCFullYear(), month: d.getUTCMonth() };
-  });
+  const first = `${month}-01`;
+  const count = Math.round((Date.parse(`${shiftMonth(month, 1)}-01T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`)) / 86_400_000);
   return (
-    <div className="months" aria-hidden>
-      {months.map(({ year, month }) => {
-        const first = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
-        const count = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-        const lead = weekdayIndex(first);
+    <div className="cal" aria-hidden>
+      {weekdays.map((d) => (
+        <span key={d}>{d}</span>
+      ))}
+      {Array.from({ length: weekdayIndex(first) }, (_, i) => (
+        <i key={`b${i}`} className="blank" />
+      ))}
+      {Array.from({ length: count }, (_, i) => {
+        const day = addDays(first, i);
+        const cls = day > today ? 'future' : `l${levels.get(day) ?? 0}${day === today ? ' today' : ''}`;
         return (
-          <div key={`${year}-${month}`} className="month">
-            <span>{monthNames[month]}</span>
-            <div className="month-grid">
-              {Array.from({ length: lead }, (_, i) => (
-                <i key={`b${i}`} className="blank" />
-              ))}
-              {Array.from({ length: count }, (_, i) => {
-                const day = addDays(first, i);
-                const cls = day > today ? 'future' : `l${levels.get(day) ?? 0}${day === today ? ' today' : ''}`;
-                return <i key={day} className={cls} />;
-              })}
-            </div>
-          </div>
+          <i key={day} className={cls}>
+            {i + 1}
+          </i>
         );
       })}
     </div>
