@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toTaskInputs } from './voice';
+import { toTaskInputs, toTodoInputs } from './voice';
 
 describe('toTaskInputs', () => {
   it('принимает три вида привычек', () => {
@@ -35,5 +35,28 @@ describe('toTaskInputs', () => {
   it('не больше восьми за раз', () => {
     const many = { habits: Array.from({ length: 20 }, (_, i) => ({ title: `Дело ${i}`, kind: 'check' })) };
     expect(toTaskInputs(many)).toHaveLength(8);
+  });
+});
+
+describe('toTodoInputs', () => {
+  it('берёт название и дату, пустая дата — сегодня', () => {
+    expect(
+      toTodoInputs({
+        todos: [
+          { title: ' Купить молоко ', day: '2026-10-02' },
+          { title: 'Позвонить маме', day: '' },
+          { title: 'Записаться к врачу', day: 'в пятницу' },
+        ],
+      }),
+    ).toEqual([
+      { title: 'Купить молоко', day: '2026-10-02' },
+      { title: 'Позвонить маме', day: null },
+      // дату не по формату сервер заменит сегодняшней
+      { title: 'Записаться к врачу', day: null },
+    ]);
+  });
+  it('без дел и с мусором — пустой список', () => {
+    expect(toTodoInputs({ habits: [] })).toEqual([]);
+    expect(toTodoInputs({ todos: [{ day: '2026-10-02' }, { title: '   ' }] })).toEqual([]);
   });
 });

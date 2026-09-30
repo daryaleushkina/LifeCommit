@@ -11,17 +11,20 @@ import {
   type TaskInput,
   type TaskKind,
   type TaskTemplate,
+  type Todo,
+  type TodoInput,
   type TodayResponse,
   type TodayTask,
   type UserSettings,
   VOICE_DAILY_LIMIT,
+  type VoiceAction,
   type VoiceEvent,
 } from '../shared/types';
 import type { TaskHistory } from '../shared/stats';
 import { requireTelegram, type AuthVars } from './auth';
 import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from './day';
 import { db, type Env } from './env';
-import { MAX_HABITS, parseHabits, transcribe } from './voice';
+import { MAX_HABITS, MAX_TODOS, parseHabits, transcribe } from './voice';
 
 type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -61,7 +64,8 @@ export const USER_COLS =
 const TASK_COLS = 'id, title, emoji, kind, unit, step, schedule, weekdays, per_week, visibility, challenge_id, position, last_slip_on';
 
 export const isPremium = (u: UserRow) => u.premium_until !== null && new Date(u.premium_until) > new Date();
-const today = (u: UserRow) => logicalDay(u.timezone, u.day_start_hour);
+/** Сегодняшний логический день человека (день кончается в day_start_hour). */
+export const today = (u: UserRow) => logicalDay(u.timezone, u.day_start_hour);
 
 function must<T>(res: { data: T | null; error: { message: string } | null }): T {
   if (res.error) throw new HTTPException(500, { message: res.error.message });
@@ -159,6 +163,8 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
     tasks: TodayRow[];
     archived: ArchivedTask[];
     logs: { task_id: number; day: string; value: number; status: 'clean' | 'slip' | null }[];
+    todos: Todo[];
+    todos_later: number;
   };
   const { tasks, archived, logs: logRows } = screen;
 
@@ -202,6 +208,9 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
     tasks: result,
     archived,
     limits: { max_tasks: isPremium(user) ? null : FREE_TASK_LIMIT, active: personal },
+    // Несделанные сверху (переехавшие — первыми), сделанные опускаются вниз.
+    todos: [...screen.todos.filter((d) => !d.done), ...screen.todos.filter((d) => d.done)],
+    todos_later: Number(screen.todos_later),
   };
 }
 
@@ -257,7 +266,7 @@ export async function takeVoiceQuota(sb: SupabaseClient, userId: number): Promis
 }
 
 async function assertCanAdd(sb: SupabaseClient, user: UserRow, adding: number) {
-  if (isPremium(user)) return;
+  if (FREE_TASK_LIMIT === null || isPremium(user)) return;
   if ((await countActive(sb, user)) + adding > FREE_TASK_LIMIT) throw new HTTPException(402, { message: 'task_limit' });
 }
 
@@ -316,8 +325,13 @@ api.post('/voice', async (c) => {
     try {
       const text = await transcribe(c.env, audio, lang);
       await send({ text });
-      const habits = text ? (await parseHabits(c.env, text)).habits : [];
-      await send({ actions: habits.map((habit) => ({ type: 'create_habit', habit })) });
+      const parsed = text ? await parseHabits(c.env, text, today(user)) : { habits: [], todos: [] };
+      await send({
+        actions: [
+          ...parsed.todos.map((todo): VoiceAction => ({ type: 'create_todo', todo })),
+          ...parsed.habits.map((habit): VoiceAction => ({ type: 'create_habit', habit })),
+        ],
+      });
     } catch (e) {
       console.error('voice parse failed', e);
       await send({ error: 'failed' });
@@ -325,12 +339,78 @@ api.post('/voice', async (c) => {
   });
 });
 
+/** Дальше этого дело не планируем: почти наверняка ошибка в дате. */
+const TODO_MAX_DAYS_AHEAD = 366;
+
+/** Дата дела: не раньше сегодня и не позже чем через год; нет или битая — сегодня. */
+function todoDay(value: string | null | undefined, today: string): string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) return today;
+  if (value < today) return today;
+  const last = addDays(today, TODO_MAX_DAYS_AHEAD);
+  return value > last ? last : value;
+}
+
+function cleanTodo(input: TodoInput, today: string) {
+  const title = String(input.title ?? '').trim().slice(0, 120);
+  if (!title) throw new HTTPException(400, { message: 'title_required' });
+  return { title, day: todoDay(input.day, today) };
+}
+
+export async function insertTodos(sb: SupabaseClient, user: UserRow, inputs: TodoInput[]): Promise<number[]> {
+  const day = today(user);
+  const rows = inputs.slice(0, MAX_TODOS).map((input, i) => ({ ...cleanTodo(input, day), user_id: user.id, position: (Date.now() % 1e9) + i }));
+  if (!rows.length) return [];
+  return (must(await sb.from('todos').insert(rows).select('id')) as { id: number }[]).map((r) => r.id);
+}
+
+// Разовые дела. Лимита нет (решение 01.10.2026).
+api.post('/todos', async (c) => {
+  const [id] = await insertTodos(c.get('sb'), c.get('user'), [await c.req.json<TodoInput>()]);
+  return c.json({ id }, 201);
+});
+
+api.post('/todos/batch', async (c) => {
+  const { todos } = await c.req.json<{ todos: TodoInput[] }>();
+  if (!Array.isArray(todos) || !todos.length) throw new HTTPException(400, { message: 'no_todos' });
+  return c.json({ ids: await insertTodos(c.get('sb'), c.get('user'), todos) }, 201);
+});
+
+// Правка: название, дата, «сделано» (сделано сегодня — в сегодняшний логический день).
+api.patch('/todos/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const user = c.get('user');
+  const body = await c.req.json<{ title?: string; day?: string; done?: boolean }>();
+  const day = today(user);
+  const fields: Record<string, unknown> = {};
+  if (body.title !== undefined) fields.title = cleanTodo({ title: body.title }, day).title;
+  if (body.day !== undefined) fields.day = todoDay(body.day, day);
+  if (body.done !== undefined) fields.done_on = body.done ? day : null;
+  if (!Object.keys(fields).length) return c.json({ ok: true });
+  const row = must(await c.get('sb').from('todos').update(fields).eq('id', id).eq('user_id', user.id).select('id').maybeSingle());
+  if (!row) throw new HTTPException(404, { message: 'not_found' });
+  return c.json({ ok: true });
+});
+
+api.delete('/todos/:id', async (c) => {
+  must(await c.get('sb').from('todos').delete().eq('id', Number(c.req.param('id'))).eq('user_id', c.get('user').id));
+  return c.json({ ok: true });
+});
+
+// Запланированные на потом — список открывают редко, поэтому отдельным запросом.
+api.get('/todos/later', async (c) => {
+  const user = c.get('user');
+  const rows = must(
+    await c.get('sb').from('todos').select('id, title, day').eq('user_id', user.id).is('done_on', null).gt('day', today(user)).order('day').order('position').order('id'),
+  ) as Omit<Todo, 'done'>[];
+  return c.json(rows.map((r): Todo => ({ ...r, done: false })));
+});
+
 // Онбординг: выбор из шаблонов.
 api.post('/tasks/from-templates', async (c) => {
   const { slugs } = await c.req.json<{ slugs: string[] }>();
   const user = c.get('user');
   const sb = c.get('sb');
-  const picked = [...new Set(slugs ?? [])].slice(0, FREE_TASK_LIMIT);
+  const picked = [...new Set(slugs ?? [])].slice(0, 12);
   if (!picked.length) throw new HTTPException(400, { message: 'no_templates' });
   await assertCanAdd(sb, user, picked.length);
   const lang = user.language_code === 'ru' ? 'ru' : 'en';

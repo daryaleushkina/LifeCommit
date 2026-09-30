@@ -1,6 +1,6 @@
 import { retrieveRawInitData } from '@tma.js/sdk-react';
 import type { TaskHistory } from '../shared/stats';
-import type { HeatDay, TaskInput, TodayResponse, UserSettings, VoiceAction, VoiceEvent } from '../shared/types';
+import type { HeatDay, TaskInput, Todo, TodoInput, TodayResponse, UserSettings, VoiceAction, VoiceEvent } from '../shared/types';
 
 export class ApiError extends Error {
   constructor(
@@ -34,6 +34,11 @@ export const api = {
   createTask: (input: TaskInput) => call<{ id: number }>('POST', '/tasks', input),
   createTasks: (tasks: TaskInput[]) => call<{ ids: number[] }>('POST', '/tasks/batch', { tasks }),
   voice,
+  createTodo: (input: TodoInput) => call<{ id: number }>('POST', '/todos', input),
+  createTodos: (todos: TodoInput[]) => call<{ ids: number[] }>('POST', '/todos/batch', { todos }),
+  updateTodo: (id: number, patch: { title?: string; day?: string; done?: boolean }) => call<{ ok: true }>('PATCH', `/todos/${id}`, patch),
+  deleteTodo: (id: number) => call<{ ok: true }>('DELETE', `/todos/${id}`),
+  laterTodos: () => call<Todo[]>('GET', '/todos/later'),
   updateTask: (id: number, patch: Partial<TaskInput>) =>
     call<{ ok: true; goal_effective_from: string | null }>('PATCH', `/tasks/${id}`, patch),
   archiveTask: (id: number) => call<{ ok: true }>('POST', `/tasks/${id}/archive`),

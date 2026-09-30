@@ -50,11 +50,30 @@ export interface UserSettings {
   premium: boolean;
 }
 
+/** Разовое дело: не повторяется. Несделанное остаётся в списке и в следующие дни. */
+export interface Todo {
+  id: number;
+  title: string;
+  /** На какой день запланировано; раньше сегодняшнего — значит, переехало («со вчера»). */
+  day: string;
+  done: boolean;
+}
+
+export interface TodoInput {
+  title: string;
+  /** YYYY-MM-DD; не указан — сегодня. */
+  day?: string | null;
+}
+
 export interface TodayResponse {
   day: string; // YYYY-MM-DD, логический день пользователя
   tasks: TodayTask[];
   archived: ArchivedTask[];
   limits: { max_tasks: number | null; active: number };
+  /** Дела на сегодня: несделанные (в том числе переехавшие) и сделанные сегодня. */
+  todos: Todo[];
+  /** Сколько дел запланировано на потом. */
+  todos_later: number;
 }
 
 export interface HeatDay {
@@ -94,7 +113,12 @@ export interface TaskInput {
 }
 
 /** Бесплатный лимит личных задач (задачи челленджей не считаются). */
-export const FREE_TASK_LIMIT = 5;
+/**
+ * Сколько привычек можно без подписки; null — лимита нет.
+ * С 01.10.2026 всё бесплатно для всех (решение владелицы), кроме дневного лимита голоса.
+ * Вернуть лимит — поставить число (было 5): проверки на сервере, в боте и в интерфейсе остались.
+ */
+export const FREE_TASK_LIMIT: number | null = null;
 
 /** Голосовых разборов в день на человека (мини-апп и бот вместе): квоты моделей общие на всех. */
 export const VOICE_DAILY_LIMIT = 20;
@@ -102,10 +126,10 @@ export const VOICE_DAILY_LIMIT = 20;
 export const MAX_VOICE_SECONDS = 90;
 
 /**
- * Что сказанное просит сделать. Пока только «завести привычку»;
- * позже сюда добавятся «отметить» и «дело на день» — клиент готов к списку разных действий.
+ * Что сказанное просит сделать: завести привычку или дело на день.
+ * Позже сюда добавится «отметить» — клиент готов к списку разных действий.
  */
-export type VoiceAction = { type: 'create_habit'; habit: TaskInput };
+export type VoiceAction = { type: 'create_habit'; habit: TaskInput } | { type: 'create_todo'; todo: TodoInput };
 
 /**
  * Ответ POST /api/voice приходит построчно (NDJSON), чтобы расслышанная фраза

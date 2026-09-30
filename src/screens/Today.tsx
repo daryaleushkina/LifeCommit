@@ -1,8 +1,10 @@
 import { useContext, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { api } from '../api';
 import { isDone, TaskCard } from '../components/TaskCard';
+import { TodoList } from '../components/TodoList';
 import { LangContext, useT } from '../i18n';
 import { currentChange, useTaskLog, type Cache } from '../useTaskLog';
+import { useTodos } from '../useTodos';
 
 /** Сколько данные «Сегодня» считаются свежими при возврате на экран. */
 const FRESH_MS = 60_000;
@@ -19,6 +21,7 @@ export function Today({ cache, setCache, onEdit, onArchive }: Props): ReactNode 
   const lang = useContext(LangContext);
   const data = cache.today;
   const { log, error, clearError } = useTaskLog(setCache, t.error);
+  const todos = useTodos(setCache, t.error);
 
   // Тихое обновление в фоне, если данные уже не свежие (например, день сменился).
   // Сразу после заставки или редактора они только что пришли — повторный запрос не нужен.
@@ -50,12 +53,30 @@ export function Today({ cache, setCache, onEdit, onArchive }: Props): ReactNode 
       </header>
 
       {/* Полосы карты здесь больше нет (01.10.2026): на «Сегодня» она лишняя, карта — во вкладке «Я». */}
-      {error && (
-        <p className="error" onClick={clearError}>
-          {error}
+      {(error ?? todos.error) && (
+        <p
+          className="error"
+          onClick={() => {
+            clearError();
+            todos.clearError();
+          }}
+        >
+          {error ?? todos.error}
         </p>
       )}
 
+      {/* Разовые дела — над привычками: их обычно надо сделать сегодня и один раз. */}
+      <TodoList
+        todos={data.todos}
+        later={data.todos_later}
+        today={data.day}
+        onToggle={(d) => void todos.toggle(d)}
+        onAdd={(title) => void todos.add(title, data.day)}
+        onUpdate={todos.update}
+        onRemove={todos.remove}
+      />
+
+      <h2 className="section-label">{t.voiceHabits}</h2>
       {ordered.length === 0 ? (
         <p className="empty">{t.nothingDue}</p>
       ) : (
