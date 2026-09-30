@@ -24,7 +24,7 @@ type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: 
 const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [] };
 
 /** Фон приложения (стиль A) — им же красим шапку и низ Telegram. */
-const BG = { light: '#F6F4EE', dark: '#121613' } as const;
+const BG = { light: '#F6F4EE', dark: '#0F1511' } as const;
 /** Главная кнопка Telegram — в нашем зелёном, а не в синем цвете темы. */
 const MAIN = { light: { bgColor: '#237A46', textColor: '#FFFFFF' }, dark: { bgColor: '#3FA968', textColor: '#0E1A12' } } as const;
 export type Theme = 'light' | 'dark';
