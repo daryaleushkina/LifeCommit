@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { stream } from 'hono/streaming';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   autoStep,
@@ -13,11 +14,14 @@ import {
   type TodayResponse,
   type TodayTask,
   type UserSettings,
+  VOICE_DAILY_LIMIT,
+  type VoiceEvent,
 } from '../shared/types';
 import type { TaskHistory } from '../shared/stats';
 import { requireTelegram, type AuthVars } from './auth';
 import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from './day';
 import { db, type Env } from './env';
+import { MAX_HABITS, parseHabits, transcribe } from './voice';
 
 type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -247,6 +251,11 @@ export async function countActive(sb: SupabaseClient, user: UserRow): Promise<nu
   return count ?? 0;
 }
 
+/** Взять попытку из дневного лимита голосовых разборов. false — на сегодня кончились. */
+export async function takeVoiceQuota(sb: SupabaseClient, userId: number): Promise<boolean> {
+  return must(await sb.rpc('take_voice_quota', { p_user: userId, p_limit: VOICE_DAILY_LIMIT })) as boolean;
+}
+
 async function assertCanAdd(sb: SupabaseClient, user: UserRow, adding: number) {
   if (isPremium(user)) return;
   if ((await countActive(sb, user)) + adding > FREE_TASK_LIMIT) throw new HTTPException(402, { message: 'task_limit' });
@@ -275,6 +284,45 @@ api.post('/tasks', async (c) => {
   await assertCanAdd(c.get('sb'), c.get('user'), 1);
   const [id] = await insertTasks(c.get('sb'), c.get('user'), [input]);
   return c.json({ id }, 201);
+});
+
+// Несколько привычек сразу — из голосового разбора. Лимит бесплатных проверяется на всю пачку.
+api.post('/tasks/batch', async (c) => {
+  const { tasks } = await c.req.json<{ tasks: TaskInput[] }>();
+  const list = (Array.isArray(tasks) ? tasks : []).slice(0, MAX_HABITS);
+  if (!list.length) throw new HTTPException(400, { message: 'no_tasks' });
+  await assertCanAdd(c.get('sb'), c.get('user'), list.length);
+  const ids = await insertTasks(c.get('sb'), c.get('user'), list);
+  return c.json({ ids }, 201);
+});
+
+/** Больше не принимаем: 90 секунд речи в любом из форматов браузеров заметно меньше. */
+const MAX_AUDIO_BYTES = 3_000_000;
+
+// Голос в мини-аппе: запись → расслышанная фраза → список действий. В базу ничего не пишет —
+// человек сначала смотрит список и только потом добавляет (POST /tasks/batch).
+// Ответ построчный (NDJSON): фраза приходит сразу после распознавания, пока модель ещё разбирает её.
+api.post('/voice', async (c) => {
+  const user = c.get('user');
+  const audio = await c.req.arrayBuffer();
+  if (audio.byteLength === 0) throw new HTTPException(400, { message: 'no_audio' });
+  if (audio.byteLength > MAX_AUDIO_BYTES) throw new HTTPException(413, { message: 'too_long' });
+  if (!(await takeVoiceQuota(c.get('sb'), user.id))) throw new HTTPException(429, { message: 'voice_limit' });
+
+  const lang = user.language_code === 'en' ? 'en' : 'ru';
+  c.header('content-type', 'application/x-ndjson; charset=utf-8');
+  return stream(c, async (out) => {
+    const send = (event: VoiceEvent) => out.write(`${JSON.stringify(event)}\n`);
+    try {
+      const text = await transcribe(c.env, audio, lang);
+      await send({ text });
+      const habits = text ? (await parseHabits(c.env, text)).habits : [];
+      await send({ actions: habits.map((habit) => ({ type: 'create_habit', habit })) });
+    } catch (e) {
+      console.error('voice parse failed', e);
+      await send({ error: 'failed' });
+    }
+  });
 });
 
 // Онбординг: выбор из шаблонов.

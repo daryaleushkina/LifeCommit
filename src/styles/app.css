@@ -268,9 +268,14 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .archive-item .label { flex: 1; font-weight: 500; }
 
 /* ── Нижняя навигация ── */
-.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(2, 1fr); padding: 6px 8px calc(var(--app-inset-bottom) + 12px); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 96px 1fr; padding: 6px 8px calc(var(--app-inset-bottom) + 12px); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5); }
 .tabbar button { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .tabbar button.active { color: var(--accent); font-weight: 700; }
+/* Микрофон — посередине панели, крупнее вкладок и чуть выступает над ней. */
+.tabbar button:nth-of-type(2) { grid-column: 1; grid-row: 1; }
+.tabbar button:nth-of-type(3) { grid-column: 3; grid-row: 1; }
+.tabbar .tab-mic { grid-column: 2; grid-row: 1; justify-self: center; align-self: start; width: 68px; height: 68px; min-height: 0; margin-top: -26px; border-radius: 50%; background: var(--accent); color: var(--accent-text); box-shadow: 0 0 0 7px var(--bg), 0 8px 22px rgba(35, 122, 70, 0.28); transition: transform 160ms var(--ease-out); }
+.tabbar .tab-mic:active { transform: scale(0.94); }
 .tabbar .pill { width: 52px; height: 30px; border-radius: 999px; display: grid; place-items: center; }
 .tabbar button.active .pill { background: var(--accent-soft); }
 
@@ -318,3 +323,42 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .bars .goal { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--muted); }
 .bars .goal em { position: absolute; right: 0; bottom: 3px; padding-left: 4px; font-style: normal; font-size: 11px; color: var(--muted); }
 .bars-axis { margin-top: 6px; display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+
+/* ── Голос ── */
+.sheet-handle { align-self: center; width: 40px; height: 4px; margin: -8px 0 14px; border-radius: 2px; background: var(--line); flex: none; }
+.voice-sheet { gap: 0; }
+.voice-sheet h2 { padding: 0 4px; font-size: 22px; line-height: 28px; }
+.voice-hint { margin: 6px 4px 0; color: var(--muted); font-size: 15px; line-height: 21px; }
+.voice-rec { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.voice-listening { color: var(--muted); font-size: 16px; }
+.wave { height: 48px; margin-top: 20px; display: flex; align-items: center; gap: 6px; }
+.wave i { width: 3px; height: 44px; border-radius: 2px; background: var(--accent); opacity: 0.85; transform: scaleY(0.18); transition: transform 90ms linear; }
+.wave i:nth-child(odd) { opacity: 0.5; }
+.voice-timer { margin-top: 14px; font-size: 18px; font-weight: 700; }
+.voice-stop { margin-top: 46px; width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 16%, transparent), 0 0 0 28px color-mix(in srgb, var(--accent) 8%, transparent); animation: halo 1.8s ease-in-out infinite; }
+.voice-stop i { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-text); }
+.voice-stop:active { transform: scale(0.95); }
+@keyframes halo { 50% { box-shadow: 0 0 0 18px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 0 34px color-mix(in srgb, var(--accent) 5%, transparent); } }
+.voice-example { margin-top: 50px; max-width: 320px; color: var(--muted); font-size: 14px; line-height: 20px; }
+.voice-link { align-self: center; min-height: var(--tap); margin-top: 6px; padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 16px; font-weight: 500; }
+.voice-quote { margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: var(--bg); font-size: 16px; line-height: 22px; }
+.voice-quote small { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
+.voice-quote.pending { padding-block: 18px; }
+.skel-line, .voice-skel b, .voice-skel small, .voice-skel i { display: block; border-radius: 8px; background: color-mix(in srgb, var(--muted) 16%, transparent); animation: pulse 1.4s ease-in-out infinite; }
+.skel-line { height: 14px; width: 70%; }
+.voice-skel { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.voice-skel > div { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 18px; background: var(--bg); }
+.voice-skel i { width: 44px; height: 44px; border-radius: 14px; flex: none; }
+.voice-skel span { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.voice-skel b { height: 12px; width: 55%; }
+.voice-skel small { height: 10px; width: 35%; }
+.voice-list { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.voice-list li { display: flex; align-items: center; border-radius: 18px; background: var(--bg); transition: opacity 200ms; }
+.voice-list li.wont-fit { opacity: 0.45; }
+.voice-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 12px 0 12px 12px; text-align: left; }
+.voice-row span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.voice-row b { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.voice-row small { color: var(--muted); font-size: 14px; line-height: 19px; }
+.voice-x { flex: none; width: var(--tap); height: var(--tap); margin-right: 4px; display: grid; place-items: center; color: var(--muted); border-radius: 12px; }
+.act.with-icon { gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .voice-stop, .skel-line, .voice-skel b, .voice-skel small, .voice-skel i { animation: none; } .wave i { transition: none; } }

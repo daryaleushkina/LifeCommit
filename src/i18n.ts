@@ -22,6 +22,38 @@ const ru = {
     count: { title: 'Считать что-то', examples: '8 стаканов воды, 20 страниц' },
     abstain: { title: 'Бросить', examples: 'курение, алкоголь, сладкое' },
   },
+  // голос
+  voice: {
+    mic: 'Сказать голосом',
+    listening: 'Говори — я слушаю',
+    example: 'Например: «читать двадцать страниц каждый день, спортзал три раза в неделю и бросить курить»',
+    stop: 'Готово, разобрать',
+    cancel: 'Отмена',
+    parsing: 'Разбираю…',
+    previewTitle: 'Вот что получилось',
+    previewHint: 'Лишнее убери, нажми на привычку, чтобы поправить',
+    remove: (title: string) => `Убрать «${title}»`,
+    addN: (n: number) => `Добавить ${ruNum.format(n)} ${plural(n, 'привычку', 'привычки', 'привычек')}`,
+    wontFit: (room: number, limit: number) =>
+      room === 0
+        ? `Бесплатно — до ${limit} привычек, и все места заняты. Можно отложить какую-нибудь.`
+        : `Бесплатно — до ${limit} привычек: добавятся первые ${ruNum.format(room)}, остальные можно убрать.`,
+    again: 'Сказать ещё раз',
+    manual: 'Выбрать вручную',
+    nothingTitle: 'Не понял, что добавить',
+    heard: 'Расслышал',
+    heardNothing: 'Ничего не расслышал',
+    nothingHint: 'Назови привычки как есть: «пить воду, восемь стаканов» или «бросить сладкое».',
+    noMicTitle: 'Микрофон недоступен',
+    noMicHint: 'Разреши Telegram доступ к микрофону или скажи то же самое боту в чате — голосовые он понимает.',
+    openBot: 'Открыть чат с ботом',
+    failedTitle: 'Не получилось разобрать',
+    failedHint: 'Попробуй ещё раз чуть позже.',
+    limitTitle: 'На сегодня хватит',
+    limitHint: (n: number) => `Разбираю до ${n} записей в день. Завтра — снова можно.`,
+    quit: 'бросить',
+    perDay: 'в день',
+  },
   // сегодня
   addTask: 'Добавить привычку',
   nothingDue: 'На сегодня всё',
@@ -106,6 +138,37 @@ const ru = {
 type Dict = typeof ru;
 
 const en: Dict = {
+  voice: {
+    mic: 'Say it',
+    listening: "Go ahead — I'm listening",
+    example: 'For example: "read twenty pages every day, gym three times a week and quit smoking"',
+    stop: 'Done, parse it',
+    cancel: 'Cancel',
+    parsing: 'Parsing…',
+    previewTitle: "Here's what I got",
+    previewHint: 'Remove what you do not need, tap a habit to adjust it',
+    remove: (title) => `Remove "${title}"`,
+    addN: (n) => `Add ${enNum.format(n)} ${n === 1 ? 'habit' : 'habits'}`,
+    wontFit: (room, limit) =>
+      room === 0
+        ? `Free plan: up to ${limit} habits, and they are all taken. You can postpone one.`
+        : `Free plan: up to ${limit} habits — only the first ${enNum.format(room)} will be added.`,
+    again: 'Say it again',
+    manual: 'Pick manually',
+    nothingTitle: 'Not sure what to add',
+    heard: 'I heard',
+    heardNothing: 'I heard nothing',
+    nothingHint: 'Name the habits as they are: "drink water, eight glasses" or "quit sugar".',
+    noMicTitle: 'Microphone unavailable',
+    noMicHint: 'Allow Telegram to use the microphone, or say the same to the bot in chat — it understands voice messages.',
+    openBot: 'Open the bot chat',
+    failedTitle: 'Could not parse it',
+    failedHint: 'Please try again a bit later.',
+    limitTitle: "That's enough for today",
+    limitHint: (n) => `I parse up to ${n} recordings a day. Try again tomorrow.`,
+    quit: 'quit',
+    perDay: 'a day',
+  },
   num: (n) => enNum.format(n),
   openInTelegram: 'Open LifeCommit in Telegram',
   loadError: "Couldn't load. Check your connection and try again.",

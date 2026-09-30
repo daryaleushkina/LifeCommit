@@ -96,6 +96,24 @@ export interface TaskInput {
 /** Бесплатный лимит личных задач (задачи челленджей не считаются). */
 export const FREE_TASK_LIMIT = 5;
 
+/** Голосовых разборов в день на человека (мини-апп и бот вместе): квоты моделей общие на всех. */
+export const VOICE_DAILY_LIMIT = 20;
+/** Дольше не записываем: это уже не список привычек, а распознавание небесплатное. */
+export const MAX_VOICE_SECONDS = 90;
+
+/**
+ * Что сказанное просит сделать. Пока только «завести привычку»;
+ * позже сюда добавятся «отметить» и «дело на день» — клиент готов к списку разных действий.
+ */
+export type VoiceAction = { type: 'create_habit'; habit: TaskInput };
+
+/**
+ * Ответ POST /api/voice приходит построчно (NDJSON), чтобы расслышанная фраза
+ * показалась, пока модель ещё разбирает её: сначала `text`, потом `actions`.
+ * `error`: `voice_limit` — попытки на сегодня кончились, `failed` — не получилось.
+ */
+export type VoiceEvent = { text: string } | { actions: VoiceAction[] } | { error: 'voice_limit' | 'failed' | 'too_long' };
+
 /** Уровень клетки тепловой карты по абсолютной сумме выполненного за день. */
 export function heatLevel(score: number): 0 | 1 | 2 | 3 | 4 {
   if (score <= 0) return 0;
