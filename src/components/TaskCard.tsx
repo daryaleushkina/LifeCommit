@@ -81,7 +81,7 @@ export function useCountValue(task: TodayTask, onLog: (change: LogChange) => voi
   const rest = (
     <>
       {' '}
-      {t.of} {task.target}
+      {t.of} {t.num(task.target)}
       {task.unit ? ` ${task.unit}` : ''}
     </>
   );
@@ -89,7 +89,7 @@ export function useCountValue(task: TodayTask, onLog: (change: LogChange) => voi
   const value =
     draft === null ? (
       <button className="task-value" aria-label={label} onClick={edit}>
-        <b>{task.value}</b>
+        <b>{t.num(task.value)}</b>
         {rest}
       </button>
     ) : (

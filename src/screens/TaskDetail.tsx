@@ -122,7 +122,7 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
 
       {task.kind === 'abstain' && (
         <section className="card pad hero">
-          <b>{cleanDaysOf(task)}</b>
+          <b>{t.num(cleanDaysOf(task))}</b>
           <span>{t.cleanDaysWord(cleanDaysOf(task))}</span>
         </section>
       )}
@@ -130,7 +130,7 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
       <section className="card pad stat-grid" style={{ gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))` }}>
         {stats.map(([value, label], i) => (
           <div key={label} className={i === 0 ? `first k-${task.kind}` : undefined}>
-            <b>{value}</b>
+            <b>{typeof value === 'number' ? t.num(value) : value}</b>
             <span>{label}</span>
           </div>
         ))}

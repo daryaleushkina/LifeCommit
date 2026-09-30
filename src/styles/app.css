@@ -127,14 +127,22 @@ h1, h2, p { margin: 0; }
 .views { margin-top: 12px; display: grid; }
 .views > * { grid-area: 1 / 1; min-width: 0; }
 .views > .off { visibility: hidden; }
-/* Месяц занимает весь блок: семь колонок во всю ширину, всегда шесть строк — клетки одного размера в любом месяце. */
-.cal { height: 100%; min-height: 160px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: repeat(6, minmax(0, 1fr)); gap: 5px; }
-.cal i { border-radius: 7px; background: var(--heat-0); }
+/* Месяц: квадратные клетки, всегда шесть строк — блок одной высоты в любом месяце. */
+.cal { height: 100%; display: grid; grid-template-columns: repeat(7, 30px); grid-template-rows: repeat(6, 30px); gap: 5px; justify-content: center; align-content: center; }
+.cal i { border-radius: 8px; background: var(--heat-0); }
 .cal i.blank { background: transparent; }
 .cal i.l1 { background: var(--heat-1); } .cal i.l2 { background: var(--heat-2); } .cal i.l3 { background: var(--heat-3); } .cal i.l4 { background: var(--heat-4); }
 .cal i.today { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2.5px var(--text); }
 .cal i.future { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
-.year-map { display: flex; flex-direction: column; gap: 10px; }
+/* Год одной лентой шире экрана: листается вбок, полосы прокрутки не видно. */
+.year-map { display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; align-self: center; }
+.year-map::-webkit-scrollbar { display: none; }
+.year-week { display: grid; grid-template-columns: 22px; grid-template-rows: 16px repeat(7, 22px); gap: 4px; flex: none; }
+.year-week span { font-size: 11px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: visible; }
+.year-week i { border-radius: 6px; background: var(--heat-0); }
+.year-week i.l1 { background: var(--heat-1); } .year-week i.l2 { background: var(--heat-2); } .year-week i.l3 { background: var(--heat-3); } .year-week i.l4 { background: var(--heat-4); }
+.year-week i.today { box-shadow: inset 0 0 0 2px var(--text); }
+.year-week i.future { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
 
 /* ── Дела ── */
 .tasks { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
@@ -146,7 +154,7 @@ h1, h2, p { margin: 0; }
 .task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .task-main h2 { font-size: 16px; line-height: 22px; font-weight: 500; overflow-wrap: anywhere; }
 .task.done .task-main h2 { color: var(--muted); }
-.task-value { font-size: 14px; line-height: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.task-value { font-size: 14px; line-height: 18px; color: var(--muted); }
 .task-value b { color: var(--text); font-weight: 700; }
 .task-main > button { text-align: left; }
 button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12px; }
@@ -197,7 +205,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .row { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 14px 0 18px; width: 100%; text-align: left; position: relative; }
 .row + .row { border-top: 1px solid var(--line); }
 .row .label { flex: 1; font-size: 16px; font-weight: 500; white-space: nowrap; }
-.row .value { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.row .value { color: var(--muted); font-size: 15px; }
 .row .chev { color: var(--muted); flex: none; }
 .theme-toggle { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--heat-0); }
 .theme-toggle button { width: 44px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); }
@@ -211,19 +219,19 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .options button { min-height: 52px; padding: 0 4px; display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 500; text-align: left; }
 .options button + button { border-top: 1px solid var(--line); }
 .options button.on { color: var(--accent); font-weight: 600; }
-.wheels { position: relative; align-self: center; display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wheels { position: relative; align-self: center; display: flex; align-items: center; gap: 10px; margin: 4px 0 16px; font-size: 24px; font-weight: 600; }
 /* Полоса под выбранной строкой: барабаны прокручиваются сквозь неё. */
 .wheels::before { content: ''; position: absolute; inset: 88px -22px; border-radius: 14px; background: var(--heat-0); }
 .wheels > span { position: relative; width: 12px; text-align: center; }
 .wheels > span.fixed { width: 72px; }
 .wheel { position: relative; width: 72px; height: 220px; padding: 88px 0; overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none; outline: none; -webkit-mask-image: linear-gradient(transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(transparent, #000 35%, #000 65%, transparent); }
 .wheel::-webkit-scrollbar { display: none; }
-.wheel button { display: block; width: 100%; height: 44px; scroll-snap-align: center; font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+.wheel button { display: block; width: 100%; height: 44px; scroll-snap-align: center; font-size: 24px; font-weight: 500; color: var(--muted); }
 .wheel button.on { color: var(--text); font-weight: 700; }
 .act.wide { width: 100%; margin-top: 14px; }
 .date-grid { margin-top: 6px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .date-grid span { text-align: center; font-size: 12px; line-height: 20px; color: var(--muted); }
-.date-grid button { height: 42px; border-radius: 12px; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.date-grid button { height: 42px; border-radius: 12px; font-size: 15px; font-weight: 500; }
 .date-grid button.on { background: var(--accent); color: var(--accent-text); font-weight: 700; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes sheet-up { from { transform: translateY(100%); } }
@@ -237,8 +245,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .segmented button.on { background: var(--surface); box-shadow: var(--shadow); font-weight: 600; }
 .stepper { display: flex; align-items: center; gap: 2px; }
 .stepper button { width: 40px; height: 40px; border-radius: 12px; background: var(--heat-0); font-size: 20px; font-weight: 500; }
-.stepper input { width: 48px; height: 40px; border: 0; background: none; text-align: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; outline: none; }
-.unit-input { width: 52px; border: 0; background: none; color: var(--muted); font-size: 15px; outline: none; text-align: right; }
+.stepper input { width: 48px; height: 40px; border: 0; background: none; text-align: center; font-size: 18px; font-weight: 700; outline: none; }
 .weekdays { margin: 12px 0 4px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .per-week { margin: 12px 0 4px; display: flex; align-items: center; gap: 12px; font-size: 15px; color: var(--muted); }
 .weekdays button { height: 40px; border-radius: 12px; background: var(--heat-0); font-size: 13px; font-weight: 600; }
@@ -284,18 +291,18 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .today-block.wrap { flex-wrap: wrap; padding-bottom: 14px; }
 .today-block .progress { margin-right: 6px; }
 .hero { display: flex; flex-direction: row; align-items: baseline; gap: 10px; }
-.hero b { font-size: 44px; line-height: 48px; font-weight: 700; letter-spacing: -0.02em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.hero b { font-size: 44px; line-height: 48px; font-weight: 700; letter-spacing: -0.02em; color: var(--accent); }
 .hero span { font-size: 16px; color: var(--muted); }
 .stat-grid { display: grid; gap: 12px; }
 .stat-grid div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.stat-grid b { font-size: 22px; line-height: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-grid b { font-size: 22px; line-height: 26px; font-weight: 700; }
 .stat-grid .first b { color: var(--k-ink); }
 .stat-grid .first.k-abstain b { color: var(--text); }
 .stat-grid span { font-size: 13px; line-height: 17px; color: var(--muted); }
 .month-nav.flat { margin-top: 0; }
 .hcal { margin-top: 8px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .hcal span { text-align: center; font-size: 12px; line-height: 18px; color: var(--muted); }
-.hcal i { height: 34px; border-radius: 10px; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+.hcal i { height: 34px; border-radius: 10px; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 500; color: var(--muted); }
 .hcal i.plan { box-shadow: inset 0 0 0 1.5px var(--line); color: var(--text); }
 .hcal i.some { background: var(--heat-1); color: var(--text); }
 .hcal i.half { background: var(--heat-2); color: var(--text); }

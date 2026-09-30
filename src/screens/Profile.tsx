@@ -121,7 +121,7 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
             <MonthCalendar days={heat.days} today={heat.today} month={month} />
           </div>
           <div className={view === 'year' ? '' : 'off'}>
-            <YearMap days={heat.days} today={heat.today} />
+            <YearMap days={heat.days} today={heat.today} monthName={(m) => monthName(m, 'short')} />
           </div>
         </div>
       </section>

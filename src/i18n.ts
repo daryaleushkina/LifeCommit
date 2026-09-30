@@ -1,6 +1,12 @@
 import { createContext, useContext } from 'react';
 
+// Для ru-RU разряды разделяются неразрывным пробелом, и только начиная с тысяч.
+const ruNum = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
+const enNum = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+
 const ru = {
+  /** Число по-русски: разряды через пробел только с тысяч — 146, 1 146, 25 546. */
+  num: (n: number) => ruNum.format(n),
   openInTelegram: 'Откройте LifeCommit в Telegram',
   loadError: 'Не получилось загрузиться. Проверьте интернет и попробуйте ещё раз.',
   retry: 'Ещё раз',
@@ -39,8 +45,6 @@ const ru = {
   turnOff: 'Выключить',
   clearDate: 'Сбросить дату',
   goal: 'Цель на день',
-  unitLabel: 'В чём считать',
-  unitPh: 'раз',
   repeat: 'Повторять',
   schedules: { daily: 'Каждый день', weekdays: 'По дням недели', per_week: 'Несколько раз в неделю' },
   perWeek: (n: number) => `${n} ${plural(n, 'раз', 'раза', 'раз')} в неделю`,
@@ -53,14 +57,14 @@ const ru = {
   postpone: 'Отложить',
   deleteTask: 'Удалить',
   goalTomorrow: 'Цель стала легче — применится с завтра.',
-  cleanDays: (n: number) => `${n} ${plural(n, 'день', 'дня', 'дней')} без этого`,
+  cleanDays: (n: number) => `${ruNum.format(n)} ${plural(n, 'день', 'дня', 'дней')} без этого`,
   cleanDaysWord: (n: number) => `${plural(n, 'день', 'дня', 'дней')} без этого`,
   // экран привычки
-  goalLine: (n: number, unit: string | null) => `Цель — ${n}${unit ? ` ${unit}` : ''} в день`,
+  goalLine: (n: number, unit: string | null) => `Цель — ${ruNum.format(n)}${unit ? ` ${unit}` : ''} в день`,
   goalShort: 'цель',
   since: (date: string) => `С ${date}`,
   twoWeeks: 'Последние две недели',
-  statOf: (a: number, b: number) => `${a} из ${b}`,
+  statOf: (a: number, b: number) => `${ruNum.format(a)} из ${ruNum.format(b)}`,
   statPlanIn: (month: string) => `по плану за ${month}`,
   statTimesIn: (month: string) => `раз за ${month}`,
   statTimesAll: 'раз за всё время',
@@ -76,7 +80,7 @@ const ru = {
   deleteForever: 'Удалить',
   deleteForeverConfirm: 'Удалить привычку вместе с историей?',
   // профиль
-  activeDays: (n: number) => `${n} ${plural(n, 'активный день', 'активных дня', 'активных дней')}`,
+  activeDays: (n: number) => `${ruNum.format(n)} ${plural(n, 'активный день', 'активных дня', 'активных дней')}`,
   year: 'Год',
   month: 'Месяц',
   prevMonth: 'Предыдущий месяц',
@@ -102,6 +106,7 @@ const ru = {
 type Dict = typeof ru;
 
 const en: Dict = {
+  num: (n) => enNum.format(n),
   openInTelegram: 'Open LifeCommit in Telegram',
   loadError: "Couldn't load. Check your connection and try again.",
   retry: 'Try again',
@@ -136,8 +141,6 @@ const en: Dict = {
   turnOff: 'Turn off',
   clearDate: 'Clear date',
   goal: 'Daily goal',
-  unitLabel: 'Unit',
-  unitPh: 'reps',
   repeat: 'Repeat',
   schedules: { daily: 'Every day', weekdays: 'On weekdays', per_week: 'A few times a week' },
   perWeek: (n) => `${n} ${n === 1 ? 'time' : 'times'} a week`,
@@ -150,13 +153,13 @@ const en: Dict = {
   postpone: 'Postpone',
   deleteTask: 'Delete',
   goalTomorrow: 'The goal got easier — it applies from tomorrow.',
-  cleanDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} without it`,
+  cleanDays: (n) => `${enNum.format(n)} ${n === 1 ? 'day' : 'days'} without it`,
   cleanDaysWord: (n) => `${n === 1 ? 'day' : 'days'} without it`,
-  goalLine: (n, unit) => `Goal: ${n}${unit ? ` ${unit}` : ''} a day`,
+  goalLine: (n, unit) => `Goal: ${enNum.format(n)}${unit ? ` ${unit}` : ''} a day`,
   goalShort: 'goal',
   since: (date) => `Since ${date}`,
   twoWeeks: 'Last two weeks',
-  statOf: (a, b) => `${a} of ${b}`,
+  statOf: (a, b) => `${enNum.format(a)} of ${enNum.format(b)}`,
   statPlanIn: (month) => `as planned in ${month}`,
   statTimesIn: (month) => `times in ${month}`,
   statTimesAll: 'times in total',
@@ -170,7 +173,7 @@ const en: Dict = {
   restore: 'Restore',
   deleteForever: 'Delete',
   deleteForeverConfirm: 'Delete this habit with its history?',
-  activeDays: (n) => `${n} active ${n === 1 ? 'day' : 'days'}`,
+  activeDays: (n) => `${enNum.format(n)} active ${n === 1 ? 'day' : 'days'}`,
   year: 'Year',
   month: 'Month',
   prevMonth: 'Previous month',
