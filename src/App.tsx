@@ -21,7 +21,7 @@ type Route =
   | { name: 'task'; id: number | null; kind?: TaskKind }
   | { name: 'archive' };
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
-const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [] };
+const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [], loadedAt: 0 };
 
 /** Фон приложения (стиль A) — им же красим шапку и низ Telegram. */
 const BG = { light: '#F6F4EE', dark: '#0F1511' } as const;
@@ -74,7 +74,7 @@ export function App(): ReactNode {
       const seq = currentChange();
       const [today, heat] = await Promise.all([api.today(), api.heatmap(371)]);
       // Повторная загрузка не должна затереть то, что успели отметить, пока она шла.
-      if (seq === currentChange()) setCache({ today, heat: heat.days });
+      if (seq === currentChange()) setCache({ today, heat: heat.days, loadedAt: Date.now() });
       setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 });
     } catch {
       setBoot({ state: 'error' });
@@ -105,11 +105,13 @@ export function App(): ReactNode {
 
   const lang: Lang = boot.user.language_code === 'en' ? 'en' : 'ru';
   /** Перечитать «Сегодня» до возврата на экран — чтобы он открылся уже со свежими данными. */
-  const refresh = async () => {
+  const refresh = async (deleted = false) => {
     // Привычки только что изменили — ответы, запрошенные раньше, уже устарели.
     bumpChange();
+    // Удалённая привычка забирает с карты и прошлые дни — карту перечитываем в фоне, не задерживая экран.
+    if (deleted) api.heatmap(371).then((h) => setCache((c) => ({ ...c, heat: h.days })), () => {});
     const today = await api.today().catch(() => null);
-    if (today) setCache((c) => ({ ...c, today }));
+    if (today) setCache((c) => ({ ...c, today, loadedAt: Date.now() }));
   };
   const home = () => setRoute({ name: 'today' });
 
@@ -119,10 +121,11 @@ export function App(): ReactNode {
     const editedId = route.id;
     screen = (
       <TaskEditor
-        id={route.id}
+        task={editedId === null ? null : cache.today.tasks.find((x) => x.id === editedId)}
+        day={cache.today.day}
         kind={route.kind}
-        onSaved={async () => {
-          await refresh();
+        onSaved={async (deleted) => {
+          await refresh(deleted);
           // Первая привычка сохранена — онбординг пройден; «Назад» без сохранения возвращает к нему.
           setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
         }}
@@ -140,7 +143,7 @@ export function App(): ReactNode {
   } else if (route.name === 'detail' && detailTask) {
     screen = <TaskDetail task={detailTask} today={cache.today.day} setCache={setCache} onEdit={() => setRoute({ name: 'task', id: detailTask.id })} onClose={home} />;
   } else if (route.name === 'archive') {
-    screen = <Archive onChanged={refresh} onClose={home} />;
+    screen = <Archive archived={cache.today.archived} onChanged={refresh} onClose={home} />;
   } else {
     screen = (
       <main className="app-shell with-tabs">

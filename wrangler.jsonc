@@ -13,6 +13,9 @@
   // Workers AI: голос и свободный текст → привычки (бесплатно 10 000 нейронов в день на аккаунт).
   "ai": { "binding": "AI" },
   "observability": { "enabled": true },
+  // Каждый запрос несколько раз ходит в базу во Франкфурт: пусть Cloudflare исполняет код ближе к ней,
+  // а не к пользователю — тогда длинная дорога одна, а не на каждый запрос к базе.
+  "placement": { "mode": "smart" },
   "vars": {
     "SUPABASE_URL": "https://jxiehidneahivjebijae.supabase.co",
     "BOT_USERNAME": "LifeCommit_bot",

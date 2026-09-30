@@ -8,12 +8,13 @@ import { isDone, type LogChange } from './components/TaskCard';
 export interface Cache {
   today: TodayResponse;
   heat: HeatDay[];
+  /** Когда «Сегодня» пришло с сервера (Date.now()): свежее не перечитываем. */
+  loadedAt: number;
 }
 
 // Счётчики общие на всё приложение, а не на экран: отметить можно и в «Сегодня», и на экране привычки,
 // а запрос, начатый одним экраном, может вернуться, когда открыт уже другой.
 let changeSeq = 0;
-let heatSeq = 0;
 
 /** Номер последнего изменения привычек. Фоновое обновление сверяет его до и после запроса. */
 export const currentChange = (): number => changeSeq;
@@ -41,11 +42,9 @@ export function useTaskLog(setCache: Dispatch<SetStateAction<Cache>>, errorText:
       bumpChange();
       patchTask(next);
       if (!wasDone && isDone({ ...task, ...next })) hapticFeedback.notificationOccurred.ifAvailable('success');
+      // Карту после отметки не перечитываем: меняется только сегодняшняя клетка, а её экран считает сам.
       try {
         await api.log(task.id, change.value, change.status);
-        // Ответы могут прийти не по порядку (быстрые нажатия) — берём только самый свежий запрос.
-        const seq = ++heatSeq;
-        api.heatmap(371).then((h) => seq === heatSeq && setCache((c) => ({ ...c, heat: h.days })), () => {});
       } catch {
         patchTask(task); // откат
         setError(errorText);
