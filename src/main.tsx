@@ -46,9 +46,6 @@ async function bootstrap(): Promise<void> {
   swipeBehavior.mount.ifAvailable();
   closingBehavior.mount.ifAvailable();
 
-  miniApp.setHeaderColor.ifAvailable('bg_color');
-  miniApp.setBgColor.ifAvailable('bg_color');
-
   if (viewport.mount.isAvailable()) {
     try {
       await viewport.mount({ timeout: 3000 });
@@ -71,7 +68,7 @@ function OpenInTelegram(): ReactNode {
   return (
     <main className="app-shell center">
       <p>{t.openInTelegram}</p>
-      <a className="btn primary" href="https://t.me/LifeCommit_bot">
+      <a className="act primary" style={{ textDecoration: 'none' }} href="https://t.me/LifeCommit_bot">
         @LifeCommit_bot
       </a>
     </main>

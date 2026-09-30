@@ -3,7 +3,6 @@
 export type TaskKind = 'count' | 'check' | 'limit' | 'abstain';
 export type Schedule = 'daily' | 'weekdays' | 'per_week';
 export type Visibility = 'private' | 'followers' | 'public';
-export type DayMode = 'minimum' | 'pause' | null;
 export type AbstainStatus = 'clean' | 'slip' | null;
 
 export interface Subtask {
@@ -23,7 +22,6 @@ export interface TodayTask {
   per_week: number | null;
   visibility: Visibility;
   target: number;
-  min_target: number | null;
   value: number;
   logged: boolean; // есть ли отметка за сегодня (для «не больше N» 0 — тоже отметка)
   status: AbstainStatus;
@@ -44,20 +42,27 @@ export interface UserSettings {
   remind_morning: string | null;
   remind_evening: string | null;
   bot_chat_ok: boolean;
+  profile_mode: 'open' | 'closed';
   premium: boolean;
 }
 
 export interface TodayResponse {
   day: string; // YYYY-MM-DD, логический день пользователя
-  mode: DayMode;
   tasks: TodayTask[];
+  archived: ArchivedTask[];
   limits: { max_tasks: number | null; active: number };
 }
 
 export interface HeatDay {
   day: string;
   score: number;
-  mode: DayMode;
+}
+
+/** Отложенное дело: скрыто из «Сегодня», история остаётся, можно вернуть. */
+export interface ArchivedTask {
+  id: number;
+  title: string;
+  emoji: string | null;
 }
 
 export interface TaskTemplate {
@@ -67,8 +72,6 @@ export interface TaskTemplate {
   kind: TaskKind;
   unit: string | null;
   target: number;
-  min_target: number | null;
-  step: number;
   subtasks: string[];
 }
 
@@ -77,13 +80,11 @@ export interface TaskInput {
   emoji?: string | null;
   kind: TaskKind;
   unit?: string | null;
-  step?: number;
   schedule?: Schedule;
   weekdays?: number;
   per_week?: number | null;
   visibility?: Visibility;
   target: number;
-  min_target?: number | null;
   subtasks?: string[];
 }
 
@@ -97,4 +98,12 @@ export function heatLevel(score: number): 0 | 1 | 2 | 3 | 4 {
   if (score < 3) return 2;
   if (score < 5) return 3;
   return 4;
+}
+
+/** Шаг кнопки «+N» подбирается по цели: настройки «шаг» у пользователя нет. */
+export function autoStep(target: number): number {
+  if (target <= 10) return 1;
+  if (target <= 40) return 5;
+  if (target <= 100) return 10;
+  return Math.max(1, Math.round(target / 10));
 }

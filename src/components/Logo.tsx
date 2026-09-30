@@ -1,25 +1,44 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
-/**
- * Логотип-заставка: сетка 3×3, клетки загораются зелёным по очереди,
- * как дни на карте. Пока грузится сессия — крутится по кругу.
- */
-export function Logo({ animated = false, size = 72 }: { animated?: boolean; size?: number }): ReactNode {
-  const levels = [1, 2, 4, 2, 3, 1, 4, 3, 2];
+const HEAT = ['var(--heat-1)', 'var(--heat-2)', 'var(--heat-3)', 'var(--heat-4)'];
+
+/** Знак: сетка 3×3 клеток карты, самые тёмные складываются в галочку. */
+export function Logo(): ReactNode {
+  const levels = [0, 1, 4, 1, 4, 2, 4, 2, 0];
   return (
-    <div className={`logo${animated ? ' animated' : ''}`} style={{ width: size, height: size }} aria-hidden>
+    <span className="logo" aria-hidden>
       {levels.map((l, i) => (
-        <i key={i} className={`cell l${l}`} style={{ animationDelay: `${i * 90}ms` }} />
+        <i key={i} className={l ? `l${l}` : undefined} />
       ))}
-    </div>
+    </span>
   );
 }
 
-export function Splash(): ReactNode {
+/** Заставка: светлый терминал, `git commit -m "новый день"`, строка карты заполняется. */
+export function Splash({ lang }: { lang: 'ru' | 'en' }): ReactNode {
+  const row = [1, 2, 0, 3, 2, 4, 1, 3, 4, 2, 3, 4, 3, 4];
   return (
-    <main className="app-shell center splash">
-      <Logo animated size={84} />
-      <div className="wordmark">LifeCommit</div>
+    <main className="app-shell center splash" aria-busy="true">
+      <div className="brand">
+        <Logo />
+        <span>
+          Life<b>Commit</b>
+        </span>
+      </div>
+      <div className="term" aria-hidden>
+        <div className="term-bar">~/life · main</div>
+        <div className="term-cmd">$ git commit -m "{lang === 'ru' ? 'новый день' : 'new day'}"</div>
+        <div className="term-out">[main 4c1e2a7] {lang === 'ru' ? 'новый день' : 'new day'}</div>
+        <div className="term-row">
+          {row.map((l, i) => (
+            <i
+              key={i}
+              className={i === row.length - 1 ? 'today' : undefined}
+              style={{ '--c': l ? HEAT[l - 1] : 'var(--heat-0)', animationDelay: `${2 + i * 0.07}s` } as CSSProperties}
+            />
+          ))}
+        </div>
+      </div>
     </main>
   );
 }

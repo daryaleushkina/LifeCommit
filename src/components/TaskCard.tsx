@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { AbstainStatus, DayMode, TodayTask } from '../../shared/types';
+import type { AbstainStatus, TodayTask } from '../../shared/types';
 import { useT } from '../i18n';
 
 export interface LogChange {
@@ -7,138 +7,135 @@ export interface LogChange {
   status?: AbstainStatus;
 }
 
-interface Props {
-  task: TodayTask;
-  mode: DayMode;
-  onLog: (change: LogChange) => void;
-  onEdit: () => void;
-}
-
-/** Цель с учётом «минималки» на тяжёлый день. */
-export function effectiveTarget(task: TodayTask, mode: DayMode): number {
-  return mode === 'minimum' && task.kind === 'count' && task.min_target ? task.min_target : task.target;
-}
-
-export function isDone(task: TodayTask, mode: DayMode): boolean {
+export function isDone(task: TodayTask): boolean {
   switch (task.kind) {
     case 'count':
-      return task.value >= effectiveTarget(task, mode);
+      return task.value >= task.target;
     case 'check':
       return task.value >= 1;
     case 'limit':
       return task.logged && task.value <= task.target;
     case 'abstain':
-      return task.status === 'clean';
+      return task.status !== null;
   }
 }
 
-export function TaskCard({ task, mode, onLog, onEdit }: Props): ReactNode {
-  const t = useT();
-  const target = effectiveTarget(task, mode);
-  const done = isDone(task, mode);
-  const progress = task.kind === 'count' ? Math.min(1, task.value / target) : done ? 1 : 0;
-
-  const head = (
-    <button className="task-head" onClick={onEdit}>
-      <span className="task-emoji" aria-hidden>
-        {task.emoji ?? '•'}
-      </span>
-      <span className="task-title">{task.title}</span>
-      {task.schedule === 'per_week' && task.per_week && (
-        <span className="task-meta">{t.weekProgress(task.week_done + (task.logged ? 1 : 0), task.per_week)}</span>
-      )}
-    </button>
-  );
-
-  if (task.kind === 'check') {
-    return (
-      <article className={`task${done ? ' done' : ''}`}>
-        {head}
-        <button
-          className={`check${done ? ' on' : ''}`}
-          aria-pressed={done}
-          aria-label={task.title}
-          onClick={() => onLog({ value: done ? null : 1 })}
-        >
-          ✓
-        </button>
-      </article>
-    );
+/** Вклад дела в «зелёность» дня, 0..1 — та же формула, что log_score в базе. */
+export function taskScore(task: TodayTask): number {
+  switch (task.kind) {
+    case 'count':
+      return Math.min(1, task.value / task.target);
+    case 'check':
+      return task.value >= 1 ? 1 : 0;
+    case 'limit':
+      return task.logged && task.value <= task.target ? 1 : 0;
+    case 'abstain':
+      return task.status === 'clean' ? 1 : 0;
   }
+}
+
+const Check = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </svg>
+);
+
+interface Props {
+  task: TodayTask;
+  /** Первое несделанное дело на экране — его кнопка залита. */
+  primary: boolean;
+  onLog: (change: LogChange) => void;
+  onEdit: () => void;
+}
+
+export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
+  const t = useT();
+  const done = isDone(task);
+  const title = (
+    <>
+      <h2>
+        {task.emoji ? `${task.emoji} ` : ''}
+        {task.title}
+      </h2>
+    </>
+  );
 
   if (task.kind === 'abstain') {
     return (
-      <article className={`task${done ? ' done' : ''}`}>
-        {head}
-        <div className="pair">
+      <article className={`task stack${done ? ' done' : ''}`}>
+        <button className="task-main" onClick={onEdit}>
+          {title}
+        </button>
+        <div className="pair" role="group" aria-label={task.title}>
           <button
-            className={`chip${task.status === 'clean' ? ' on' : ''}`}
+            className={`act soft${task.status === 'clean' ? ' chosen' : ''}`}
+            aria-pressed={task.status === 'clean'}
             onClick={() => onLog({ value: null, status: task.status === 'clean' ? null : 'clean' })}
           >
-            💪 {t.clean}
+            {t.clean}
           </button>
           <button
-            className={`chip quiet${task.status === 'slip' ? ' on-quiet' : ''}`}
+            className={`act outline${task.status === 'slip' ? ' chosen' : ''}`}
+            aria-pressed={task.status === 'slip'}
             onClick={() => onLog({ value: null, status: task.status === 'slip' ? null : 'slip' })}
           >
             {t.slip}
           </button>
         </div>
-        {task.status === 'slip' && <p className="task-note">{t.slipKind}</p>}
       </article>
     );
   }
 
-  // count и limit: счётчик с кнопкой шага.
+  if (task.kind === 'check') {
+    return (
+      <article className={`task${done ? ' done' : ''}`}>
+        <button className="task-main" onClick={onEdit}>
+          {title}
+        </button>
+        <button
+          className={`act ${done ? 'soft' : 'todo'}`}
+          aria-pressed={done}
+          aria-label={task.title}
+          onClick={() => onLog({ value: done ? null : 1 })}
+        >
+          <Check />
+        </button>
+      </article>
+    );
+  }
+
+  // Количество и лимит: число и одна кнопка «+N».
   const over = task.kind === 'limit' && task.value > task.target;
+  const unit = task.unit ? ` ${task.unit}` : '';
   const minus = () => {
     const next = task.value - task.step;
-    onLog({ value: next > 0 ? next : task.kind === 'limit' && task.logged && task.value > 0 ? 0 : null });
+    onLog({ value: next > 0 ? next : task.kind === 'limit' ? 0 : null });
   };
   return (
     <article className={`task${done ? ' done' : ''}${over ? ' over' : ''}`}>
-      {head}
-      <div className="counter">
-        <button className="round" aria-label="−" disabled={!task.logged} onClick={minus}>
+      <button className="task-main" onClick={onEdit}>
+        {title}
+        <span className="task-value">
+          <b>{task.value}</b> {task.kind === 'limit' ? t.of : '/'} {task.target}
+          {unit}
+        </span>
+      </button>
+      {task.value > 0 && (
+        <button className="act undo" aria-label="−" onClick={minus}>
           −
         </button>
-        <div className="count-value">
-          <strong>{task.value}</strong>
-          <span className="muted">
-            {task.kind === 'limit' ? ' ≤ ' : ' / '}
-            {target} {task.unit ?? ''}
-          </span>
-        </div>
-        {task.kind === 'count' ? (
-          <>
-            <button className="round primary" onClick={() => onLog({ value: task.value + task.step })}>
-              +{task.step}
-            </button>
-            <button className="chip" disabled={done} onClick={() => onLog({ value: target })}>
-              {t.all}
-            </button>
-          </>
-        ) : (
-          <>
-            <button className="round" onClick={() => onLog({ value: task.value + task.step })}>
-              +{task.step}
-            </button>
-            <button
-              className={`chip${done ? ' on' : ''}`}
-              disabled={task.logged}
-              onClick={() => onLog({ value: task.value })}
-            >
-              ✓
-            </button>
-          </>
-        )}
-      </div>
-      {task.kind === 'count' && (
-        <div className="bar" aria-hidden>
-          <i style={{ transform: `scaleX(${progress})` }} />
-        </div>
       )}
-      {over && <p className="task-note">{t.overLimit}</p>}
+      {task.kind === 'limit' && !task.logged && (
+        <button className="act undo" aria-label={task.title} onClick={() => onLog({ value: 0 })}>
+          <Check />
+        </button>
+      )}
+      <button
+        className={`act ${done && task.kind === 'count' ? 'soft' : primary && task.kind === 'count' ? 'primary' : 'outline'}`}
+        onClick={() => onLog({ value: task.value + task.step })}
+      >
+        +{task.step}
+      </button>
     </article>
   );
 }

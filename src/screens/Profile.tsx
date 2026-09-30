@@ -1,16 +1,24 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { hapticFeedback, invoice, popup, requestWriteAccess } from '@tma.js/sdk-react';
+import { openLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
 import type { HeatDay, UserSettings } from '../../shared/types';
 import { api } from '../api';
-import { Heatmap } from '../components/Heatmap';
+import { Heatmap, MonthGrid } from '../components/Heatmap';
 import { useT } from '../i18n';
 
-const STAR_OPTIONS = [50, 100, 250];
+/** Страница донатов в Tribute. Пока ссылки нет — строка «Поддержать проект» скрыта. */
+const SUPPORT_URL: string = import.meta.env.VITE_SUPPORT_URL ?? '';
+
+const Chevron = () => (
+  <svg className="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M9.5 6l6 6-6 6" />
+  </svg>
+);
 
 export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: UserSettings) => void }): ReactNode {
   const t = useT();
   const [heat, setHeat] = useState<{ today: string; days: HeatDay[] } | null>(null);
-  const [note, setNote] = useState<string | null>(null);
+  const [view, setView] = useState<'year' | 'months'>('year');
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     api.heatmap(371).then(setHeat, () => {});
@@ -20,34 +28,15 @@ export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: User
     try {
       onUser(await api.settings(patch));
     } catch {
-      setNote(t.error);
+      setError(true);
     }
   };
 
   const allowBot = async () => {
     if (!requestWriteAccess.isAvailable()) return;
-    const status = await requestWriteAccess();
-    if (status === 'allowed') {
+    if ((await requestWriteAccess()) === 'allowed') {
       await api.writeAccess();
       onUser({ ...user, bot_chat_ok: true });
-    }
-  };
-
-  const pause = async (days: number) => {
-    await api.setDay('pause', days);
-    hapticFeedback.notificationOccurred.ifAvailable('success');
-    setNote(t.pauseDays(days));
-    api.heatmap(371).then(setHeat, () => {});
-  };
-
-  const donate = async (stars: number) => {
-    try {
-      const { link } = await api.donate(stars);
-      if (!invoice.openUrl.isAvailable()) return;
-      const status = await invoice.openUrl(link);
-      if (status === 'paid') hapticFeedback.notificationOccurred.ifAvailable('success');
-    } catch {
-      setNote(t.error);
     }
   };
 
@@ -55,17 +44,18 @@ export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: User
     if (!popup.show.isAvailable()) return;
     const answer = await popup.show({
       message: t.deleteConfirm,
-      buttons: [{ id: 'delete', type: 'destructive', text: t.deleteAccount.split(' ')[0] ?? 'OK' }, { type: 'cancel' }],
+      buttons: [{ id: 'delete', type: 'destructive', text: t.deleteForever }, { type: 'cancel' }],
     });
     if (answer !== 'delete') return;
     await api.deleteAccount();
-    setNote(t.deleted);
     window.location.reload();
   };
 
+  const active = heat ? heat.days.filter((d) => d.score > 0).length : 0;
+
   return (
     <>
-      <header className="page-head row">
+      <header className="profile-head">
         {user.photo_url ? <img className="avatar" src={user.photo_url} alt="" /> : <div className="avatar">{user.first_name[0]}</div>}
         <div>
           <h1>{user.first_name}</h1>
@@ -73,32 +63,51 @@ export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: User
         </div>
       </header>
 
-      <section className="card">
-        <h2 className="section-title">{t.heatTitle}</h2>
-        {heat ? <Heatmap days={heat.days} today={heat.today} weeks={53} legend /> : <div className="skeleton small" />}
+      <section className="card pad">
+        <div className="segmented two">
+          <button className={view === 'year' ? 'on' : ''} onClick={() => setView('year')}>
+            {t.year}
+          </button>
+          <button className={view === 'months' ? 'on' : ''} onClick={() => setView('months')}>
+            {t.months}
+          </button>
+        </div>
+        {heat && (
+          <>
+            <p className="big-number" style={{ marginTop: 14 }}>
+              {t.activeDays(active)}
+            </p>
+            <div className="year">
+              {view === 'year' ? (
+                <Heatmap days={heat.days} today={heat.today} weeks={53} cell={5} gap={1} />
+              ) : (
+                <MonthGrid days={heat.days} today={heat.today} monthNames={t.monthNames} />
+              )}
+            </div>
+          </>
+        )}
       </section>
 
-      {note && (
-        <p className="note" onClick={() => setNote(null)}>
-          {note}
-        </p>
-      )}
+      {error && <p className="error">{t.error}</p>}
 
-      <section className="card list">
-        <h2 className="section-title">{t.settings}</h2>
+      <section className="card">
         {!user.bot_chat_ok && (
-          <div className="list-row">
-            <span className="small">{t.botBlocked}</span>
-            <button className="chip on" onClick={() => void allowBot()}>
-              {t.allowBot}
-            </button>
-          </div>
+          <button className="row" onClick={() => void allowBot()}>
+            <span className="label">{t.allowBot}</span>
+            <Chevron />
+          </button>
         )}
-        <TimeRow label={t.remindMorning} value={user.remind_morning} off={t.off} onChange={(v) => void save({ remind_morning: v })} />
-        <TimeRow label={t.remindEvening} value={user.remind_evening} off={t.off} onChange={(v) => void save({ remind_evening: v })} />
-        <label className="list-row">
-          <span>{t.dayStart}</span>
-          <select value={user.day_start_hour} onChange={(e) => void save({ day_start_hour: Number(e.target.value) })}>
+        <label className="row">
+          <span className="label">{t.reminders}</span>
+          <span className="value">{user.remind_evening ?? t.off}</span>
+          <Chevron />
+          <input type="time" value={user.remind_evening ?? ''} aria-label={t.reminders} onChange={(e) => void save({ remind_evening: e.target.value || null })} />
+        </label>
+        <label className="row">
+          <span className="label">{t.dayEnds}</span>
+          <span className="value">{String(user.day_start_hour).padStart(2, '0')}:00</span>
+          <Chevron />
+          <select value={user.day_start_hour} aria-label={t.dayEnds} onChange={(e) => void save({ day_start_hour: Number(e.target.value) })}>
             {[0, 1, 2, 3, 4, 5, 6].map((h) => (
               <option key={h} value={h}>
                 {String(h).padStart(2, '0')}:00
@@ -106,57 +115,40 @@ export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: User
             ))}
           </select>
         </label>
-        <div className="list-row">
-          <span>{t.language}</span>
-          <div className="segmented small">
-            {(['ru', 'en'] as const).map((l) => (
-              <button key={l} className={user.language_code === l ? 'on' : ''} onClick={() => void save({ language_code: l })}>
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
+        <label className="row">
+          <span className="label">{t.privacy}</span>
+          <span className="value">{user.profile_mode === 'open' ? t.open : t.closed}</span>
+          <Chevron />
+          <select value={user.profile_mode} aria-label={t.privacy} onChange={(e) => void save({ profile_mode: e.target.value as 'open' | 'closed' })}>
+            <option value="closed">{t.closed}</option>
+            <option value="open">{t.open}</option>
+          </select>
+        </label>
+        <label className="row">
+          <span className="label">{t.language}</span>
+          <span className="value">{t.langName}</span>
+          <Chevron />
+          <select value={user.language_code} aria-label={t.language} onChange={(e) => void save({ language_code: e.target.value })}>
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+        </label>
       </section>
 
-      <section className="card">
-        <h2 className="section-title">{t.pause}</h2>
-        <p className="muted small">{t.pauseHint}</p>
-        <div className="pair">
-          {[1, 3, 7].map((d) => (
-            <button key={d} className="chip" onClick={() => void pause(d)}>
-              {t.pauseDays(d)}
-            </button>
-          ))}
-        </div>
-      </section>
+      {SUPPORT_URL && (
+        <section className="card">
+          <button className="row" onClick={() => openLink.ifAvailable(SUPPORT_URL)}>
+            <span className="label">{t.support}</span>
+            <svg className="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M8 16L16 8M9 8h7v7" />
+            </svg>
+          </button>
+        </section>
+      )}
 
-      <section className="card">
-        <h2 className="section-title">{t.support}</h2>
-        <p className="muted small">{t.supportHint}</p>
-        <div className="pair">
-          {STAR_OPTIONS.map((s) => (
-            <button key={s} className="chip" onClick={() => void donate(s)}>
-              ⭐ {s}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <button className="btn danger-ghost" onClick={() => void deleteAccount()}>
+      <button className="quiet-link" onClick={() => void deleteAccount()}>
         {t.deleteAccount}
       </button>
     </>
-  );
-}
-
-function TimeRow(props: { label: string; value: string | null; off: string; onChange: (v: string | null) => void }): ReactNode {
-  return (
-    <label className="list-row">
-      <span>{props.label}</span>
-      <span className="time-input">
-        <input type="time" value={props.value ?? ''} onChange={(e) => props.onChange(e.target.value || null)} />
-        {!props.value && <em className="muted">{props.off}</em>}
-      </span>
-    </label>
   );
 }

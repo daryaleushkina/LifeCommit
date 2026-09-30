@@ -45,14 +45,12 @@ export async function sendReminders(env: Env, appUrl: string): Promise<void> {
 
 async function remindOne(env: Env, u: ReminderUser, day: string, kind: 'morning' | 'evening', appUrl: string) {
   const sb = db(env);
-  const [{ data: tasks }, { data: logs }, { data: mode }] = await Promise.all([
+  const [{ data: tasks }, { data: logs }] = await Promise.all([
     sb.from('tasks').select('id, title, emoji, schedule, weekdays, per_week').eq('user_id', u.id).is('archived_at', null),
     sb.from('task_logs').select('task_id, day').eq('user_id', u.id).gte('day', weekStart(day)).lte('day', day),
-    sb.from('user_days').select('mode').eq('user_id', u.id).eq('day', day).maybeSingle<{ mode: string }>(),
   ]);
   const column = kind === 'morning' ? 'last_morning_reminder' : 'last_evening_reminder';
   await sb.from('users').update({ [column]: day }).eq('id', u.id);
-  if (mode?.mode === 'pause') return; // пауза — никого не дёргаем
 
   const done = new Set((logs ?? []).filter((l) => l.day === day).map((l) => l.task_id));
   const due = (tasks ?? []).filter((t) => {
@@ -69,7 +67,7 @@ async function remindOne(env: Env, u: ReminderUser, day: string, kind: 'morning'
     kind === 'morning'
       ? ru ? `Доброе утро ☀️ План на сегодня:\n\n${list}` : `Good morning ☀️ Today's plan:\n\n${list}`
       : ru
-        ? `Осталось ${left.length} 🌙 Можно хотя бы чуть-чуть — это тоже засчитается:\n\n${list}`
+        ? `Осталось ${left.length} 🌙 Даже немного — уже засчитается:\n\n${list}`
         : `${left.length} left 🌙 Even a little counts:\n\n${list}`;
   await tg(env, 'sendMessage', {
     chat_id: u.id,

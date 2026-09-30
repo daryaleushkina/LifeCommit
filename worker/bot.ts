@@ -15,9 +15,7 @@ interface Update {
     chat: { id: number; type: string };
     from?: TgFrom;
     text?: string;
-    successful_payment?: { currency: string; total_amount: number; telegram_payment_charge_id: string; invoice_payload: string };
   };
-  pre_checkout_query?: { id: string; from: TgFrom; currency: string; total_amount: number; invoice_payload: string };
 }
 
 export const bot = new Hono<{ Bindings: Env }>();
@@ -25,15 +23,13 @@ export const bot = new Hono<{ Bindings: Env }>();
 const texts = {
   ru: {
     welcome: (name: string) =>
-      `Привет, ${name}! 🌱\n\nLifeCommit — ежедневные дела без стыда: отмечай, что успел, смотри, как зеленеет твоя карта, и делай вместе с друзьями.\n\nНажми кнопку, чтобы начать.`,
+      `Привет, ${name}! 🌱\n\nLifeCommit — отмечай ежедневные дела, даже понемногу, и смотри, как зеленеет твоя карта. Скоро — вместе с друзьями.\n\nНажми кнопку, чтобы начать.`,
     open: 'Открыть LifeCommit',
-    thanks: (n: number) => `Спасибо за ${n} ⭐! Это правда помогает 💚`,
   },
   en: {
     welcome: (name: string) =>
-      `Hi, ${name}! 🌱\n\nLifeCommit is daily habits without shame: log what you did, watch your map turn green, and do it together with friends.\n\nTap the button to start.`,
+      `Hi, ${name}! 🌱\n\nLifeCommit — log your daily habits, even a little, and watch your map turn green. Friends are coming soon.\n\nTap the button to start.`,
     open: 'Open LifeCommit',
-    thanks: (n: number) => `Thank you for ${n} ⭐! It really helps 💚`,
   },
 };
 
@@ -51,27 +47,10 @@ bot.post('/webhook', async (c) => {
 });
 
 async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
-  if (update.pre_checkout_query) {
-    const q = update.pre_checkout_query;
-    const ok = q.currency === 'XTR' && q.invoice_payload.startsWith('donate:');
-    await tg(env, 'answerPreCheckoutQuery', { pre_checkout_query_id: q.id, ok, error_message: ok ? undefined : 'Unknown invoice' });
-    return;
-  }
-
   const msg = update.message;
   if (!msg?.from || msg.from.is_bot) return;
   const t = lang(msg.from.language_code);
   const sb = db(env);
-
-  if (msg.successful_payment) {
-    const p = msg.successful_payment;
-    await sb.from('donations').upsert(
-      { user_id: msg.from.id, stars: p.total_amount, tg_payment_charge_id: p.telegram_payment_charge_id },
-      { onConflict: 'tg_payment_charge_id', ignoreDuplicates: true },
-    );
-    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: t.thanks(p.total_amount) });
-    return;
-  }
 
   if (msg.chat.type === 'private' && msg.text?.startsWith('/start')) {
     // Человек сам написал боту — теперь ему можно присылать напоминания.
