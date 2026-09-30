@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { heatLevel, type HeatDay } from '../../shared/types';
 
 export function addDays(day: string, n: number): string {
@@ -10,27 +10,6 @@ const weekdayIndex = (day: string) => (new Date(`${day}T00:00:00Z`).getUTCDay() 
 
 function useLevels(days: HeatDay[]) {
   return useMemo(() => new Map(days.map((d) => [d.day, heatLevel(d.score)])), [days]);
-}
-
-/**
- * Карта как в GitHub: колонка — неделя (пн сверху), клетка — день.
- * Растягивается на всю ширину родителя: края совпадают с краями карточек.
- */
-export function Heatmap({ days, today, weeks, gap, end = today }: { days: HeatDay[]; today: string; weeks: number; gap: number; end?: string }): ReactNode {
-  const levels = useLevels(days);
-  // Последняя колонка — неделя, в которую попадает end (по умолчанию сегодня).
-  const start = addDays(end, -weekdayIndex(end) - (weeks - 1) * 7);
-  const cells: ReactNode[] = [];
-  for (let i = 0; i < weeks * 7; i++) {
-    const day = addDays(start, i);
-    const cls = day > today ? 'future' : `l${levels.get(day) ?? 0}${day === today ? ' today' : ''}`;
-    cells.push(<i key={day} className={cls} />);
-  }
-  return (
-    <div className="heat" style={{ '--weeks': weeks, '--gap': `${gap}px` } as CSSProperties} aria-hidden>
-      {cells}
-    </div>
-  );
 }
 
 /** «2026-09» из дня «2026-09-30». */

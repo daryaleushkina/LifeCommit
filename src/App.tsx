@@ -178,7 +178,7 @@ export function App(): ReactNode {
     screen = (
       <main className="app-shell with-tabs">
         {route.name !== 'me' ? (
-          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onProfile={() => setRoute({ name: 'me' })} onArchive={() => setRoute({ name: 'archive' })} />
+          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} />
         ) : (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         )}
