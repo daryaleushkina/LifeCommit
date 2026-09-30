@@ -2,7 +2,7 @@
 
 Telegram Mini App ([@LifeCommit_bot](https://t.me/LifeCommit_bot)): ежедневные дела без стыда, тепловая карта активности как в GitHub и сообщество.
 
-- Прод: https://lifecommit.audioguide-api.workers.dev (открывать из Telegram)
+- Прод: https://lifecommit.daryaleushkina.workers.dev (открывать из Telegram)
 - База: Supabase `lifecommit` (eu-central-1)
 
 ## Стек

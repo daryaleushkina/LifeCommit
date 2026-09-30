@@ -10,7 +10,7 @@ const env = Object.fromEntries(
 );
 const TOKEN = env.TELEGRAM_BOT_TOKEN;
 const SECRET = env.WEBHOOK_SECRET;
-const APP_URL = process.env.APP_URL ?? 'https://lifecommit.audioguide-api.workers.dev';
+const APP_URL = process.env.APP_URL ?? 'https://lifecommit.daryaleushkina.workers.dev';
 if (!TOKEN || !SECRET) throw new Error('Нет TELEGRAM_BOT_TOKEN или WEBHOOK_SECRET в .env.local');
 
 async function call(method, payload) {
