@@ -100,18 +100,21 @@ h1, h2, p { margin: 0; }
 .heat i.today { box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--text); }
 .card .heat i.today { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2px var(--text); }
 .heat-strip { margin-top: 20px; display: block; width: 100%; padding: 0; }
-.month-nav { margin-top: 14px; display: flex; align-items: center; justify-content: space-between; }
-.month-nav span { font-size: 15px; font-weight: 600; }
+.month-nav { margin-top: 10px; min-height: 44px; display: flex; align-items: center; justify-content: space-between; }
+.month-nav span { flex: 1; text-align: center; font-size: 15px; font-weight: 600; }
 .month-nav span::first-letter { text-transform: uppercase; }
-.month-nav button { width: 44px; height: 44px; border-radius: 12px; font-size: 22px; line-height: 1; color: var(--muted); }
-.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
-.cal span { text-align: center; font-size: 12px; line-height: 16px; color: var(--muted); }
-.cal i { aspect-ratio: 1; display: grid; place-items: center; border-radius: 10px; background: var(--heat-0); font-style: normal; font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+.month-nav button { width: 40px; height: 44px; border-radius: 12px; font-size: 22px; line-height: 1; color: var(--muted); }
+.month-nav button[hidden] { display: block !important; visibility: hidden; }
+.views { margin-top: 12px; display: grid; align-items: center; }
+.views > * { grid-area: 1 / 1; min-width: 0; }
+.views > .off { visibility: hidden; }
+.cal { display: grid; grid-template-columns: repeat(7, 22px); gap: 5px; justify-content: center; }
+.cal i { aspect-ratio: 1; border-radius: 6px; background: var(--heat-0); }
 .cal i.blank { background: transparent; }
-.cal i.l1 { background: var(--heat-1); color: var(--text); } .cal i.l2 { background: var(--heat-2); color: var(--text); } .cal i.l3 { background: var(--heat-3); color: var(--text); } .cal i.l4 { background: var(--heat-4); color: var(--accent-text); }
-:root[data-color-scheme='dark'] .cal i.l3 { color: var(--accent-text); }
+.cal i.l1 { background: var(--heat-1); } .cal i.l2 { background: var(--heat-2); } .cal i.l3 { background: var(--heat-3); } .cal i.l4 { background: var(--heat-4); }
 .cal i.today { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2.5px var(--text); }
 .cal i.future { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.year-map { display: flex; flex-direction: column; gap: 10px; }
 
 /* ── Дела ── */
 .tasks { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
@@ -158,9 +161,29 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .row + .row { border-top: 1px solid var(--line); }
 .row .label { flex: 1; font-size: 16px; font-weight: 500; white-space: nowrap; }
 .row .value { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
-.row .date-input { min-width: 132px; border: 0; background: none; outline: none; font-size: 16px; color: var(--muted); text-align: right; }
 .row .chev { color: var(--muted); flex: none; }
-.row select, .row input[type='time'] { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.theme-toggle { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--heat-0); }
+.theme-toggle button { width: 44px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); }
+.theme-toggle button.on { background: var(--surface); box-shadow: var(--shadow); color: var(--text); }
+
+/* ── Шторка снизу: выбор значения вместо системных списков ── */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(0, 0, 0, 0.4); animation: fade 180ms ease-out; }
+.sheet { width: 100%; max-height: 85%; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 20px 16px calc(var(--app-inset-bottom) + 20px); border-radius: 24px 24px 0 0; background: var(--surface); animation: sheet-up 240ms var(--ease-out); }
+.sheet h2 { padding: 0 4px 10px; font-size: 18px; line-height: 24px; font-weight: 700; }
+.options { display: flex; flex-direction: column; }
+.options button { min-height: 52px; padding: 0 4px; display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 500; text-align: left; }
+.options button + button { border-top: 1px solid var(--line); }
+.options button.on { color: var(--accent); font-weight: 600; }
+.options.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.options.grid button { min-height: 48px; justify-content: center; border: 0; border-radius: var(--radius-btn); background: var(--heat-0); font-variant-numeric: tabular-nums; }
+.options.grid button.on { background: var(--accent); color: var(--accent-text); }
+.date-grid { margin-top: 6px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.date-grid span { text-align: center; font-size: 12px; line-height: 20px; color: var(--muted); }
+.date-grid button { height: 42px; border-radius: 12px; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.date-grid button.on { background: var(--accent); color: var(--accent-text); font-weight: 700; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes sheet-up { from { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) { .sheet-backdrop, .sheet { animation: none; } }
 .title-input { margin-top: 20px; width: 100%; height: 56px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 17px; font-weight: 500; outline: none; }
 .title-input:focus { box-shadow: inset 0 0 0 2px var(--accent); }
 .field-label { margin: 20px 4px 8px; font-size: 14px; color: var(--muted); }
@@ -191,7 +214,6 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .profile-head h1 { font-size: 22px; line-height: 28px; font-weight: 700; }
 .big-number { font-size: 17px; font-weight: 700; }
 .big-number span { color: var(--muted); font-weight: 500; }
-.year { margin-top: 14px; }
 
 /* ── Архив ── */
 .archive-item { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 0 14px 0 18px; }
