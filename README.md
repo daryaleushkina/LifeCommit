@@ -40,7 +40,7 @@ APP_URL=http://localhost:5173
 
 ## Деплой
 
-Автоматически: пуш в `main` → GitHub Actions (`.github/workflows/deploy.yml`) → Cloudflare (аккаунт darya.leushkina@gmail.com). Вручную:
+При пуше в `main` → Cloudflare (аккаунт darya.leushkina@gmail.com). С машины, где включён хук (`pnpm hooks:install`), деплой идёт локально перед пушем, а GitHub Actions его пропускает; без хука (облачная разработка) деплоит GitHub Actions. Подробнее — `docs/HANDOFF.md`. Вручную:
 
 ```bash
 pnpm run deploy   # сборка + wrangler deploy

@@ -1,0 +1,48 @@
+#!/bin/sh
+# Пуш в main с этой машины: проверяем, собираем и деплоим здесь же, а GitHub Actions
+# пропускает свой деплой (не тратим минуты). Хук включается один раз: pnpm hooks:install.
+# Там, где хука нет (облачная разработка), пуш в main деплоит GitHub Actions.
+#
+# Как Actions узнаёт, что деплой уже сделан: хук записывает SHA в переменную репозитория
+# LOCAL_DEPLOYED_SHA, а задача в .github/workflows/deploy.yml пропускается, если она равна github.sha.
+# Пропустить хук и отдать деплой в Actions: git push --no-verify
+
+sha=""
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  [ "$remote_ref" = "refs/heads/main" ] && sha="$local_sha"
+done
+[ -z "$sha" ] && exit 0
+# Удаление ветки — деплоить нечего.
+[ "$sha" = "0000000000000000000000000000000000000000" ] && exit 0
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# Пуш из IDE может идти без pnpm/gh в PATH — тогда деплоит Actions.
+if ! command -v pnpm >/dev/null 2>&1 || ! command -v gh >/dev/null 2>&1; then
+  echo "pre-push: нет pnpm или gh в PATH — локальный деплой пропущен, задеплоит GitHub Actions" >&2
+  exit 0
+fi
+
+# Собираем рабочую папку, поэтому она должна совпадать с тем, что пушим.
+if [ "$sha" != "$(git rev-parse HEAD)" ]; then
+  echo "pre-push: в main уходит не текущий HEAD — локальный деплой пропущен, задеплоит GitHub Actions" >&2
+  exit 0
+fi
+dirty="$(git status --porcelain -- . ':!.claude' ':!.mcp.json' ':!.idea')"
+if [ -n "$dirty" ]; then
+  echo "pre-push: есть незакоммиченные изменения — в прод уехало бы не то, что в коммите:" >&2
+  echo "$dirty" >&2
+  echo "Закоммить или убери их (git stash -u), либо git push --no-verify — тогда задеплоит GitHub Actions." >&2
+  exit 1
+fi
+
+echo "pre-push: деплой $sha с этой машины…" >&2
+{ pnpm typecheck && pnpm test && pnpm build && pnpm exec wrangler deploy; } >&2 || {
+  echo "pre-push: деплой не прошёл — пуш отменён" >&2
+  exit 1
+}
+
+if ! gh variable set LOCAL_DEPLOYED_SHA --body "$sha" >&2; then
+  echo "pre-push: не удалось записать LOCAL_DEPLOYED_SHA — GitHub Actions задеплоит этот коммит ещё раз (безвредно)" >&2
+fi
+exit 0
