@@ -1,12 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { openLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
+import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
 import type { HeatDay, UserSettings } from '../../shared/types';
 import { api } from '../api';
 import { Heatmap, MonthGrid } from '../components/Heatmap';
 import { useT } from '../i18n';
 
-/** Страница донатов в Tribute. Пока ссылки нет — строка «Поддержать проект» скрыта. */
-const SUPPORT_URL: string = import.meta.env.VITE_SUPPORT_URL ?? '';
+/** Страница донатов в Tribute (открывается внутри Telegram). */
+const SUPPORT_URL = 'https://t.me/tribute/app?startapp=dRk2';
 
 const Chevron = () => (
   <svg className="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -135,16 +135,14 @@ export function Profile({ user, onUser }: { user: UserSettings; onUser: (u: User
         </label>
       </section>
 
-      {SUPPORT_URL && (
-        <section className="card">
-          <button className="row" onClick={() => openLink.ifAvailable(SUPPORT_URL)}>
-            <span className="label">{t.support}</span>
-            <svg className="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M8 16L16 8M9 8h7v7" />
-            </svg>
-          </button>
-        </section>
-      )}
+      <section className="card">
+        <button className="row" onClick={() => openTelegramLink.ifAvailable(SUPPORT_URL)}>
+          <span className="label">{t.support}</span>
+          <svg className="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M8 16L16 8M9 8h7v7" />
+          </svg>
+        </button>
+      </section>
 
       <button className="quiet-link" onClick={() => void deleteAccount()}>
         {t.deleteAccount}
