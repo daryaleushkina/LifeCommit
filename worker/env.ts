@@ -11,6 +11,8 @@ export interface Env {
   BOT_USERNAME: string;
   /** Публичный адрес мини-аппа (кнопки в сообщениях бота из cron). */
   APP_URL: string;
+  /** Ключ Gemini API (Google AI Studio, проект LifeCommit). Нет ключа — фразы разбирает Workers AI. */
+  GEMINI_API_KEY?: string;
   /** Только в .dev.vars: принимать подделанную initData из mockEnv. */
   DEV_AUTH_BYPASS?: string;
 }

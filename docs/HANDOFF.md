@@ -51,7 +51,7 @@ pnpm bot:setup    # webhook, кнопка меню, команды и описа
 
 `git push --no-verify` с Мака отдаёт деплой в Actions. Секреты репозитория: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Вручную: `pnpm run deploy`.
 
-Секреты Worker'а лежат в Cloudflare: `TELEGRAM_BOT_TOKEN`, `SUPABASE_SECRET_KEY`, `TELEGRAM_WEBHOOK_SECRET`. Локально — `.env.local` и `.dev.vars` (в git не попадают).
+Секреты Worker'а лежат в Cloudflare: `TELEGRAM_BOT_TOKEN`, `SUPABASE_SECRET_KEY`, `TELEGRAM_WEBHOOK_SECRET`, `GEMINI_API_KEY`. Локально — `.env.local` и `.dev.vars` (в git не попадают).
 
 Скриншоты экранов вне Telegram: `node .claude/skills/telegram-mini-app/scripts/screenshot.mjs --url http://localhost:5173/` (нужен `pnpm dev`).
 
@@ -112,7 +112,7 @@ pnpm bot:setup    # webhook, кнопка меню, команды и описа
 
 - В `pnpm dev` React StrictMode запускает загрузку дважды: второй ответ может на секунду вернуть старое значение только что отмеченного дела. В проде загрузка одна.
 - Отметить привычку можно с двух экранов, а ответы сервера приходят не по порядку, поэтому устаревание ответов отслеживает общий на приложение счётчик (`currentChange` / `bumpChange` в `src/useTaskLog.ts`): фоновое обновление, начатое до изменения, свой результат выбрасывает.
-- Голос работает на **Cloudflare Workers AI** (привязка `AI` в `wrangler.jsonc`): речь — `@cf/openai/whisper-large-v3-turbo`, разбор фразы — `@cf/meta/llama-3.3-70b-instruct-fp8-fast` с JSON-схемой и двумя примерами. Бесплатно 10 000 нейронов в день на аккаунт (минута речи ≈ 47), на бесплатном тарифе сверх лимита запросы падают. Whisper изредка не декодирует тот же файл — в `transcribe` три попытки. Проверить без Telegram: `POST /bot/dev-voice` (только при `DEV_AUTH_BYPASS=1`) с аудио или текстом в теле. С привязкой `AI` локальный сервер стартует ~13 секунд и ходит в настоящий Workers AI. Токену автодеплоя из GitHub может не хватить прав на Workers AI — деплой из облака не проверен.
+- Голос работает на **Cloudflare Workers AI** (привязка `AI` в `wrangler.jsonc`): речь — `@cf/openai/whisper-large-v3-turbo`. Разбор фразы на привычки — сначала **Gemini** (`gemini-flash-lite-latest`, бесплатный уровень; ключ из Google AI Studio, аккаунт darya.leushkina@gmail.com, отдельный проект Google Cloud «LifeCommit», секрет Worker'а `GEMINI_API_KEY`), ответ ждём 12 секунд; если Gemini упал или не успел — `@cf/meta/llama-3.3-70b-instruct-fp8-fast` в Workers AI. У обеих моделей одна JSON-схема и два примера. На бесплатном уровне Gemini отвечает 3–9 секунд и бывает перегружен (503), а тексты запросов Google может использовать для улучшения моделей. Бесплатно 10 000 нейронов в день на аккаунт (минута речи ≈ 47), на бесплатном тарифе сверх лимита запросы падают. Whisper изредка не декодирует тот же файл — в `transcribe` три попытки. Проверить без Telegram: `POST /bot/dev-voice` (только при `DEV_AUTH_BYPASS=1`) с аудио или текстом в теле. С привязкой `AI` локальный сервер стартует ~13 секунд и ходит в настоящий Workers AI. Токену автодеплоя из GitHub может не хватить прав на Workers AI — деплой из облака не проверен.
 - **Локальная разработка пишет в боевую базу.** Тестовый пользователь из `src/telegram/mockEnv.ts` — `id = 1`; после проверок его нужно удалить (`DELETE /api/account`). На 30.09.2026 в базе его нет.
 - В `.dev.vars` флаг `DEV_AUTH_BYPASS=1` разрешает подделанную подпись Telegram — только локально, в прод он попасть не должен.
 - Бесплатный проект Supabase засыпает после 7 дней без активности. Сейчас его будит cron Worker'а (запрос раз в 15 минут); к запуску — тариф Pro.

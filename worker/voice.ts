@@ -142,8 +142,45 @@ export function toTaskInputs(raw: unknown): TaskInput[] {
   return out;
 }
 
-/** Разобрать фразу на привычки. Пустой список — в тексте привычек не нашлось. */
-export async function parseHabits(env: Env, text: string): Promise<TaskInput[]> {
+// Бесплатный уровень Gemini: псевдоним сам переезжает на свежую облегчённую модель.
+const GEMINI = 'gemini-flash-lite-latest';
+/** Дольше Gemini не ждём: бесплатный уровень бывает медленным и перегруженным, тогда разбирает Workers AI. */
+const GEMINI_TIMEOUT_MS = 12_000;
+
+/** Та же схема в записи Gemini: типы заглавными буквами. */
+function geminiSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(geminiSchema);
+  if (node === null || typeof node !== 'object') return node;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node)) out[k] = k === 'type' && typeof v === 'string' ? v.toUpperCase() : geminiSchema(v);
+  return out;
+}
+
+async function parseWithGemini(key: string, text: string): Promise<unknown> {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI}:generateContent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: [
+        ...SHOTS.flatMap(([q, a]) => [
+          { role: 'user', parts: [{ text: q }] },
+          { role: 'model', parts: [{ text: JSON.stringify(a) }] },
+        ]),
+        { role: 'user', parts: [{ text }] },
+      ],
+      generationConfig: { temperature: 0, maxOutputTokens: 900, responseMimeType: 'application/json', responseSchema: geminiSchema(SCHEMA) },
+    }),
+  });
+  if (!res.ok) throw new Error(`gemini ${res.status}`);
+  const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const out = body.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!out) throw new Error('gemini: empty answer');
+  return JSON.parse(out);
+}
+
+async function parseWithWorkersAi(env: Env, text: string): Promise<unknown> {
   const res = (await env.AI.run(
     LLM as never,
     {
@@ -153,15 +190,30 @@ export async function parseHabits(env: Env, text: string): Promise<TaskInput[]> 
           { role: 'user', content: q },
           { role: 'assistant', content: JSON.stringify(a) },
         ]),
-        { role: 'user', content: text.slice(0, 2000) },
+        { role: 'user', content: text },
       ],
       response_format: { type: 'json_schema', json_schema: SCHEMA },
       temperature: 0,
       max_tokens: 900,
     } as never,
   )) as { response?: unknown };
-  const raw = typeof res.response === 'string' ? safeJson(res.response) : res.response;
-  return toTaskInputs(raw);
+  return typeof res.response === 'string' ? safeJson(res.response) : res.response;
+}
+
+/**
+ * Разобрать фразу на привычки. Пустой список — в тексте привычек не нашлось.
+ * Сначала Gemini (если есть ключ); не ответил вовремя или упал — та же задача уходит в Workers AI.
+ */
+export async function parseHabits(env: Env, text: string): Promise<{ habits: TaskInput[]; by: 'gemini' | 'workers-ai' }> {
+  const input = text.slice(0, 2000);
+  if (env.GEMINI_API_KEY) {
+    try {
+      return { habits: toTaskInputs(await parseWithGemini(env.GEMINI_API_KEY, input)), by: 'gemini' };
+    } catch (e) {
+      console.warn('gemini failed, falling back to Workers AI', e);
+    }
+  }
+  return { habits: toTaskInputs(await parseWithWorkersAi(env, input)), by: 'workers-ai' };
 }
 
 function safeJson(s: string): unknown {

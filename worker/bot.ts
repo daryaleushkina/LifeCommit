@@ -158,7 +158,7 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
       const audio = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${file.file_path}`);
       text = await transcribe(env, await audio.arrayBuffer(), user.language_code === 'en' ? 'en' : 'ru');
     }
-    const habits = text ? await parseHabits(env, text) : [];
+    const habits = text ? (await parseHabits(env, text)).habits : [];
     if (habits.length === 0) {
       await say([msg.voice && text ? tt.heard(text) : '', tt.nothing].filter(Boolean).join('\n\n'));
       return;
@@ -203,5 +203,7 @@ bot.post('/dev-voice', async (c) => {
   if (c.env.DEV_AUTH_BYPASS !== '1') return c.text('not found', 404);
   const isText = (c.req.header('content-type') ?? '').startsWith('text/');
   const text = isText ? await c.req.text() : await transcribe(c.env, await c.req.arrayBuffer(), 'ru');
-  return c.json({ text, habits: await parseHabits(c.env, text) });
+  const started = Date.now();
+  const parsed = await parseHabits(c.env, text);
+  return c.json({ text, ...parsed, ms: Date.now() - started });
 });
