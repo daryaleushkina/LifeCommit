@@ -355,3 +355,30 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .voice-x { flex: none; width: var(--tap); height: var(--tap); margin-right: 4px; display: grid; place-items: center; color: var(--muted); border-radius: 12px; }
 .act.with-icon { gap: 8px; }
 @media (prefers-reduced-motion: reduce) { .voice-stop, .skel-line, .voice-skel b, .voice-skel small, .voice-skel i { animation: none; } .wave i { transition: none; } }
+
+/* ── Дела на день ── */
+.section-label { margin: 24px 4px 8px; font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.section-label + .tasks, .section-label + .empty, .section-label + .card { margin-top: 0; }
+.todo-list { margin: 0; padding: 4px 0; list-style: none; }
+.todo-list li { display: flex; align-items: center; min-height: 52px; padding-left: 8px; }
+.todo-list li + li { border-top: 1px solid var(--line); }
+.todo-check { flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center; }
+.todo-check svg { box-sizing: content-box; width: 16px; height: 16px; padding: 4px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--muted); color: transparent; transition: background-color 180ms, color 180ms, box-shadow 180ms; }
+.todo-list li.done .todo-check svg { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.todo-check:active svg { transform: scale(0.9); }
+.todo-main { flex: 1; min-width: 0; min-height: 52px; padding: 8px 14px 8px 4px; display: flex; flex-direction: column; justify-content: center; text-align: left; }
+.todo-main span { font-size: 16px; line-height: 21px; overflow-wrap: anywhere; }
+.todo-main small { margin-top: 1px; font-size: 13px; color: var(--muted); }
+.todo-list li.done .todo-main span { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.todo-add button, .todo-add form { flex: 1; min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 14px; color: var(--muted); font-size: 15px; font-weight: 500; }
+.todo-add form { padding-left: 6px; }
+.todo-add input { flex: 1; height: 44px; border: 0; background: none; font-size: 16px; color: var(--text); outline: none; }
+.sheet-input { width: 100%; height: 52px; padding: 0 16px; border: 0; border-radius: 14px; background: var(--bg); font-size: 17px; font-weight: 500; outline: none; }
+.sheet-input:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+.segmented.todo-days { margin-top: 10px; }
+.card.flat { margin-top: 10px; background: var(--bg); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.todo-list.flat { background: var(--bg); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.later-day h3 { margin: 14px 4px 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.later-day h3::first-letter { text-transform: uppercase; }
+.voice-section { margin: 16px 4px 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.todo-tile { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }

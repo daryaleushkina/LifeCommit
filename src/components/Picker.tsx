@@ -81,24 +81,32 @@ interface DateRowProps {
   /** YYYY-MM-DD или пустая строка. */
   value: string;
   /** Позже этого дня выбрать нельзя. */
-  max: string;
+  max?: string;
+  /** Раньше этого дня выбрать нельзя (дела — не раньше сегодня). */
+  min?: string;
+  /** Можно ли стереть дату («Последний раз» — можно, у дела дата есть всегда). */
+  clearable?: boolean;
+  /** Что писать, пока дата не выбрана. */
+  placeholder?: string;
   onChange: (value: string) => void;
 }
 
 /** Строка с датой: тап открывает шторку-календарь. */
-export function DateRow({ label, value, max, onChange }: DateRowProps): ReactNode {
+export function DateRow({ label, value, max, min, clearable = true, placeholder, onChange }: DateRowProps): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(monthOf(value || max));
+  const anchor = value || max || min || new Date().toISOString().slice(0, 10);
+  const [month, setMonth] = useState(monthOf(anchor));
   const { lead, days } = monthCells(month);
 
   const shown = value
-    ? new Date(`${value}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'long', ...(value.slice(0, 4) !== max.slice(0, 4) && { year: 'numeric' }) })
-    : t.notSet;
+    ? new Date(`${value}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'long', ...(value.slice(0, 4) !== (max ?? min ?? value).slice(0, 4) && { year: 'numeric' }) })
+    : (placeholder ?? t.notSet);
   const monthLabel = `${new Date(`${month}-15T12:00:00`).toLocaleDateString(locale, { month: 'long' })} ${month.slice(0, 4)}`;
-  const atEnd = month >= monthOf(max);
+  const atEnd = max !== undefined && month >= monthOf(max);
+  const atStart = min !== undefined && month <= monthOf(min);
   const pick = (day: string) => {
     setOpen(false);
     onChange(day);
@@ -110,7 +118,7 @@ export function DateRow({ label, value, max, onChange }: DateRowProps): ReactNod
         className="row"
         aria-haspopup="dialog"
         onClick={() => {
-          setMonth(monthOf(value || max));
+          setMonth(monthOf(anchor));
           setOpen(true);
         }}
       >
@@ -121,17 +129,17 @@ export function DateRow({ label, value, max, onChange }: DateRowProps): ReactNod
       {open && (
         <Sheet title={label} onClose={() => setOpen(false)}>
           <div className="month-nav">
-            <button aria-label={t.prevYear} onClick={() => setMonth(shiftMonth(month, -12))}>
+            <button aria-label={t.prevYear} disabled={atStart} onClick={() => setMonth(min && shiftMonth(month, -12) < monthOf(min) ? monthOf(min) : shiftMonth(month, -12))}>
               «
             </button>
-            <button aria-label={t.prevMonth} onClick={() => setMonth(shiftMonth(month, -1))}>
+            <button aria-label={t.prevMonth} disabled={atStart} onClick={() => setMonth(shiftMonth(month, -1))}>
               ‹
             </button>
             <span>{monthLabel}</span>
             <button aria-label={t.nextMonth} disabled={atEnd} onClick={() => setMonth(shiftMonth(month, 1))}>
               ›
             </button>
-            <button aria-label={t.nextYear} disabled={atEnd} onClick={() => setMonth(shiftMonth(month, 12) > monthOf(max) ? monthOf(max) : shiftMonth(month, 12))}>
+            <button aria-label={t.nextYear} disabled={atEnd} onClick={() => setMonth(max && shiftMonth(month, 12) > monthOf(max) ? monthOf(max) : shiftMonth(month, 12))}>
               »
             </button>
           </div>
@@ -143,12 +151,12 @@ export function DateRow({ label, value, max, onChange }: DateRowProps): ReactNod
               <i key={`b${i}`} />
             ))}
             {days.map((day, i) => (
-              <button key={day} disabled={day > max} className={day === value ? 'on' : ''} aria-pressed={day === value} onClick={() => pick(day)}>
+              <button key={day} disabled={(max !== undefined && day > max) || (min !== undefined && day < min)} className={day === value ? 'on' : ''} aria-pressed={day === value} onClick={() => pick(day)}>
                 {i + 1}
               </button>
             ))}
           </div>
-          {value && (
+          {clearable && value && (
             <button className="quiet-link" onClick={() => pick('')}>
               {t.clearDate}
             </button>

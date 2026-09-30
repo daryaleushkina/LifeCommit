@@ -1,6 +1,6 @@
-// Голос и свободный текст → привычки. Речь распознаёт Whisper, фразу разбирает языковая модель;
+// Голос и свободный текст → привычки и разовые дела. Речь распознаёт Whisper, фразу разбирает языковая модель;
 // обе работают в Cloudflare Workers AI (бесплатный дневной лимит общий на аккаунт).
-import type { Schedule, TaskInput, TaskKind } from '../shared/types';
+import type { Schedule, TaskInput, TaskKind, TodoInput } from '../shared/types';
 import type { Env } from './env';
 
 const WHISPER = '@cf/openai/whisper-large-v3-turbo';
@@ -66,11 +66,23 @@ const SCHEMA = {
         required: ['title', 'kind', 'target', 'unit', 'schedule', 'weekdays', 'per_week'],
       },
     },
+    todos: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { title: { type: 'string' }, day: { type: 'string' } },
+        required: ['title', 'day'],
+      },
+    },
   },
-  required: ['habits'],
+  required: ['habits', 'todos'],
 };
 
-const SYSTEM = `You turn a person's spoken or typed wish list into habits for a habit tracker. Reply with JSON only.
+const SYSTEM = `You turn a person's spoken or typed list into habits and one-off to-dos for a habit tracker. Reply with JSON only.
+A HABIT repeats: something done every day, on some weekdays or N times a week, a daily amount, or something to quit. A TO-DO is a single thing to do once ("buy milk", "call mom", "book a dentist", "tomorrow pay the rent"). When unsure, a plain action with no repetition words is a to-do.
+Every to-do has ALL of these fields:
+- title: short, in the SAME language as the input, capitalised, the action itself without date words ("Купить молоко", "Позвонить маме").
+- day: the date it is for as YYYY-MM-DD, counted from the "Today is" line at the start of the input ("завтра"/"tomorrow" = the next day, "в пятницу"/"on Friday" = the nearest coming Friday); "" when no day is said (it means today).
 Every habit has ALL of these fields:
 - title: short, 1-3 words, in the SAME language as the input, capitalised, naming the thing itself — no numbers and no schedule words ("Читать", "Вода", "Спортзал", "Не курить", "Меньше телефона").
 - kind: "count" when a daily amount is given (20 pages, 8 glasses, 30 minutes); "abstain" when the person wants to quit, stop or do less of something (smoking, alcohol, sweets, phone); otherwise "check".
@@ -79,27 +91,32 @@ Every habit has ALL of these fields:
 - schedule: "weekdays" when specific days of the week are named; "per_week" when it is N times a week on any days; otherwise "daily". "abstain" is always "daily".
 - weekdays: for "weekdays" the day numbers, 1 = Monday … 7 = Sunday; otherwise [].
 - per_week: for "per_week" the number N (1-6); otherwise 0.
-Each separate wish becomes its own habit. Ignore greetings and small talk. If there is no habit in the text, return {"habits": []}. Never invent habits that were not mentioned.`;
+Each separate wish becomes its own habit or to-do. Ignore greetings and small talk. If there is nothing to add, return {"habits": [], "todos": []}. Never invent anything that was not mentioned.`;
 
 // Два разобранных примера: без них модель теряет числа и расписание.
 const SHOTS: [string, object][] = [
   [
-    'хочу читать двадцать страниц каждый день, ходить в спортзал три раза в неделю и бросить курить',
+    'Today is 2026-01-07, Wednesday.\nхочу читать двадцать страниц каждый день, ходить в спортзал три раза в неделю, бросить курить, а завтра купить молоко',
     {
       habits: [
         { title: 'Читать', kind: 'count', target: 20, unit: 'страниц', schedule: 'daily', weekdays: [], per_week: 0 },
         { title: 'Спортзал', kind: 'check', target: 0, unit: '', schedule: 'per_week', weekdays: [], per_week: 3 },
         { title: 'Не курить', kind: 'abstain', target: 0, unit: '', schedule: 'daily', weekdays: [], per_week: 0 },
       ],
+      todos: [{ title: 'Купить молоко', day: '2026-01-08' }],
     },
   ],
   [
-    'run on mondays and thursdays, drink 8 glasses of water, less sugar, thanks!',
+    'Today is 2026-03-02, Monday.\ncall the bank, run on mondays and thursdays, drink 8 glasses of water, less sugar, and on friday send the report, thanks!',
     {
       habits: [
         { title: 'Run', kind: 'check', target: 0, unit: '', schedule: 'weekdays', weekdays: [1, 4], per_week: 0 },
         { title: 'Water', kind: 'count', target: 8, unit: 'glasses', schedule: 'daily', weekdays: [], per_week: 0 },
         { title: 'Less sugar', kind: 'abstain', target: 0, unit: '', schedule: 'daily', weekdays: [], per_week: 0 },
+      ],
+      todos: [
+        { title: 'Call the bank', day: '' },
+        { title: 'Send the report', day: '2026-03-06' },
       ],
     },
   ],
@@ -155,6 +172,28 @@ export function toTaskInputs(raw: unknown): TaskInput[] {
   return out;
 }
 
+/** Сколько дел за раз: длиннее — почти наверняка ошибка распознавания. */
+export const MAX_TODOS = 12;
+
+/** Дела из ответа модели; дату проверяет и поправляет сервер при сохранении. */
+export function toTodoInputs(raw: unknown): TodoInput[] {
+  const list = (raw as { todos?: unknown })?.todos;
+  if (!Array.isArray(list)) return [];
+  const out: TodoInput[] = [];
+  for (const d of list as { title?: unknown; day?: unknown }[]) {
+    const title = typeof d?.title === 'string' ? d.title.trim().slice(0, 120) : '';
+    if (!title) continue;
+    const day = typeof d.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.day) ? d.day : null;
+    out.push({ title, day });
+    if (out.length >= MAX_TODOS) break;
+  }
+  return out;
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** Строка с сегодняшней датой: без неё модель не поймёт «завтра» и «в пятницу». */
+const todayLine = (day: string) => `Today is ${day}, ${WEEKDAYS[new Date(`${day}T00:00:00Z`).getUTCDay()]}.`;
+
 // Бесплатный уровень Gemini: псевдоним сам переезжает на свежую облегчённую модель.
 const GEMINI = 'gemini-flash-lite-latest';
 /** Дольше Gemini не ждём: бесплатный уровень бывает медленным и перегруженным, тогда разбирает Workers AI. */
@@ -183,7 +222,7 @@ async function parseWithGemini(key: string, text: string): Promise<unknown> {
         ]),
         { role: 'user', parts: [{ text }] },
       ],
-      generationConfig: { temperature: 0, maxOutputTokens: 900, responseMimeType: 'application/json', responseSchema: geminiSchema(SCHEMA) },
+      generationConfig: { temperature: 0, maxOutputTokens: 1500, responseMimeType: 'application/json', responseSchema: geminiSchema(SCHEMA) },
     }),
   });
   if (!res.ok) throw new Error(`gemini ${res.status}`);
@@ -207,26 +246,34 @@ async function parseWithWorkersAi(env: Env, text: string): Promise<unknown> {
       ],
       response_format: { type: 'json_schema', json_schema: SCHEMA },
       temperature: 0,
-      max_tokens: 900,
+      max_tokens: 1500,
     } as never,
   )) as { response?: unknown };
   return typeof res.response === 'string' ? safeJson(res.response) : res.response;
 }
 
+export interface Parsed {
+  habits: TaskInput[];
+  todos: TodoInput[];
+  by: 'gemini' | 'workers-ai';
+}
+
 /**
- * Разобрать фразу на привычки. Пустой список — в тексте привычек не нашлось.
+ * Разобрать фразу на привычки и разовые дела. Пустые списки — добавлять нечего.
+ * today — логический день человека: от него модель считает «завтра» и «в пятницу».
  * Сначала Gemini (если есть ключ); не ответил вовремя или упал — та же задача уходит в Workers AI.
  */
-export async function parseHabits(env: Env, text: string): Promise<{ habits: TaskInput[]; by: 'gemini' | 'workers-ai' }> {
-  const input = text.slice(0, 2000);
+export async function parseHabits(env: Env, text: string, today: string): Promise<Parsed> {
+  const input = `${todayLine(today)}\n${text.slice(0, 2000)}`;
+  const read = (raw: unknown, by: Parsed['by']): Parsed => ({ habits: toTaskInputs(raw), todos: toTodoInputs(raw), by });
   if (env.GEMINI_API_KEY) {
     try {
-      return { habits: toTaskInputs(await parseWithGemini(env.GEMINI_API_KEY, input)), by: 'gemini' };
+      return read(await parseWithGemini(env.GEMINI_API_KEY, input), 'gemini');
     } catch (e) {
       console.warn('gemini failed, falling back to Workers AI', e);
     }
   }
-  return { habits: toTaskInputs(await parseWithWorkersAi(env, input)), by: 'workers-ai' };
+  return read(await parseWithWorkersAi(env, input), 'workers-ai');
 }
 
 function safeJson(s: string): unknown {

@@ -1,18 +1,22 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { hapticFeedback, openTelegramLink } from '@tma.js/sdk-react';
-import { MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT, FREE_TASK_LIMIT, type TaskInput } from '../../shared/types';
+import { MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT, FREE_TASK_LIMIT, type TaskInput, type TodoInput } from '../../shared/types';
 import { api, ApiError } from '../api';
-import { useT } from '../i18n';
+import { LangContext, useT } from '../i18n';
 import { repeatLabel } from '../repeat';
 import { useBackButton } from '../telegram/hooks';
 import { canRecord, Recorder } from '../voice/recorder';
 import { KindTile } from './KindIcon';
+import { todoWhen } from '../todoDates';
+import { Check } from './TodoList';
+import { TodoSheet } from './TodoSheet';
 
 /** Что получилось из сказанного. Живёт в App: пока человек правит привычку в редакторе, шторка закрыта. */
 export interface VoicePreview {
   text: string;
   habits: TaskInput[];
+  todos: TodoInput[];
 }
 
 type Phase = 'recording' | 'parsing' | 'nothing' | 'nomic' | 'failed' | 'limit';
@@ -26,8 +30,10 @@ interface Props {
   setPreview: (p: VoicePreview | null) => void;
   /** Сколько ещё привычек помещается бесплатно; null — без ограничения. */
   room: number | null;
+  /** Сегодняшний логический день: от него подписи «сегодня», «завтра». */
+  today: string;
   onEdit: (index: number) => void;
-  onAdd: (habits: TaskInput[]) => Promise<void>;
+  onAdd: (todos: TodoInput[], habits: TaskInput[]) => Promise<void>;
   onManual: () => void;
   onClose: () => void;
 }
@@ -48,11 +54,14 @@ const Cross = () => (
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 /**
- * Голос в мини-аппе: запись → «Разбираю…» с расслышанной фразой → список привычек → «Добавить N».
+ * Голос в мини-аппе: запись → «Разбираю…» с расслышанной фразой → список дел и привычек → «Добавить».
  * В базу до нажатия «Добавить» ничего не пишется. Нет записи в WebView — ведём в чат с ботом.
  */
-export function VoiceSheet({ preview, setPreview, room, onEdit, onAdd, onManual, onClose }: Props): ReactNode {
+export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, onManual, onClose }: Props): ReactNode {
   const t = useT();
+  const locale = useContext(LangContext) === 'ru' ? 'ru-RU' : 'en-US';
+  // Дело из списка правится в маленькой шторке поверх этой; привычка — в полном редакторе.
+  const [editingTodo, setEditingTodo] = useState<number | null>(null);
   const [phase, setPhase] = useState<Phase>('recording');
   const [heard, setHeard] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
@@ -103,10 +112,11 @@ export function VoiceSheet({ preview, setPreview, room, onEdit, onAdd, onManual,
         if (alive.current) setHeard(text);
       });
       if (!alive.current) return;
-      const habits = actions.filter((a) => a.type === 'create_habit').map((a) => a.habit);
-      if (habits.length === 0) return setPhase('nothing');
+      const habits = actions.flatMap((a) => (a.type === 'create_habit' ? [a.habit] : []));
+      const todos = actions.flatMap((a) => (a.type === 'create_todo' ? [a.todo] : []));
+      if (habits.length === 0 && todos.length === 0) return setPhase('nothing');
       hapticFeedback.notificationOccurred.ifAvailable('success');
-      setPreview({ text: said, habits });
+      setPreview({ text: said, habits, todos });
     } catch (e) {
       if (!alive.current) return;
       setPhase(e instanceof ApiError && e.code === 'voice_limit' ? 'limit' : 'failed');
@@ -136,13 +146,13 @@ export function VoiceSheet({ preview, setPreview, room, onEdit, onAdd, onManual,
     return () => window.clearInterval(id);
   }, [phase, preview, stop]);
 
-  const add = async (habits: TaskInput[]) => {
+  const add = async (todos: TodoInput[], habits: TaskInput[]) => {
     setBusy(true);
     setMessage(null);
     try {
-      await onAdd(habits);
+      await onAdd(todos, habits);
     } catch (e) {
-      setMessage(e instanceof ApiError && e.code === 'task_limit' ? t.limitReached(FREE_TASK_LIMIT) : t.error);
+      setMessage(e instanceof ApiError && e.code === 'task_limit' ? t.limitReached(FREE_TASK_LIMIT ?? 0) : t.error);
       setBusy(false);
     }
   };
@@ -150,43 +160,80 @@ export function VoiceSheet({ preview, setPreview, room, onEdit, onAdd, onManual,
   let body: ReactNode;
   if (preview) {
     const fit = room === null ? preview.habits.length : Math.min(room, preview.habits.length);
+    // Убрали последнюю строку — список пуст, слушаем заново.
+    const drop = (next: VoicePreview) => (next.habits.length || next.todos.length ? setPreview(next) : void record());
+    const both = preview.todos.length > 0 && preview.habits.length > 0;
+    const todoDraft = editingTodo !== null ? preview.todos[editingTodo] : undefined;
     body = (
       <>
         <h2>{t.voice.previewTitle}</h2>
         <p className="voice-hint">{t.voice.previewHint}</p>
-        <ul className="voice-list">
-          {preview.habits.map((h, i) => (
-            <li key={`${i}-${h.title}`} className={i >= fit ? 'wont-fit' : undefined}>
-              <button className="voice-row" onClick={() => onEdit(i)}>
-                <KindTile kind={h.kind} title={h.title} />
-                <span className="voice-text">
-                  <b>{h.title}</b>
-                  <small>{describe(t, h)}</small>
-                </span>
-              </button>
-              <button
-                className="voice-x"
-                aria-label={t.voice.remove(h.title)}
-                onClick={() => {
-                  const habits = preview.habits.filter((_, j) => j !== i);
-                  if (habits.length) setPreview({ ...preview, habits });
-                  else void record();
-                }}
-              >
-                <Cross />
-              </button>
-            </li>
-          ))}
-        </ul>
-        {fit < preview.habits.length && <p className="voice-hint">{t.voice.wontFit(fit, FREE_TASK_LIMIT)}</p>}
+        {preview.todos.length > 0 && (
+          <>
+            {both && <h3 className="voice-section">{t.voiceTodos}</h3>}
+            <ul className="voice-list">
+              {preview.todos.map((d, i) => (
+                <li key={`t${i}-${d.title}`}>
+                  <button className="voice-row" onClick={() => setEditingTodo(i)}>
+                    <span className="todo-tile" aria-hidden>
+                      <Check />
+                    </span>
+                    <span className="voice-text">
+                      <b>{d.title}</b>
+                      <small>{todoWhen(t, d.day || today, today, locale) ?? t.todo.today.toLowerCase()}</small>
+                    </span>
+                  </button>
+                  <button className="voice-x" aria-label={t.voice.remove(d.title)} onClick={() => drop({ ...preview, todos: preview.todos.filter((_, j) => j !== i) })}>
+                    <Cross />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {preview.habits.length > 0 && (
+          <>
+            {both && <h3 className="voice-section">{t.voiceHabits}</h3>}
+            <ul className="voice-list">
+              {preview.habits.map((h, i) => (
+                <li key={`h${i}-${h.title}`} className={i >= fit ? 'wont-fit' : undefined}>
+                  <button className="voice-row" onClick={() => onEdit(i)}>
+                    <KindTile kind={h.kind} title={h.title} />
+                    <span className="voice-text">
+                      <b>{h.title}</b>
+                      <small>{describe(t, h)}</small>
+                    </span>
+                  </button>
+                  <button className="voice-x" aria-label={t.voice.remove(h.title)} onClick={() => drop({ ...preview, habits: preview.habits.filter((_, j) => j !== i) })}>
+                    <Cross />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {fit < preview.habits.length && <p className="voice-hint">{t.voice.wontFit(fit, FREE_TASK_LIMIT ?? 0)}</p>}
         {message && <p className="error">{message}</p>}
-        <button className="act primary wide" disabled={busy || fit === 0} onClick={() => void add(preview.habits.slice(0, fit))}>
-          {t.voice.addN(fit)}
+        <button
+          className="act primary wide"
+          disabled={busy || fit + preview.todos.length === 0}
+          onClick={() => void add(preview.todos, preview.habits.slice(0, fit))}
+        >
+          {t.voice.addN(preview.todos.length, fit)}
         </button>
         <button className="voice-link" onClick={() => void record()}>
           <MicIcon size={18} />
           {t.voice.again}
         </button>
+        {todoDraft && (
+          <TodoSheet
+            title={todoDraft.title}
+            day={todoDraft.day || today}
+            today={today}
+            onSave={(title, day) => setPreview({ ...preview, todos: preview.todos.map((d, j) => (j === editingTodo ? { title, day } : d)) })}
+            onClose={() => setEditingTodo(null)}
+          />
+        )}
       </>
     );
   } else if (phase === 'recording') {

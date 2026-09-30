@@ -26,14 +26,20 @@ const ru = {
   voice: {
     mic: 'Сказать голосом',
     listening: 'Говори — я слушаю',
-    example: 'Например: «читать двадцать страниц каждый день, спортзал три раза в неделю и бросить курить»',
+    example: 'Например: «завтра купить молоко, читать двадцать страниц каждый день и бросить курить»',
     stop: 'Готово, разобрать',
     cancel: 'Отмена',
     parsing: 'Разбираю…',
     previewTitle: 'Вот что получилось',
-    previewHint: 'Лишнее убери, нажми на привычку, чтобы поправить',
+    previewHint: 'Лишнее убери, нажми на строку, чтобы поправить',
     remove: (title: string) => `Убрать «${title}»`,
-    addN: (n: number) => `Добавить ${ruNum.format(n)} ${plural(n, 'привычку', 'привычки', 'привычек')}`,
+    /** Кнопка под списком: «Добавить 3 привычки», «Добавить 2 дела», вперемешку — «Добавить всё · 5». */
+    addN: (todos: number, habits: number) =>
+      todos && habits
+        ? `Добавить всё · ${ruNum.format(todos + habits)}`
+        : todos
+          ? `Добавить ${ruNum.format(todos)} ${plural(todos, 'дело', 'дела', 'дел')}`
+          : `Добавить ${ruNum.format(habits)} ${plural(habits, 'привычку', 'привычки', 'привычек')}`,
     wontFit: (room: number, limit: number) =>
       room === 0
         ? `Бесплатно — до ${limit} привычек, и все места заняты. Можно отложить какую-нибудь.`
@@ -43,7 +49,7 @@ const ru = {
     nothingTitle: 'Не понял, что добавить',
     heard: 'Расслышал',
     heardNothing: 'Ничего не расслышал',
-    nothingHint: 'Назови привычки как есть: «пить воду, восемь стаканов» или «бросить сладкое».',
+    nothingHint: 'Назови дела или привычки как есть: «купить молоко», «пить воду, восемь стаканов» или «бросить сладкое».',
     noMicTitle: 'Микрофон недоступен',
     noMicHint: 'Разреши Telegram доступ к микрофону или скажи то же самое боту в чате — голосовые он понимает.',
     openBot: 'Открыть чат с ботом',
@@ -54,6 +60,27 @@ const ru = {
     quit: 'бросить',
     perDay: 'в день',
   },
+  // дела на день
+  todo: {
+    block: 'Дела',
+    add: 'Дело на сегодня',
+    addPh: 'Что сделать?',
+    later: (n: number) => `Потом · ${ruNum.format(n)}`,
+    laterTitle: 'Запланировано',
+    edit: 'Дело',
+    when: 'Когда',
+    today: 'Сегодня',
+    tomorrow: 'Завтра',
+    otherDay: 'Другой день',
+    pick: 'Выбрать',
+    delete: 'Удалить дело',
+    since: (label: string) => `с ${label}`,
+    sinceYesterday: 'со вчера',
+    check: (title: string) => `Сделано: ${title}`,
+    uncheck: (title: string) => `Не сделано: ${title}`,
+  },
+  voiceTodos: 'Дела',
+  voiceHabits: 'Привычки',
   // сегодня
   addTask: 'Добавить привычку',
   nothingDue: 'На сегодня всё',
@@ -138,17 +165,42 @@ const ru = {
 type Dict = typeof ru;
 
 const en: Dict = {
+  todo: {
+    block: 'To-dos',
+    add: 'To-do for today',
+    addPh: 'What to do?',
+    later: (n) => `Later · ${enNum.format(n)}`,
+    laterTitle: 'Planned',
+    edit: 'To-do',
+    when: 'When',
+    today: 'Today',
+    tomorrow: 'Tomorrow',
+    otherDay: 'Another day',
+    pick: 'Pick',
+    delete: 'Delete to-do',
+    since: (label) => `since ${label}`,
+    sinceYesterday: 'since yesterday',
+    check: (title) => `Done: ${title}`,
+    uncheck: (title) => `Not done: ${title}`,
+  },
+  voiceTodos: 'To-dos',
+  voiceHabits: 'Habits',
   voice: {
     mic: 'Say it',
     listening: "Go ahead — I'm listening",
-    example: 'For example: "read twenty pages every day, gym three times a week and quit smoking"',
+    example: 'For example: "tomorrow buy milk, read twenty pages every day and quit smoking"',
     stop: 'Done, parse it',
     cancel: 'Cancel',
     parsing: 'Parsing…',
     previewTitle: "Here's what I got",
-    previewHint: 'Remove what you do not need, tap a habit to adjust it',
+    previewHint: 'Remove what you do not need, tap a line to adjust it',
     remove: (title) => `Remove "${title}"`,
-    addN: (n) => `Add ${enNum.format(n)} ${n === 1 ? 'habit' : 'habits'}`,
+    addN: (todos, habits) =>
+      todos && habits
+        ? `Add all · ${enNum.format(todos + habits)}`
+        : todos
+          ? `Add ${enNum.format(todos)} ${todos === 1 ? 'to-do' : 'to-dos'}`
+          : `Add ${enNum.format(habits)} ${habits === 1 ? 'habit' : 'habits'}`,
     wontFit: (room, limit) =>
       room === 0
         ? `Free plan: up to ${limit} habits, and they are all taken. You can postpone one.`
@@ -158,7 +210,7 @@ const en: Dict = {
     nothingTitle: 'Not sure what to add',
     heard: 'I heard',
     heardNothing: 'I heard nothing',
-    nothingHint: 'Name the habits as they are: "drink water, eight glasses" or "quit sugar".',
+    nothingHint: 'Name to-dos or habits as they are: "buy milk", "drink water, eight glasses" or "quit sugar".',
     noMicTitle: 'Microphone unavailable',
     noMicHint: 'Allow Telegram to use the microphone, or say the same to the bot in chat — it understands voice messages.',
     openBot: 'Open the bot chat',

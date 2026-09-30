@@ -24,7 +24,7 @@ type Route =
   // Правка привычки из голосового разбора; back — вкладка, с которой открыли шторку.
   | { name: 'draft'; index: number; back: 'today' | 'me' };
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
-const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [], loadedAt: 0 };
+const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 }, todos: [], todos_later: 0 }, heat: [], loadedAt: 0 };
 
 /** Фон приложения (стиль A) — им же красим шапку и низ Telegram. */
 const BG = { light: '#F6F4EE', dark: '#0F1511' } as const;
@@ -81,7 +81,7 @@ export function App(): ReactNode {
       const [today, heat] = await Promise.all([api.today(), api.heatmap(371)]);
       // Повторная загрузка не должна затереть то, что успели отметить, пока она шла.
       if (seq === currentChange()) setCache({ today, heat: heat.days, loadedAt: Date.now() });
-      setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 });
+      setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 });
     } catch {
       setBoot({ state: 'error' });
     }
@@ -189,8 +189,9 @@ export function App(): ReactNode {
             setPreview={setVoicePreview}
             room={limits.max_tasks === null ? null : Math.max(0, limits.max_tasks - limits.active)}
             onEdit={(index) => setRoute({ name: 'draft', index, back: route.name === 'me' ? 'me' : 'today' })}
-            onAdd={async (habits) => {
-              await api.createTasks(habits);
+            today={cache.today.day}
+            onAdd={async (todos, habits) => {
+              await Promise.all([todos.length ? api.createTodos(todos) : null, habits.length ? api.createTasks(habits) : null]);
               await refresh();
               closeVoice();
               setRoute({ name: 'today' });
@@ -212,7 +213,8 @@ export function App(): ReactNode {
 /** Карта с сегодняшним днём, посчитанным из отметок на экране (без ожидания сервера). */
 function heatWithToday(cache: Cache) {
   const day = cache.today.day;
-  const score = cache.today.tasks.reduce((sum, x) => sum + taskScore(x), 0);
+  // Сделанное дело на день зеленит клетку так же, как привычка.
+  const score = cache.today.tasks.reduce((sum, x) => sum + taskScore(x), 0) + cache.today.todos.filter((d) => d.done).length;
   return [...cache.heat.filter((d) => d.day !== day), { day, score }];
 }
 
