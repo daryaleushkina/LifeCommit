@@ -154,7 +154,7 @@ export function TaskCard({ task, onLog, onOpen }: Props): ReactNode {
     const days = cleanDaysOf(task);
     return (
       <article className={`task${done ? ' done' : ''}`}>
-        <KindTile kind="abstain" />
+        <KindTile kind="abstain" title={task.title} />
         <button className="task-main" onClick={onOpen}>
           {title}
           {/* Пока не ответили — вопрос; после ответа его место занимает счёт. */}
@@ -168,7 +168,7 @@ export function TaskCard({ task, onLog, onOpen }: Props): ReactNode {
   if (task.kind === 'check') {
     return (
       <article className={`task${done ? ' done' : ''}`}>
-        <KindTile kind="check" />
+        <KindTile kind="check" title={task.title} />
         <button className="task-main" onClick={onOpen}>
           {title}
         </button>
@@ -180,7 +180,7 @@ export function TaskCard({ task, onLog, onOpen }: Props): ReactNode {
   // Считать: полоса прогресса, карандаш (ввести любое число) и галочка (сделано целиком).
   return (
     <article className={`task count${done ? ' done' : ''}`}>
-      <KindTile kind="count" />
+      <KindTile kind="count" title={task.title} />
       <div className="task-main">
         <button onClick={onOpen}>{title}</button>
         {count.value}
