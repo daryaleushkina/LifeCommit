@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { LangContext, useT } from '../i18n';
 import { monthCells, monthOf, shiftMonth } from './Heatmap';
@@ -44,12 +44,10 @@ interface SelectRowProps<T> {
   value: T;
   options: Option<T>[];
   onChange: (value: T) => void;
-  /** Короткие значения (время) — плитками в четыре колонки, а не списком. */
-  grid?: boolean;
 }
 
 /** Строка настройки: тап открывает шторку с вариантами. */
-export function SelectRow<T extends string | number>({ label, value, options, onChange, grid }: SelectRowProps<T>): ReactNode {
+export function SelectRow<T extends string | number>({ label, value, options, onChange }: SelectRowProps<T>): ReactNode {
   const [open, setOpen] = useState(false);
   const pick = (next: T) => {
     setOpen(false);
@@ -64,11 +62,11 @@ export function SelectRow<T extends string | number>({ label, value, options, on
       </button>
       {open && (
         <Sheet title={label} onClose={() => setOpen(false)}>
-          <div className={grid ? 'options grid' : 'options'} role="listbox" aria-label={label}>
+          <div className="options" role="listbox" aria-label={label}>
             {options.map((o) => (
               <button key={o.value} role="option" aria-selected={o.value === value} className={o.value === value ? 'on' : ''} onClick={() => pick(o.value)}>
                 {o.label}
-                {!grid && o.value === value && <Tick />}
+                {o.value === value && <Tick />}
               </button>
             ))}
           </div>
@@ -153,6 +151,110 @@ export function DateRow({ label, value, max, onChange }: DateRowProps): ReactNod
           {value && (
             <button className="quiet-link" onClick={() => pick('')}>
               {t.clearDate}
+            </button>
+          )}
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+const WHEEL_ROW = 44;
+
+/** Барабан: список с прокруткой, выбранное значение — то, что остановилось по центру. */
+function Wheel({ items, index, onChange, label }: { items: string[]; index: number; onChange: (index: number) => void; label: string }): ReactNode {
+  const ref = useRef<HTMLDivElement>(null);
+  const timer = useRef<number | undefined>(undefined);
+
+  // Ставим начальное положение до первой отрисовки, без анимации.
+  useLayoutEffect(() => {
+    if (ref.current) ref.current.scrollTop = index * WHEEL_ROW;
+    // Только при открытии: дальше положением управляет сама прокрутка.
+  }, []);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const onScroll = () => {
+    window.clearTimeout(timer.current);
+    // Прокрутка остановилась — берём ближайшую строку.
+    timer.current = window.setTimeout(() => {
+      if (!ref.current) return;
+      const next = Math.min(items.length - 1, Math.max(0, Math.round(ref.current.scrollTop / WHEEL_ROW)));
+      if (next !== index) onChange(next);
+    }, 80);
+  };
+
+  return (
+    <div className="wheel" ref={ref} onScroll={onScroll} role="listbox" aria-label={label} tabIndex={0}>
+      {items.map((item, i) => (
+        <button
+          key={item}
+          role="option"
+          aria-selected={i === index}
+          className={i === index ? 'on' : ''}
+          onClick={() => ref.current?.scrollTo({ top: i * WHEEL_ROW, behavior: 'smooth' })}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+interface TimeRowProps {
+  label: string;
+  /** «HH:MM» или null — выключено. */
+  value: string | null;
+  onChange: (value: string | null) => void;
+  /** Шаг минут; 60 — выбираются только часы. */
+  minuteStep?: number;
+  /** Последний доступный час. */
+  maxHour?: number;
+  /** Показывать «Выключить». */
+  allowOff?: boolean;
+}
+
+/** Строка со временем: тап открывает шторку с барабанами часов и минут. */
+export function TimeRow({ label, value, onChange, minuteStep = 5, maxHour = 23, allowOff }: TimeRowProps): ReactNode {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [hour, setHour] = useState(0);
+  const [minute, setMinute] = useState(0);
+  const hours = Array.from({ length: maxHour + 1 }, (_, i) => pad(i));
+  const minutes = minuteStep >= 60 ? ['00'] : Array.from({ length: 60 / minuteStep }, (_, i) => pad(i * minuteStep));
+
+  const show = () => {
+    const [h = 21, m = 0] = (value ?? '21:00').split(':').map(Number);
+    setHour(Math.min(maxHour, h));
+    setMinute(Math.min(minutes.length - 1, Math.round(m / minuteStep)));
+    setOpen(true);
+  };
+  const done = (next: string | null) => {
+    setOpen(false);
+    if (next !== value) onChange(next);
+  };
+
+  return (
+    <>
+      <button className="row" aria-haspopup="dialog" onClick={show}>
+        <span className="label">{label}</span>
+        <span className="value">{value ?? t.off}</span>
+        <Chevron />
+      </button>
+      {open && (
+        <Sheet title={label} onClose={() => setOpen(false)}>
+          <div className="wheels">
+            <Wheel items={hours} index={hour} onChange={setHour} label={t.hours} />
+            <span aria-hidden>:</span>
+            {minutes.length > 1 ? <Wheel items={minutes} index={minute} onChange={setMinute} label={t.minutes} /> : <span className="fixed">00</span>}
+          </div>
+          <button className="act primary wide" onClick={() => done(`${hours[hour]}:${minutes[minute]}`)}>
+            {t.done}
+          </button>
+          {allowOff && value !== null && (
+            <button className="quiet-link" onClick={() => done(null)}>
+              {t.turnOff}
             </button>
           )}
         </Sheet>

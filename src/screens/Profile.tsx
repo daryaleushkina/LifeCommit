@@ -4,7 +4,7 @@ import type { HeatDay, UserSettings } from '../../shared/types';
 import { api } from '../api';
 import type { Theme } from '../App';
 import { MonthCalendar, YearMap, monthOf, shiftMonth, yearStart } from '../components/Heatmap';
-import { SelectRow } from '../components/Picker';
+import { SelectRow, TimeRow } from '../components/Picker';
 import { LangContext, useT } from '../i18n';
 
 /** Страница донатов в Tribute (открывается внутри Telegram). */
@@ -28,10 +28,6 @@ const Moon = () => (
     <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
   </svg>
 );
-
-/** Время напоминания: «выкл» и каждый час с 6 до 23. */
-const REMIND_HOURS = Array.from({ length: 18 }, (_, i) => `${String(i + 6).padStart(2, '0')}:00`);
-const DAY_END_HOURS = [0, 1, 2, 3, 4, 5, 6];
 
 interface Props {
   user: UserSettings;
@@ -139,19 +135,13 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
             <Chevron />
           </button>
         )}
-        <SelectRow
-          grid
-          label={t.reminders}
-          value={user.remind_evening ?? ''}
-          options={[{ value: '', label: t.off }, ...REMIND_HOURS.map((h) => ({ value: h, label: h }))]}
-          onChange={(v) => void save({ remind_evening: v || null })}
-        />
-        <SelectRow
-          grid
+        <TimeRow allowOff label={t.reminders} value={user.remind_evening} onChange={(v) => void save({ remind_evening: v })} />
+        <TimeRow
           label={t.dayEnds}
-          value={user.day_start_hour}
-          options={DAY_END_HOURS.map((h) => ({ value: h, label: `${String(h).padStart(2, '0')}:00` }))}
-          onChange={(v) => void save({ day_start_hour: v })}
+          value={`${String(user.day_start_hour).padStart(2, '0')}:00`}
+          minuteStep={60}
+          maxHour={12}
+          onChange={(v) => v && void save({ day_start_hour: Number(v.slice(0, 2)) })}
         />
         <SelectRow
           label={t.privacy}
