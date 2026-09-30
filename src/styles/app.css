@@ -22,7 +22,6 @@
   --heat-3: #3FA968;
   --heat-4: #237A46;
   --shadow: 0 1px 2px rgba(31, 42, 31, 0.06);
-  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --radius: 20px;
   --radius-btn: 14px;
@@ -75,29 +74,22 @@ h1, h2, p { margin: 0; }
 .page-head p { font-size: 15px; line-height: 20px; color: var(--muted); }
 .page-head p::first-letter { text-transform: uppercase; }
 
-/* ── Заставка: git commit в светлом терминале ── */
-.splash { gap: 28px; }
-.brand { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+/* ── Заставка и знак ── */
+.splash { gap: 20px; }
+.brand { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
 .brand b { color: var(--accent); }
 .logo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 5px; border-radius: 9px; background: var(--surface); box-shadow: var(--shadow); }
 .logo i { display: block; width: 8px; height: 8px; border-radius: 2px; background: var(--heat-0); }
 .logo i.l1 { background: var(--heat-1); } .logo i.l2 { background: var(--heat-2); } .logo i.l3 { background: var(--heat-3); } .logo i.l4 { background: var(--heat-4); }
-.term { width: min(320px, 100%); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); padding: 14px 16px 16px; text-align: left; font-family: var(--mono); font-size: 13px; line-height: 20px; }
-.term-bar { color: var(--muted); margin-bottom: 8px; }
-.term-cmd { white-space: nowrap; overflow: hidden; width: 0; animation: type 0.7s steps(26, end) 0.1s forwards; }
-.term-cmd::after { content: '▌'; color: var(--accent); animation: blink 0.8s step-end infinite; }
-.term-out { color: var(--muted); opacity: 0; animation: show 0.1s linear 0.85s forwards; }
-.term-row { display: flex; gap: 3px; margin-top: 10px; }
-.term-row i { width: 12px; height: 12px; border-radius: 3px; background: var(--heat-0); animation: fill 0.3s var(--ease-out) forwards; }
-.term-row i.today { outline: 1.5px solid var(--text); outline-offset: 1px; }
-@keyframes type { to { width: 26ch; } }
-@keyframes blink { 50% { opacity: 0; } }
-@keyframes show { to { opacity: 1; } }
-@keyframes fill { to { background: var(--c); } }
+/* Заставка: тот же знак, только крупный; клетки загораются по очереди, строка за строкой. */
+.splash .logo { gap: 8px; padding: 14px; border-radius: 26px; }
+.splash .logo i { width: 24px; height: 24px; border-radius: 7px; opacity: 0; transform: scale(0.6); animation: cell 0.32s var(--ease-out) forwards; }
+.splash .logo i:nth-child(2) { animation-delay: 0.06s; } .splash .logo i:nth-child(3) { animation-delay: 0.12s; }
+.splash .logo i:nth-child(4) { animation-delay: 0.18s; } .splash .logo i:nth-child(5) { animation-delay: 0.24s; } .splash .logo i:nth-child(6) { animation-delay: 0.3s; }
+.splash .logo i:nth-child(7) { animation-delay: 0.36s; } .splash .logo i:nth-child(8) { animation-delay: 0.42s; } .splash .logo i:nth-child(9) { animation-delay: 0.48s; }
+@keyframes cell { to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .term-cmd { width: 26ch; animation: none; }
-  .term-out { opacity: 1; animation: none; }
-  .term-row i { animation: none; background: var(--c); }
+  .splash .logo i { opacity: 1; transform: none; animation: none; }
 }
 
 /* ── Тепловая карта ── */

@@ -81,7 +81,7 @@ export function App(): ReactNode {
     miniApp.ready.ifAvailable();
   }, []);
 
-  if (boot.state === 'loading') return <Splash lang={guessLang()} />;
+  if (boot.state === 'loading') return <Splash />;
   if (boot.state === 'error') {
     const t = dictionaries[guessLang()];
     return (
