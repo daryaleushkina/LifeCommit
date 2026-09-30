@@ -1,5 +1,6 @@
 /*
  * LifeCommit — стиль A «Мягкий» (утверждён 30.09.2026, круг 3 на холсте дизайна).
+ * Поверх — матовое стекло (30.09.2026): панели полупрозрачные (--glass), под ними мягкие цветные пятна (--glow).
  * Своя палитра вместо цветов темы Telegram: светлая и тёмная, выбор — по miniApp.isDark
  * (атрибут data-color-scheme на <html>). Шапку и фон Telegram красим в тот же фон (main.tsx).
  * Правило экрана: одно главное действие, 3–4 блока, без легенд и подписей-пояснений.
@@ -23,6 +24,14 @@
   --heat-3: #3FA968;
   --heat-4: #237A46;
   --shadow: 0 1px 2px rgba(31, 42, 31, 0.06);
+  /* Матовое стекло: панели полупрозрачные, под ними — мягкие цветные пятна фона. */
+  --glass: rgba(255, 255, 255, 0.58);
+  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 8px 24px rgba(31, 42, 31, 0.07);
+  --glass-blur: blur(22px);
+  --glow: radial-gradient(60% 34% at 0% 18%, rgba(178, 228, 196, 0.7), transparent 70%),
+    radial-gradient(60% 32% at 100% 40%, rgba(243, 226, 184, 0.7), transparent 70%),
+    radial-gradient(60% 32% at 0% 70%, rgba(246, 211, 194, 0.65), transparent 70%),
+    radial-gradient(70% 34% at 100% 88%, rgba(190, 232, 206, 0.7), transparent 70%);
 
   --radius: 20px;
   --radius-btn: 14px;
@@ -35,7 +44,7 @@
 }
 
 :root[data-color-scheme='dark'] {
-  --bg: #121613;
+  --bg: #0F1511;
   --surface: #1B211C;
   --text: #E8EEE6;
   --muted: #A3AD9F;
@@ -47,15 +56,23 @@
   --warn: #E38A62;
   --warn-soft: #3A241B;
   --warn-text: #1B110C;
-  --heat-0: #232A24;
+  --heat-0: rgba(255, 255, 255, 0.09);
   --heat-1: #1E4A2E;
   --heat-2: #2B7143;
   --heat-3: #3FA968;
   --heat-4: #7CCB96;
   --shadow: none;
+  --glass: rgba(255, 255, 255, 0.07);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.07), 0 10px 30px rgba(0, 0, 0, 0.25);
+  --glass-blur: blur(24px);
+  --glow: radial-gradient(70% 36% at 0% 16%, rgba(31, 107, 63, 0.55), transparent 70%),
+    radial-gradient(60% 32% at 100% 42%, rgba(90, 74, 18, 0.5), transparent 70%),
+    radial-gradient(60% 32% at 0% 72%, rgba(107, 46, 24, 0.5), transparent 70%),
+    radial-gradient(70% 34% at 100% 88%, rgba(27, 92, 56, 0.55), transparent 70%);
 }
 
-html, body { background: var(--bg); color: var(--text); }
+html { background: var(--bg); color: var(--text); }
+body { background: var(--glow) var(--bg); color: var(--text); }
 * { box-sizing: border-box; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
@@ -101,7 +118,7 @@ h1, h2, p { margin: 0; }
 .heat i.future { background: transparent; }
 .heat i.today { box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--text); }
 .card .heat i.today { box-shadow: 0 0 0 1px var(--surface), 0 0 0 2px var(--text); }
-.heat-strip { margin-top: 20px; display: block; width: 100%; padding: 0; }
+.heat-strip { margin-top: 20px; display: block; width: 100%; padding: 12px; border-radius: var(--radius); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); }
 .month-nav { margin-top: 10px; min-height: 44px; display: flex; align-items: center; justify-content: space-between; }
 .month-nav span { flex: 1; text-align: center; font-size: 15px; font-weight: 600; }
 .month-nav span::first-letter { text-transform: uppercase; }
@@ -121,7 +138,7 @@ h1, h2, p { margin: 0; }
 
 /* ── Дела ── */
 .tasks { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
-.task { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px 14px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
+.task { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px 14px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); border-radius: var(--radius); }
 /* Количество: кнопки в строке, полоса прогресса — отдельной строкой во всю ширину. */
 .task.count { flex-wrap: wrap; row-gap: 8px; padding-bottom: 14px; }
 .progress { flex: 0 0 100%; height: 6px; margin-right: 4px; border-radius: 3px; background: var(--heat-0); overflow: hidden; }
@@ -156,7 +173,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 /* ── Онбординг ── */
 .intents { margin-top: 28px; display: flex; flex-direction: column; gap: 12px; }
-.intent { min-height: 88px; padding: 16px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px; text-align: left; transition: transform 160ms var(--ease-out); }
+.intent { min-height: 88px; padding: 16px; border-radius: 22px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); display: flex; align-items: center; gap: 16px; text-align: left; transition: transform 160ms var(--ease-out); }
 .intent:active { transform: scale(0.98); }
 .intent .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .intent b { font-size: 17px; line-height: 22px; font-weight: 600; }
@@ -172,10 +189,10 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 :root[data-color-scheme='dark'] .k-check { --k-bg: #1E3325; --k-ink: #8FD6A6; --k-mid: #2B5A3A; }
 :root[data-color-scheme='dark'] .k-count { --k-bg: #3A3116; --k-ink: #E2C36B; --k-mid: #6B5720; }
 :root[data-color-scheme='dark'] .k-abstain { --k-bg: #3A241B; --k-ink: #E38A62; --k-mid: #6E3F2C; }
-.kind-chip { margin-top: 16px; align-self: flex-start; display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 15px; font-weight: 600; }
+.kind-chip { margin-top: 16px; align-self: flex-start; display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 16px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); font-size: 15px; font-weight: 600; }
 
 /* ── Формы и списки настроек ── */
-.card { margin-top: 16px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
+.card { margin-top: 16px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); border-radius: var(--radius); }
 .card.pad { padding: 18px; }
 .row { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 14px 0 18px; width: 100%; text-align: left; position: relative; }
 .row + .row { border-top: 1px solid var(--line); }
@@ -211,8 +228,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 @keyframes fade { from { opacity: 0; } }
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @media (prefers-reduced-motion: reduce) { .sheet-backdrop, .sheet { animation: none; } }
-.title-input { margin-top: 14px; width: 100%; height: 56px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 17px; font-weight: 500; outline: none; }
-.title-input:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+.title-input { margin-top: 14px; width: 100%; height: 56px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); font-size: 17px; font-weight: 500; outline: none; }
+.title-input:focus { box-shadow: inset 0 0 0 2px var(--accent), 0 8px 24px rgba(31, 42, 31, 0.07); }
 .segmented { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--heat-0); }
 .segmented.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
 .segmented.three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
@@ -244,7 +261,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .archive-item .label { flex: 1; font-weight: 500; }
 
 /* ── Нижняя навигация ── */
-.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(2, 1fr); padding: 6px 8px calc(var(--app-inset-bottom) + 12px); background: var(--surface); border-top: 1px solid var(--line); }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(2, 1fr); padding: 6px 8px calc(var(--app-inset-bottom) + 12px); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5); }
 .tabbar button { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .tabbar button.active { color: var(--accent); font-weight: 700; }
 .tabbar .pill { width: 52px; height: 30px; border-radius: 999px; display: grid; place-items: center; }
@@ -259,7 +276,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .detail-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .detail-head h1 { font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .detail-head p { font-size: 14px; line-height: 18px; color: var(--muted); }
-.icon-btn { flex: none; width: 44px; height: 44px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); display: grid; place-items: center; color: var(--muted); }
+.icon-btn { flex: none; width: 44px; height: 44px; border-radius: 14px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); display: grid; place-items: center; color: var(--muted); }
 .today-block { padding: 12px 12px 12px 18px; display: flex; align-items: center; gap: 10px; }
 .today-block > b, .today-block .text { flex: 1; min-width: 0; }
 .today-block b { font-size: 17px; font-weight: 600; }
@@ -292,5 +309,5 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .bars i { flex: 1; border-radius: 5px 5px 2px 2px; background: var(--k-mid); }
 .bars i.hit { background: var(--k-ink); }
 .bars .goal { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--muted); }
-.bars .goal em { position: absolute; right: 0; bottom: 3px; padding-left: 4px; background: var(--surface); font-style: normal; font-size: 11px; color: var(--muted); }
+.bars .goal em { position: absolute; right: 0; bottom: 3px; padding-left: 4px; font-style: normal; font-size: 11px; color: var(--muted); }
 .bars-axis { margin-top: 6px; display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
