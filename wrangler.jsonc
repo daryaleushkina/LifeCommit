@@ -14,7 +14,7 @@
   "vars": {
     "SUPABASE_URL": "https://jxiehidneahivjebijae.supabase.co",
     "BOT_USERNAME": "LifeCommit_bot",
-    "APP_URL": "https://lifecommit.darya-leushkina.workers.dev"
+    "APP_URL": "https://lifecommit.audioguide-api.workers.dev"
   }
   // Секреты (wrangler secret put): TELEGRAM_BOT_TOKEN, SUPABASE_SECRET_KEY, TELEGRAM_WEBHOOK_SECRET
 }
