@@ -5,7 +5,7 @@ import { api, ApiError } from '../api';
 import { useT } from '../i18n';
 import { useBackButton, useMainButton, type SubmitState } from '../telegram/hooks';
 
-const KINDS: TaskKind[] = ['count', 'check', 'limit', 'abstain'];
+const KINDS: TaskKind[] = ['count', 'check', 'abstain'];
 const SCHEDULES: Schedule[] = ['daily', 'weekdays', 'per_week'];
 const VISIBILITY: Visibility[] = ['private', 'followers', 'public'];
 
@@ -85,7 +85,7 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
   }, [id, isNew, onClose]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
-  const numeric = form.kind === 'count' || form.kind === 'limit';
+  const numeric = form.kind === 'count';
   const valid = form.title.trim().length > 0 && (!numeric || form.target > 0) && (form.schedule !== 'weekdays' || form.weekdays > 0);
   const state: SubmitState = busy ? 'submitting' : valid ? 'idle' : 'blocked';
 
@@ -166,7 +166,7 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
           <p className="field-label" id="kind-label">
             {t.kindLabel}
           </p>
-          <div className="segmented kinds" role="radiogroup" aria-labelledby="kind-label">
+          <div className="segmented three kinds" role="radiogroup" aria-labelledby="kind-label">
             {KINDS.map((k) => (
               <button key={k} role="radio" aria-checked={form.kind === k} className={form.kind === k ? 'on' : ''} onClick={() => set('kind', k)}>
                 <span className="emoji" aria-hidden>
@@ -189,7 +189,7 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
         )}
         {numeric && (
           <div className="row">
-            <span className="label">{form.kind === 'limit' ? t.limitGoal : t.goal}</span>
+            <span className="label">{t.goal}</span>
             <div className="stepper">
               <button type="button" aria-label="−" onClick={() => set('target', Math.max(1, form.target - (form.target > 20 ? 5 : 1)))}>
                 −

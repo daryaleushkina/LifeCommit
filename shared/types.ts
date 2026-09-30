@@ -1,6 +1,6 @@
 // Типы, общие для Worker'а и мини-аппа.
 
-export type TaskKind = 'count' | 'check' | 'limit' | 'abstain';
+export type TaskKind = 'count' | 'check' | 'abstain';
 export type Schedule = 'daily' | 'weekdays' | 'per_week';
 export type Visibility = 'private' | 'followers' | 'public';
 export type AbstainStatus = 'clean' | 'slip' | null;
@@ -23,7 +23,7 @@ export interface TodayTask {
   visibility: Visibility;
   target: number;
   value: number;
-  logged: boolean; // есть ли отметка за сегодня (для «не больше N» 0 — тоже отметка)
+  logged: boolean; // есть ли отметка за сегодня
   status: AbstainStatus;
   week_done: number; // сколько дней на этой неделе уже отмечено (для per_week)
   due: boolean; // нужна ли сегодня
@@ -94,7 +94,7 @@ export interface TaskInput {
 }
 
 /** Значок типа цели — чтобы тип узнавался с первого взгляда. */
-export const KIND_EMOJI: Record<TaskKind, string> = { count: '🔢', check: '✅', limit: '⏳', abstain: '🚫' };
+export const KIND_EMOJI: Record<TaskKind, string> = { count: '🔢', check: '✅', abstain: '🚫' };
 
 /** Бесплатный лимит личных задач (задачи челленджей не считаются). */
 export const FREE_TASK_LIMIT = 5;

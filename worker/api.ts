@@ -239,7 +239,7 @@ function cleanSlipDate(value: string | null | undefined, day: string): string | 
 function cleanTask(input: TaskInput, day: string) {
   const title = String(input.title ?? '').trim().slice(0, 80);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
-  if (!['count', 'check', 'limit', 'abstain'].includes(input.kind)) throw new HTTPException(400, { message: 'bad_kind' });
+  if (!['count', 'check', 'abstain'].includes(input.kind)) throw new HTTPException(400, { message: 'bad_kind' });
   const binary = input.kind === 'check' || input.kind === 'abstain';
   const target = binary ? 1 : Number(input.target);
   if (!(target > 0)) throw new HTTPException(400, { message: 'bad_target' });
@@ -355,14 +355,14 @@ api.patch('/tasks/:id', async (c) => {
   }
 
   let goalFrom: string | null = null;
-  if (patch.target !== undefined && (task.kind === 'count' || task.kind === 'limit')) {
+  if (patch.target !== undefined && task.kind === 'count') {
     const target = Number(patch.target);
     if (!(target > 0)) throw new HTTPException(400, { message: 'bad_target' });
     const day = today(user);
     const current = must(await sb.rpc('goal_on', { p_task: id, p_day: day })) as { target: string }[];
     const cur = Number(current[0]?.target ?? 1);
     if (target !== cur) {
-      const easier = task.kind === 'count' ? target < cur : target > cur;
+      const easier = target < cur;
       goalFrom = easier ? addDays(day, 1) : day;
       // Последнее решение главнее: отложенные на будущее цели больше не нужны.
       must(await sb.from('task_goals').delete().eq('task_id', id).gt('effective_from', goalFrom));
@@ -413,7 +413,7 @@ api.put('/logs', async (c) => {
   const day = today(user);
 
   const clearing =
-    task.kind === 'abstain' ? status == null : task.kind === 'limit' ? value == null : !(Number(value) > 0);
+    task.kind === 'abstain' ? status == null : !(Number(value) > 0);
   if (clearing) {
     must(await sb.from('task_logs').delete().eq('task_id', task_id).eq('day', day));
     return c.json({ ok: true });
