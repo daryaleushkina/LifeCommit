@@ -14,6 +14,7 @@ import {
   type TodayTask,
   type UserSettings,
 } from '../shared/types';
+import type { TaskHistory } from '../shared/stats';
 import { requireTelegram, type AuthVars } from './auth';
 import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from './day';
 import { db, type Env } from './env';
@@ -424,6 +425,25 @@ api.put('/logs', async (c) => {
       : { value: Math.min(Number(value), 1_000_000), status: null };
   must(await sb.from('task_logs').upsert({ task_id, day, user_id: user.id, ...row, updated_at: new Date().toISOString() }));
   return c.json({ ok: true });
+});
+
+// История одной привычки для её экрана: все отметки, история целей и первый день.
+api.get('/tasks/:id/history', async (c) => {
+  const id = Number(c.req.param('id'));
+  const user = c.get('user');
+  const sb = c.get('sb');
+  const task = must(await sb.from('tasks').select('id').eq('id', id).eq('user_id', user.id).maybeSingle<{ id: number }>());
+  if (!task) throw new HTTPException(404, { message: 'not_found' });
+  const day = today(user);
+  const [goalRes, logRes] = await Promise.all([
+    sb.from('task_goals').select('effective_from, target').eq('task_id', id).lte('effective_from', day).order('effective_from'),
+    // Свежие первыми: если отметок станет больше лимита, обрежутся самые старые.
+    sb.from('task_logs').select('day, value, status').eq('task_id', id).lte('day', day).order('day', { ascending: false }).limit(1000),
+  ]);
+  const goals = (must(goalRes) as { effective_from: string; target: string }[]).map((g) => ({ effective_from: g.effective_from, target: Number(g.target) }));
+  const logs = (must(logRes) as { day: string; value: string; status: 'clean' | 'slip' | null }[]).map((l) => ({ day: l.day, value: Number(l.value), status: l.status }));
+  const history: TaskHistory = { start: goals[0]?.effective_from ?? day, goals, logs: logs.reverse() };
+  return c.json(history);
 });
 
 api.get('/heatmap', async (c) => {
