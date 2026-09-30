@@ -21,6 +21,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm test
       - run: pnpm build
       # Секреты Worker'а (токен бота, ключ Supabase) живут в Cloudflare и деплоем не затрагиваются.
       - run: pnpm exec wrangler deploy
