@@ -1,14 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { hapticFeedback, popup } from '@tma.js/sdk-react';
-import { KIND_EMOJI, type Schedule, type TaskInput, type TaskKind, type Visibility } from '../../shared/types';
+import type { Schedule, TaskInput, TaskKind, Visibility } from '../../shared/types';
 import { api, ApiError } from '../api';
 import { useT } from '../i18n';
-import { DateRow } from '../components/Picker';
+import { KindTile } from '../components/KindIcon';
+import { DateRow, SelectRow, Sheet } from '../components/Picker';
 import { useBackButton, useMainButton, type SubmitState } from '../telegram/hooks';
 
-const KINDS: TaskKind[] = ['count', 'check', 'abstain'];
 const SCHEDULES: Schedule[] = ['daily', 'weekdays', 'per_week'];
 const VISIBILITY: Visibility[] = ['private', 'followers', 'public'];
+const ALL_DAYS = 127;
 
 interface Form {
   title: string;
@@ -24,7 +25,7 @@ interface Form {
 
 const EMPTY: Form = {
   title: '',
-  kind: 'count',
+  kind: 'check',
   target: 10,
   unit: '',
   schedule: 'daily',
@@ -40,30 +41,39 @@ function localToday(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const Chevron = ({ open }: { open: boolean }) => (
+const Chevron = () => (
   <svg className="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d={open ? 'M6 9.5l6 6 6-6' : 'M9.5 6l6 6-6 6'} />
+    <path d="M9.5 6l6 6-6 6" />
+  </svg>
+);
+
+const Tick = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
   </svg>
 );
 
 interface Props {
   id: number | null;
-  /** Тип цели, выбранный ещё до редактора (намерение на первом экране). */
+  /** Вид новой привычки: его выбирают на экране «Чего я хочу?», в редакторе он уже не меняется. */
   kind?: TaskKind;
+  /** Закрыть после сохранения, удаления или «Отложить». */
   onClose: () => void;
+  /** Кнопка «назад»: у новой привычки возвращает к выбору намерения. */
+  onBack?: () => void;
   onSaved: () => Promise<void>;
 }
 
-export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
+export function TaskEditor({ id, kind, onClose, onBack, onSaved }: Props): ReactNode {
   const t = useT();
   const isNew = id === null;
   const [form, setForm] = useState<Form>(kind ? { ...EMPTY, kind } : EMPTY);
-  const [open, setOpen] = useState<'when' | 'who' | null>(null);
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [cleanDays, setCleanDays] = useState<number | null>(null);
 
-  useBackButton(onClose);
+  useBackButton(onBack ?? onClose);
 
   useEffect(() => {
     if (isNew) return;
@@ -130,7 +140,7 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
     onClose();
   };
 
-  // Удаление стирает и историю дела — поэтому с подтверждением.
+  // Удаление стирает и историю привычки — поэтому с подтверждением.
   const remove = async () => {
     if (id === null) return;
     if (popup.show.isAvailable()) {
@@ -149,7 +159,13 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
     }
   };
 
-  const whenLabel = form.schedule === 'per_week' ? t.perWeek(form.per_week) : t.schedules[form.schedule];
+  const dayNames = t.weekdaysShort.filter((_, i) => (form.weekdays & (1 << i)) !== 0);
+  const repeatLabel =
+    form.schedule === 'per_week'
+      ? t.perWeek(form.per_week)
+      : form.schedule === 'weekdays' && form.weekdays !== ALL_DAYS
+        ? dayNames.join(', ').toLowerCase().replace(/^./, (c) => c.toUpperCase())
+        : t.schedules.daily;
 
   return (
     <main className="app-shell">
@@ -160,26 +176,12 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
 
       {message && <p className="error">{message}</p>}
 
-      <input className="title-input" value={form.title} maxLength={80} placeholder={t.titlePh[form.kind]} aria-label={t.newTask} onChange={(e) => set('title', e.target.value)} />
+      <div className="kind-chip">
+        <KindTile kind={form.kind} size="sm" />
+        {t.intents[form.kind].title}
+      </div>
 
-      {isNew && (
-        <>
-          <p className="field-label" id="kind-label">
-            {t.kindLabel}
-          </p>
-          <div className="segmented three kinds" role="radiogroup" aria-labelledby="kind-label">
-            {KINDS.map((k) => (
-              <button key={k} role="radio" aria-checked={form.kind === k} className={form.kind === k ? 'on' : ''} onClick={() => set('kind', k)}>
-                <span className="emoji" aria-hidden>
-                  {KIND_EMOJI[k]}
-                </span>
-                {t.kinds[k]}
-              </button>
-            ))}
-          </div>
-          <p className="field-hint">{t.kindHints[form.kind]}</p>
-        </>
-      )}
+      <input className="title-input" value={form.title} maxLength={80} placeholder={t.titlePh[form.kind]} aria-label={t.newTask} onChange={(e) => set('title', e.target.value)} />
 
       <section className="card">
         {form.kind === 'abstain' && (
@@ -202,70 +204,64 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
                 +
               </button>
             </div>
-            <input className="unit-input" value={form.unit} maxLength={12} placeholder={t.unitPh} aria-label="unit" onChange={(e) => set('unit', e.target.value)} />
+            <input className="unit-input" value={form.unit} maxLength={12} placeholder={t.unitPh} aria-label={t.unitLabel} onChange={(e) => set('unit', e.target.value)} />
           </div>
         )}
 
-        {/* Отказ — это про каждый день, расписания у него нет. */}
+        {/* «Бросить» — это про каждый день, расписания у него нет. */}
         {form.kind !== 'abstain' && (
-        <button className="row" onClick={() => setOpen(open === 'when' ? null : 'when')} aria-expanded={open === 'when'}>
-          <span className="label">{t.when}</span>
-          <span className="value">{whenLabel}</span>
-          <Chevron open={open === 'when'} />
-        </button>
+          <button className="row" aria-haspopup="dialog" onClick={() => setRepeatOpen(true)}>
+            <span className="label">{t.repeat}</span>
+            <span className="value">{repeatLabel}</span>
+            <Chevron />
+          </button>
         )}
-        {form.kind !== 'abstain' && open === 'when' && (
-          <div className="sub">
-            <div className="segmented three">
-              {SCHEDULES.map((s) => (
-                <button key={s} className={form.schedule === s ? 'on' : ''} onClick={() => set('schedule', s)}>
-                  {t.schedules[s]}
-                </button>
-              ))}
+
+        <SelectRow label={t.who} value={form.visibility} options={VISIBILITY.map((v) => ({ value: v, label: t.visibility[v] }))} onChange={(v) => set('visibility', v)} />
+      </section>
+
+      {repeatOpen && (
+        <Sheet title={t.repeat} onClose={() => setRepeatOpen(false)}>
+          <div className="options" role="radiogroup" aria-label={t.repeat}>
+            {SCHEDULES.map((sch) => (
+              <button key={sch} role="radio" aria-checked={form.schedule === sch} className={form.schedule === sch ? 'on' : ''} onClick={() => set('schedule', sch)}>
+                {t.schedules[sch]}
+                {form.schedule === sch && <Tick />}
+              </button>
+            ))}
+          </div>
+          {form.schedule === 'weekdays' && (
+            <div className="weekdays">
+              {t.weekdaysShort.map((d, i) => {
+                const on = (form.weekdays & (1 << i)) !== 0;
+                return (
+                  <button key={d} className={on ? 'on' : ''} aria-pressed={on} onClick={() => set('weekdays', form.weekdays ^ (1 << i))}>
+                    {d}
+                  </button>
+                );
+              })}
             </div>
-            {form.schedule === 'weekdays' && (
-              <div className="weekdays">
-                {t.weekdaysShort.map((d, i) => {
-                  const on = (form.weekdays & (1 << i)) !== 0;
-                  return (
-                    <button key={d} className={on ? 'on' : ''} aria-pressed={on} onClick={() => set('weekdays', form.weekdays ^ (1 << i))}>
-                      {d}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {form.schedule === 'per_week' && (
+          )}
+          {form.schedule === 'per_week' && (
+            <div className="per-week">
               <div className="stepper">
                 <button type="button" aria-label="−" onClick={() => set('per_week', Math.max(1, form.per_week - 1))}>
                   −
                 </button>
                 <input readOnly value={form.per_week} aria-label={t.schedules.per_week} />
-                <button type="button" aria-label="+" onClick={() => set('per_week', Math.min(7, form.per_week + 1))}>
+                <button type="button" aria-label="+" onClick={() => set('per_week', Math.min(6, form.per_week + 1))}>
                   +
                 </button>
               </div>
-            )}
-          </div>
-        )}
-
-        <button className="row" onClick={() => setOpen(open === 'who' ? null : 'who')} aria-expanded={open === 'who'}>
-          <span className="label">{t.who}</span>
-          <span className="value">{t.visibility[form.visibility]}</span>
-          <Chevron open={open === 'who'} />
-        </button>
-        {open === 'who' && (
-          <div className="sub">
-            <div className="segmented three">
-              {VISIBILITY.map((v) => (
-                <button key={v} className={form.visibility === v ? 'on' : ''} onClick={() => set('visibility', v)}>
-                  {t.visibility[v]}
-                </button>
-              ))}
+              <span>{t.perWeekHint(form.per_week)}</span>
             </div>
-          </div>
-        )}
-      </section>
+          )}
+          {/* Ни одного дня не выбрано — закрыть нельзя: такую привычку некогда было бы делать. */}
+          <button className="act primary wide" disabled={form.schedule === 'weekdays' && form.weekdays === 0} onClick={() => setRepeatOpen(false)}>
+            {t.done}
+          </button>
+        </Sheet>
+      )}
 
       {!isNew && (
         <div className="quiet-links">

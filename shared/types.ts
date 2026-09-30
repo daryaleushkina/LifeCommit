@@ -93,9 +93,6 @@ export interface TaskInput {
   last_slip_on?: string | null;
 }
 
-/** Значок типа цели — чтобы тип узнавался с первого взгляда. */
-export const KIND_EMOJI: Record<TaskKind, string> = { count: '🔢', check: '✅', abstain: '🚫' };
-
 /** Бесплатный лимит личных задач (задачи челленджей не считаются). */
 export const FREE_TASK_LIMIT = 5;
 

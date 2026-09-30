@@ -119,7 +119,7 @@ h1, h2, p { margin: 0; }
 
 /* ── Дела ── */
 .tasks { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
-.task { display: flex; align-items: center; gap: 12px; min-height: 76px; padding: 12px 14px 12px 18px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
+.task { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px 14px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
 /* Количество: кнопки в строке, полоса прогресса — отдельной строкой во всю ширину. */
 .task.count { flex-wrap: wrap; row-gap: 8px; padding-bottom: 14px; }
 .task.count .act.undo { min-width: 40px; margin-right: -6px; }
@@ -129,7 +129,7 @@ h1, h2, p { margin: 0; }
 .task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .task-main h2 { font-size: 16px; line-height: 22px; font-weight: 500; overflow-wrap: anywhere; }
 .task.done .task-main h2 { color: var(--muted); }
-.task.stack .task-main { padding-left: 4px; }
+.task-head { display: flex; align-items: center; gap: 12px; }
 .task-value { font-size: 14px; line-height: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .task-value b { color: var(--text); font-weight: 700; }
 .task-main > button { text-align: left; }
@@ -152,13 +152,24 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .empty { margin-top: 24px; text-align: center; color: var(--muted); }
 
 /* ── Онбординг ── */
-.intents { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
-.intent { min-height: 76px; padding: 14px 18px; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); display: flex; align-items: center; gap: 14px; text-align: left; transition: transform 160ms var(--ease-out); }
+.intents { margin-top: 28px; display: flex; flex-direction: column; gap: 12px; }
+.intent { min-height: 88px; padding: 16px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow); display: flex; align-items: center; gap: 16px; text-align: left; transition: transform 160ms var(--ease-out); }
 .intent:active { transform: scale(0.98); }
-.intent .emoji { flex: none; font-size: 26px; line-height: 1; }
-.intent .text { display: flex; flex-direction: column; gap: 2px; }
-.intent b { font-size: 16px; line-height: 22px; font-weight: 600; }
+.intent .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.intent b { font-size: 17px; line-height: 22px; font-weight: 600; }
 .intent .text span { font-size: 14px; line-height: 18px; color: var(--muted); }
+.intent .chev { flex: none; color: var(--muted); }
+/* Плитка вида привычки: свой цвет у «делать», «считать» и «бросить». */
+.kind-tile { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--k-bg); }
+.kind-tile.lg { width: 56px; height: 56px; border-radius: 18px; }
+.kind-tile.sm { width: 36px; height: 36px; border-radius: 12px; }
+.k-check { --k-bg: #E6F2E9; --k-ink: #237A46; --k-mid: #BFE3CB; }
+.k-count { --k-bg: #F5EBD3; --k-ink: #8A6412; --k-mid: #E9D29B; }
+.k-abstain { --k-bg: #F8E4DA; --k-ink: #B4532A; --k-mid: #EFC3AE; }
+:root[data-color-scheme='dark'] .k-check { --k-bg: #1E3325; --k-ink: #8FD6A6; --k-mid: #2B5A3A; }
+:root[data-color-scheme='dark'] .k-count { --k-bg: #3A3116; --k-ink: #E2C36B; --k-mid: #6B5720; }
+:root[data-color-scheme='dark'] .k-abstain { --k-bg: #3A241B; --k-ink: #E38A62; --k-mid: #6E3F2C; }
+.kind-chip { margin-top: 16px; align-self: flex-start; display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 6px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 15px; font-weight: 600; }
 
 /* ── Формы и списки настроек ── */
 .card { margin-top: 16px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -189,7 +200,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .wheel::-webkit-scrollbar { display: none; }
 .wheel button { display: block; width: 100%; height: 44px; scroll-snap-align: center; font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
 .wheel button.on { color: var(--text); font-weight: 700; }
-.act.wide { width: 100%; }
+.act.wide { width: 100%; margin-top: 14px; }
 .date-grid { margin-top: 6px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .date-grid span { text-align: center; font-size: 12px; line-height: 20px; color: var(--muted); }
 .date-grid button { height: 42px; border-radius: 12px; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -197,24 +208,20 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 @keyframes fade { from { opacity: 0; } }
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @media (prefers-reduced-motion: reduce) { .sheet-backdrop, .sheet { animation: none; } }
-.title-input { margin-top: 20px; width: 100%; height: 56px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 17px; font-weight: 500; outline: none; }
+.title-input { margin-top: 14px; width: 100%; height: 56px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); font-size: 17px; font-weight: 500; outline: none; }
 .title-input:focus { box-shadow: inset 0 0 0 2px var(--accent); }
-.field-label { margin: 20px 4px 8px; font-size: 14px; color: var(--muted); }
-.field-hint { margin: 8px 4px 0; font-size: 14px; line-height: 20px; color: var(--muted); }
 .segmented { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--heat-0); }
 .segmented.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
 .segmented.three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
 .segmented button { min-height: 44px; padding: 0 2px; border-radius: 12px; font-size: 13px; font-weight: 500; letter-spacing: -0.02em; white-space: nowrap; }
-.segmented.kinds button { min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
-.segmented.kinds .emoji { font-size: 18px; line-height: 22px; }
 .segmented button.on { background: var(--surface); box-shadow: var(--shadow); font-weight: 600; }
 .stepper { display: flex; align-items: center; gap: 2px; }
 .stepper button { width: 40px; height: 40px; border-radius: 12px; background: var(--heat-0); font-size: 20px; font-weight: 500; }
 .stepper input { width: 48px; height: 40px; border: 0; background: none; text-align: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; outline: none; }
 .unit-input { width: 52px; border: 0; background: none; color: var(--muted); font-size: 15px; outline: none; text-align: right; }
-.sub { padding: 4px 14px 14px 18px; display: flex; flex-direction: column; gap: 10px; }
-.weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.weekdays button { height: 40px; border-radius: 10px; background: var(--heat-0); font-size: 13px; font-weight: 600; }
+.weekdays { margin: 12px 0 4px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.per-week { margin: 12px 0 4px; display: flex; align-items: center; gap: 12px; font-size: 15px; color: var(--muted); }
+.weekdays button { height: 40px; border-radius: 12px; background: var(--heat-0); font-size: 13px; font-weight: 600; }
 .weekdays button.on { background: var(--accent); color: var(--accent-text); }
 .quiet-link { align-self: center; margin-top: 20px; min-height: var(--tap); padding: 0 12px; color: var(--muted); font-size: 15px; }
 .quiet-link.danger { color: var(--warn); }

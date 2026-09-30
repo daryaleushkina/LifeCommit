@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { AbstainStatus, TodayTask } from '../../shared/types';
 import { useT } from '../i18n';
+import { KindTile } from './KindIcon';
 
 export interface LogChange {
   value: number | null;
@@ -45,7 +46,7 @@ const Pencil = () => (
 
 interface Props {
   task: TodayTask;
-  /** Первое несделанное дело на экране — его кнопка залита. */
+  /** Первая несделанная привычка на экране — её кнопка залита. */
   primary: boolean;
   onLog: (change: LogChange) => void;
   onEdit: () => void;
@@ -63,10 +64,13 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
     const cleanDays = task.clean_before + (task.status === 'clean' ? 1 : 0);
     return (
       <article className={`task stack${done ? ' done' : ''}`}>
-        <button className="task-main" onClick={onEdit}>
-          {title}
-          {cleanDays > 0 && <span className="task-value">{t.cleanDays(cleanDays)}</span>}
-        </button>
+        <div className="task-head">
+          <KindTile kind="abstain" />
+          <button className="task-main" onClick={onEdit}>
+            {title}
+            {cleanDays > 0 && <span className="task-value">{t.cleanDays(cleanDays)}</span>}
+          </button>
+        </div>
         <div className="pair" role="group" aria-label={task.title}>
           <button
             className={`act soft${task.status === 'clean' ? ' chosen' : ''}`}
@@ -90,6 +94,7 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
   if (task.kind === 'check') {
     return (
       <article className={`task${done ? ' done' : ''}`}>
+        <KindTile kind="check" />
         <button className="task-main" onClick={onEdit}>
           {title}
         </button>
@@ -125,6 +130,7 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
   );
   return (
     <article className={`task count${done ? ' done' : ''}`}>
+      <KindTile kind="count" />
       <div className="task-main">
         <button onClick={onEdit}>{title}</button>
         {draft === null ? (

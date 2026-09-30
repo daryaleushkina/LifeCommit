@@ -11,7 +11,7 @@ import { TaskEditor } from './screens/TaskEditor';
 import { Today, type Cache } from './screens/Today';
 import { taskScore } from './components/TaskCard';
 
-type Route = { name: 'today' } | { name: 'me' } | { name: 'task'; id: number | null; kind?: TaskKind } | { name: 'archive' };
+type Route = { name: 'today' } | { name: 'me' } | { name: 'pick' } | { name: 'task'; id: number | null; kind?: TaskKind } | { name: 'archive' };
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
 const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 } }, heat: [] };
 
@@ -109,21 +109,25 @@ export function App(): ReactNode {
         kind={route.kind}
         onSaved={async () => {
           await refresh();
-          // Первое дело сохранено — онбординг пройден; «Назад» без сохранения возвращает к нему.
+          // Первая привычка сохранена — онбординг пройден; «Назад» без сохранения возвращает к нему.
           setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
         }}
         onClose={home}
+        // «Назад» у новой привычки — к выбору намерения (на первом запуске это и есть главный экран).
+        onBack={route.id === null && !boot.onboarding ? () => setRoute({ name: 'pick' }) : home}
       />
     );
   } else if (boot.onboarding) {
     screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} />;
+  } else if (route.name === 'pick') {
+    screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} onBack={home} />;
   } else if (route.name === 'archive') {
     screen = <Archive onChanged={refresh} onClose={home} />;
   } else {
     screen = (
       <main className="app-shell with-tabs">
         {route.name === 'today' ? (
-          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute({ name: 'task', id })} onProfile={() => setRoute({ name: 'me' })} onArchive={() => setRoute({ name: 'archive' })} />
+          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'task', id })} onProfile={() => setRoute({ name: 'me' })} onArchive={() => setRoute({ name: 'archive' })} />
         ) : (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         )}
