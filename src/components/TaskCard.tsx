@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { AbstainStatus, TodayTask } from '../../shared/types';
 import { useT } from '../i18n';
 
@@ -50,6 +50,8 @@ interface Props {
 
 export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
   const t = useT();
+  // Тап по числу — ввод значения с клавиатуры (только цифры); null — не редактируем.
+  const [draft, setDraft] = useState<string | null>(null);
   const done = isDone(task);
   const title = <h2>{task.title}</h2>;
 
@@ -97,22 +99,60 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
     );
   }
 
-  // Количество и лимит: число и одна кнопка «+N».
+  // Количество и лимит: число (тап — ввести значение) и одна кнопка «+N».
   const over = task.kind === 'limit' && task.value > task.target;
   const unit = task.unit ? ` ${task.unit}` : '';
   const minus = () => {
     const next = task.value - task.step;
     onLog({ value: next > 0 ? next : task.kind === 'limit' ? 0 : null });
   };
+  const commit = () => {
+    if (draft === null) return;
+    setDraft(null);
+    if (draft === '') return;
+    const next = Number(draft);
+    if (next === task.value && task.logged) return;
+    onLog({ value: next > 0 || task.kind === 'limit' ? next : null });
+  };
+  const rest = (
+    <>
+      {' '}
+      {task.kind === 'limit' ? t.of : '/'} {task.target}
+      {unit}
+    </>
+  );
   return (
     <article className={`task${done ? ' done' : ''}${over ? ' over' : ''}`}>
-      <button className="task-main" onClick={onEdit}>
-        {title}
-        <span className="task-value">
-          <b>{task.value}</b> {task.kind === 'limit' ? t.of : '/'} {task.target}
-          {unit}
-        </span>
-      </button>
+      <div className="task-main">
+        <button onClick={onEdit}>{title}</button>
+        {draft === null ? (
+          <button className="task-value" aria-label={`${task.title}: ${t.enterValue}`} onClick={() => setDraft(task.value > 0 ? String(task.value) : '')}>
+            <b>{task.value}</b>
+            {rest}
+          </button>
+        ) : (
+          <label className="task-value editing">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              autoFocus
+              aria-label={`${task.title}: ${t.enterValue}`}
+              value={draft}
+              placeholder={String(task.value)}
+              onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
+              onFocus={(e) => e.target.select()}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') setDraft(null);
+              }}
+            />
+            {rest}
+          </label>
+        )}
+      </div>
       {task.value > 0 && (
         <button className="act undo" aria-label="−" onClick={minus}>
           −

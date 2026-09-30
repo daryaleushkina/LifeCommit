@@ -34,8 +34,11 @@ export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props):
   }, [setCache]);
 
   // Тихое обновление в фоне: после редактора или если день сменился.
+  // Если за время запроса что-то отметили, ответ уже устарел — он затёр бы свежую отметку.
+  const logSeq = useRef(0);
   useEffect(() => {
-    api.today().then((today) => setCache((c) => ({ ...c, today })), () => {});
+    const seq = logSeq.current;
+    api.today().then((today) => seq === logSeq.current && setCache((c) => ({ ...c, today })), () => {});
   }, [setCache]);
 
   const patchTask = (id: number, patch: Partial<TodayTask>) =>
@@ -49,6 +52,7 @@ export function Today({ cache, setCache, onEdit, onProfile, onArchive }: Props):
       logged: !cleared,
     };
     const wasDone = isDone(task);
+    logSeq.current++;
     patchTask(task.id, next);
     if (!wasDone && isDone({ ...task, ...next })) hapticFeedback.notificationOccurred.ifAvailable('success');
     try {
