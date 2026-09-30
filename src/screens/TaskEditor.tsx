@@ -3,6 +3,7 @@ import { hapticFeedback, popup } from '@tma.js/sdk-react';
 import { KIND_EMOJI, type Schedule, type TaskInput, type TaskKind, type Visibility } from '../../shared/types';
 import { api, ApiError } from '../api';
 import { useT } from '../i18n';
+import { DateRow } from '../components/Picker';
 import { useBackButton, useMainButton, type SubmitState } from '../telegram/hooks';
 
 const KINDS: TaskKind[] = ['count', 'check', 'abstain'];
@@ -182,10 +183,7 @@ export function TaskEditor({ id, kind, onClose, onSaved }: Props): ReactNode {
 
       <section className="card">
         {form.kind === 'abstain' && (
-          <label className="row">
-            <span className="label">{t.lastSlip}</span>
-            <input type="date" className="date-input" max={localToday()} value={form.last_slip_on} onChange={(e) => set('last_slip_on', e.target.value)} />
-          </label>
+          <DateRow label={t.lastSlip} value={form.last_slip_on} max={localToday()} onChange={(v) => set('last_slip_on', v)} />
         )}
         {numeric && (
           <div className="row">

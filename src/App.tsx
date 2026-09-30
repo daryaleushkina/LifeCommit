@@ -19,28 +19,27 @@ const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: 
 const BG = { light: '#F6F4EE', dark: '#121613' } as const;
 /** Главная кнопка Telegram — в нашем зелёном, а не в синем цвете темы. */
 const MAIN = { light: { bgColor: '#237A46', textColor: '#FFFFFF' }, dark: { bgColor: '#3FA968', textColor: '#0E1A12' } } as const;
-export type Theme = 'auto' | 'light' | 'dark';
+export type Theme = 'light' | 'dark';
 const THEME_KEY = 'lc-theme';
-/** Тема хранится на устройстве: на телефоне и на компьютере она может быть разной. */
-function savedTheme(): Theme {
+/** Тема хранится на устройстве; пока её не выбирали — как в Telegram. */
+function savedTheme(): Theme | null {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    return v === 'light' || v === 'dark' ? v : 'auto';
+    return v === 'light' || v === 'dark' ? v : null;
   } catch {
-    return 'auto';
+    return null;
   }
 }
 const guessLang = (): Lang => (navigator.language.startsWith('ru') ? 'ru' : 'en');
 
 export function App(): ReactNode {
   const tgDark = useSignal(miniApp.isDark);
-  const [theme, setThemeState] = useState<Theme>(savedTheme);
-  const isDark = theme === 'auto' ? tgDark : theme === 'dark';
+  const [theme, setThemeState] = useState<Theme | null>(savedTheme);
+  const isDark = theme === null ? tgDark : theme === 'dark';
   const setTheme = (next: Theme) => {
     setThemeState(next);
     try {
-      if (next === 'auto') localStorage.removeItem(THEME_KEY);
-      else localStorage.setItem(THEME_KEY, next);
+      localStorage.setItem(THEME_KEY, next);
     } catch {
       // хранилище недоступно — тема продержится до закрытия
     }
@@ -126,7 +125,7 @@ export function App(): ReactNode {
         {route.name === 'today' ? (
           <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute({ name: 'task', id })} onProfile={() => setRoute({ name: 'me' })} onArchive={() => setRoute({ name: 'archive' })} />
         ) : (
-          <Profile theme={theme} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
+          <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         )}
         <TabBar route={route.name} onRoute={(name) => setRoute(name === 'me' ? { name: 'me' } : { name: 'today' })} />
       </main>

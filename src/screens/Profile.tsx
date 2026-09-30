@@ -3,7 +3,8 @@ import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
 import type { HeatDay, UserSettings } from '../../shared/types';
 import { api } from '../api';
 import type { Theme } from '../App';
-import { Heatmap, MonthCalendar, monthOf, shiftMonth } from '../components/Heatmap';
+import { MonthCalendar, YearMap, monthOf, shiftMonth, yearStart } from '../components/Heatmap';
+import { SelectRow } from '../components/Picker';
 import { LangContext, useT } from '../i18n';
 
 /** Страница донатов в Tribute (открывается внутри Telegram). */
@@ -14,6 +15,23 @@ const Chevron = () => (
     <path d="M9.5 6l6 6-6 6" />
   </svg>
 );
+
+const Sun = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" />
+  </svg>
+);
+
+const Moon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+  </svg>
+);
+
+/** Время напоминания: «выкл» и каждый час с 6 до 23. */
+const REMIND_HOURS = Array.from({ length: 18 }, (_, i) => `${String(i + 6).padStart(2, '0')}:00`);
+const DAY_END_HOURS = [0, 1, 2, 3, 4, 5, 6];
 
 interface Props {
   user: UserSettings;
@@ -64,8 +82,12 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   const month = shiftMonth(monthOf(heat.today), offset);
   const shown = view === 'year' ? heat.days : heat.days.filter((d) => d.day.startsWith(month));
   const active = shown.filter((d) => d.score > 0).length;
+  const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   // Месяц и год собираем сами: в русской локали «long + numeric» даёт «сентябрь 2026 г.».
-  const monthLabel = `${new Date(`${month}-15T12:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', { month: 'long' })} ${month.slice(0, 4)}`;
+  const monthName = (m: string, width: 'long' | 'short') => new Date(`${m}-15T12:00:00`).toLocaleDateString(locale, { month: width }).replace('.', '');
+  const monthLabel = `${monthName(month, 'long')} ${month.slice(0, 4)}`;
+  const from = monthOf(yearStart(heat.today));
+  const yearLabel = `${monthName(from, 'short')} ${from.slice(0, 4)} — ${monthName(monthOf(heat.today), 'short')} ${heat.today.slice(0, 4)}`;
 
   return (
     <>
@@ -86,26 +108,25 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
             {t.year}
           </button>
         </div>
-        {view === 'month' && (
-          <div className="month-nav">
-            <button aria-label={t.prevMonth} disabled={offset <= -MONTHS_BACK} onClick={() => setOffset(offset - 1)}>
-              ‹
-            </button>
-            <span>{monthLabel}</span>
-            <button aria-label={t.nextMonth} disabled={offset >= 0} onClick={() => setOffset(offset + 1)}>
-              ›
-            </button>
+        {/* Строка с периодом есть в обоих видах — блок не прыгает при переключении. */}
+        <div className="month-nav">
+          <button aria-label={t.prevMonth} hidden={view === 'year'} disabled={offset <= -MONTHS_BACK} onClick={() => setOffset(offset - 1)}>
+            ‹
+          </button>
+          <span>{view === 'month' ? monthLabel : yearLabel}</span>
+          <button aria-label={t.nextMonth} hidden={view === 'year'} disabled={offset >= 0} onClick={() => setOffset(offset + 1)}>
+            ›
+          </button>
+        </div>
+        <p className="big-number">{t.activeDays(active)}</p>
+        {/* Оба вида лежат в одной клетке сетки: высота блока всегда по большему из них. */}
+        <div className="views">
+          <div className={view === 'month' ? '' : 'off'}>
+            <MonthCalendar days={heat.days} today={heat.today} month={month} />
           </div>
-        )}
-        <p className="big-number" style={{ marginTop: 14 }}>
-          {t.activeDays(active)}
-        </p>
-        <div className="year">
-          {view === 'year' ? (
-            <Heatmap days={heat.days} today={heat.today} weeks={53} gap={1.5} />
-          ) : (
-            <MonthCalendar days={heat.days} today={heat.today} month={month} weekdays={t.weekdaysShort} />
-          )}
+          <div className={view === 'year' ? '' : 'off'}>
+            <YearMap days={heat.days} today={heat.today} />
+          </div>
         </div>
       </section>
 
@@ -118,52 +139,49 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
             <Chevron />
           </button>
         )}
-        <label className="row">
-          <span className="label">{t.reminders}</span>
-          <span className="value">{user.remind_evening ?? t.off}</span>
-          <Chevron />
-          <input type="time" value={user.remind_evening ?? ''} aria-label={t.reminders} onChange={(e) => void save({ remind_evening: e.target.value || null })} />
-        </label>
-        <label className="row">
-          <span className="label">{t.dayEnds}</span>
-          <span className="value">{String(user.day_start_hour).padStart(2, '0')}:00</span>
-          <Chevron />
-          <select value={user.day_start_hour} aria-label={t.dayEnds} onChange={(e) => void save({ day_start_hour: Number(e.target.value) })}>
-            {[0, 1, 2, 3, 4, 5, 6].map((h) => (
-              <option key={h} value={h}>
-                {String(h).padStart(2, '0')}:00
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="row">
-          <span className="label">{t.privacy}</span>
-          <span className="value">{user.profile_mode === 'open' ? t.open : t.closed}</span>
-          <Chevron />
-          <select value={user.profile_mode} aria-label={t.privacy} onChange={(e) => void save({ profile_mode: e.target.value as 'open' | 'closed' })}>
-            <option value="closed">{t.closed}</option>
-            <option value="open">{t.open}</option>
-          </select>
-        </label>
-        <label className="row">
+        <SelectRow
+          grid
+          label={t.reminders}
+          value={user.remind_evening ?? ''}
+          options={[{ value: '', label: t.off }, ...REMIND_HOURS.map((h) => ({ value: h, label: h }))]}
+          onChange={(v) => void save({ remind_evening: v || null })}
+        />
+        <SelectRow
+          grid
+          label={t.dayEnds}
+          value={user.day_start_hour}
+          options={DAY_END_HOURS.map((h) => ({ value: h, label: `${String(h).padStart(2, '0')}:00` }))}
+          onChange={(v) => void save({ day_start_hour: v })}
+        />
+        <SelectRow
+          label={t.privacy}
+          value={user.profile_mode}
+          options={[
+            { value: 'closed', label: t.closed },
+            { value: 'open', label: t.open },
+          ]}
+          onChange={(v) => void save({ profile_mode: v })}
+        />
+        <div className="row">
           <span className="label">{t.theme}</span>
-          <span className="value">{t.themes[theme]}</span>
-          <Chevron />
-          <select value={theme} aria-label={t.theme} onChange={(e) => onTheme(e.target.value as Theme)}>
-            <option value="auto">{t.themes.auto}</option>
-            <option value="light">{t.themes.light}</option>
-            <option value="dark">{t.themes.dark}</option>
-          </select>
-        </label>
-        <label className="row">
-          <span className="label">{t.language}</span>
-          <span className="value">{t.langName}</span>
-          <Chevron />
-          <select value={user.language_code} aria-label={t.language} onChange={(e) => void save({ language_code: e.target.value })}>
-            <option value="ru">Русский</option>
-            <option value="en">English</option>
-          </select>
-        </label>
+          <div className="theme-toggle" role="radiogroup" aria-label={t.theme}>
+            <button role="radio" aria-checked={theme === 'light'} aria-label={t.themes.light} className={theme === 'light' ? 'on' : ''} onClick={() => onTheme('light')}>
+              <Sun />
+            </button>
+            <button role="radio" aria-checked={theme === 'dark'} aria-label={t.themes.dark} className={theme === 'dark' ? 'on' : ''} onClick={() => onTheme('dark')}>
+              <Moon />
+            </button>
+          </div>
+        </div>
+        <SelectRow
+          label={t.language}
+          value={user.language_code === 'en' ? 'en' : 'ru'}
+          options={[
+            { value: 'ru', label: 'Русский' },
+            { value: 'en', label: 'English' },
+          ]}
+          onChange={(v) => void save({ language_code: v })}
+        />
       </section>
 
       <section className="card">
