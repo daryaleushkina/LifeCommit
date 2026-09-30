@@ -35,12 +35,6 @@ describe('taskScore', () => {
     expect(taskScore(task({ kind: 'check', target: 1, value: 1 }))).toBe(1);
     expect(taskScore(task({ kind: 'check', target: 1 }))).toBe(0);
   });
-  it('лимит: без отметки 0, в пределах лимита 1, сверх — 0', () => {
-    expect(taskScore(task({ kind: 'limit', target: 2 }))).toBe(0);
-    expect(taskScore(task({ kind: 'limit', target: 2, logged: true, value: 0 }))).toBe(1);
-    expect(taskScore(task({ kind: 'limit', target: 2, logged: true, value: 2 }))).toBe(1);
-    expect(taskScore(task({ kind: 'limit', target: 2, logged: true, value: 3 }))).toBe(0);
-  });
   it('отказ: засчитывается только «без»', () => {
     expect(taskScore(task({ kind: 'abstain', status: 'clean' }))).toBe(1);
     expect(taskScore(task({ kind: 'abstain', status: 'slip' }))).toBe(0);

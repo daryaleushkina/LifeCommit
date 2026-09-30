@@ -13,8 +13,6 @@ export function isDone(task: TodayTask): boolean {
       return task.value >= task.target;
     case 'check':
       return task.value >= 1;
-    case 'limit':
-      return task.logged && task.value <= task.target;
     case 'abstain':
       return task.status !== null;
   }
@@ -27,8 +25,6 @@ export function taskScore(task: TodayTask): number {
       return Math.min(1, task.value / task.target);
     case 'check':
       return task.value >= 1 ? 1 : 0;
-    case 'limit':
-      return task.logged && task.value <= task.target ? 1 : 0;
     case 'abstain':
       return task.status === 'clean' ? 1 : 0;
   }
@@ -102,30 +98,29 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
     );
   }
 
-  // Количество и лимит: число (тап — ввести значение) и одна кнопка «+N».
-  const over = task.kind === 'limit' && task.value > task.target;
+  // Количество: число (тап — ввести значение) и одна кнопка «+N».
   const unit = task.unit ? ` ${task.unit}` : '';
   const minus = () => {
     const next = task.value - task.step;
-    onLog({ value: next > 0 ? next : task.kind === 'limit' ? 0 : null });
+    onLog({ value: next > 0 ? next : null });
   };
   const commit = () => {
     if (draft === null) return;
     setDraft(null);
     if (draft === '') return;
     const next = Number(draft);
-    if (next === task.value && task.logged) return;
-    onLog({ value: next > 0 || task.kind === 'limit' ? next : null });
+    if (next === task.value) return;
+    onLog({ value: next > 0 ? next : null });
   };
   const rest = (
     <>
       {' '}
-      {task.kind === 'limit' ? t.of : '/'} {task.target}
+      / {task.target}
       {unit}
     </>
   );
   return (
-    <article className={`task${done ? ' done' : ''}${over ? ' over' : ''}`}>
+    <article className={`task${done ? ' done' : ''}`}>
       <div className="task-main">
         <button onClick={onEdit}>{title}</button>
         {draft === null ? (
@@ -161,13 +156,8 @@ export function TaskCard({ task, primary, onLog, onEdit }: Props): ReactNode {
           −
         </button>
       )}
-      {task.kind === 'limit' && !task.logged && (
-        <button className="act undo" aria-label={task.title} onClick={() => onLog({ value: 0 })}>
-          <Check />
-        </button>
-      )}
       <button
-        className={`act ${done && task.kind === 'count' ? 'soft' : primary && task.kind === 'count' ? 'primary' : 'outline'}`}
+        className={`act ${done ? 'soft' : primary ? 'primary' : 'outline'}`}
         onClick={() => onLog({ value: task.value + task.step })}
       >
         +{task.step}

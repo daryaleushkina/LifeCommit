@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { KIND_EMOJI, type TaskKind } from '../../shared/types';
 import { useT } from '../i18n';
 
-/** Четыре намерения = четыре типа цели; тап открывает редактор с уже выбранным типом. */
-const INTENTS: TaskKind[] = ['check', 'count', 'limit', 'abstain'];
+/** Три намерения = три типа цели; тап открывает редактор с уже выбранным типом. */
+const INTENTS: TaskKind[] = ['check', 'count', 'abstain'];
 
 export function Onboarding({ onPick }: { onPick: (kind: TaskKind) => void }): ReactNode {
   const t = useT();

@@ -131,7 +131,6 @@ h1, h2, p { margin: 0; }
 .task.stack .task-main { padding-left: 4px; }
 .task-value { font-size: 14px; line-height: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .task-value b { color: var(--text); font-weight: 700; }
-.task.over .task-value b { color: var(--warn); }
 .task-main > button { text-align: left; }
 button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12px; }
 .task-value.editing { display: flex; align-items: center; gap: 6px; min-height: 28px; }
