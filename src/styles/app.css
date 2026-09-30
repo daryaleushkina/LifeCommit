@@ -128,6 +128,11 @@ h1, h2, p { margin: 0; }
 .task-value { font-size: 14px; line-height: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .task-value b { color: var(--text); font-weight: 700; }
 .task.over .task-value b { color: var(--warn); }
+.task-main > button { text-align: left; }
+button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12px; }
+.task-value.editing { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+/* 16px — иначе iOS приближает страницу при фокусе. */
+.task-value input { width: 72px; padding: 2px 8px; font: inherit; font-size: 16px; font-weight: 700; color: var(--text); background: var(--bg); border: 1px solid var(--accent); border-radius: 8px; outline: none; }
 .act { flex: none; min-width: 64px; height: var(--tap); padding: 0 14px; border-radius: var(--radius-btn); font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; transition: transform 160ms var(--ease-out), background-color 200ms; }
 .act:active { transform: scale(0.96); }
 .act.primary { background: var(--accent); color: var(--accent-text); font-size: 17px; }
