@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { hapticFeedback, openTelegramLink } from '@tma.js/sdk-react';
 import { MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT, FREE_TASK_LIMIT, type TaskInput, type TodoInput } from '../../shared/types';
@@ -24,6 +24,8 @@ type Phase = 'recording' | 'parsing' | 'nothing' | 'nomic' | 'failed' | 'limit';
 /** Короче не отправляем: это случайное касание, а попытка из дневного лимита ушла бы. */
 const MIN_SECONDS = 0.8;
 const BARS = 17;
+/** Уровни клеток знака (как в `Logo`): самые тёмные складываются в галочку. */
+const LOGO_LEVELS = [0, 1, 4, 1, 4, 2, 4, 2, 0];
 
 interface Props {
   preview: VoicePreview | null;
@@ -252,19 +254,16 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
       </div>
     );
   } else if (phase === 'parsing') {
+    // «Круг 14 · A» (выбор владелицы 01.10.2026): клетки знака загораются по очереди, как на заставке.
+    // Пока фразы нет — знак крупный по центру; пришла фраза — она главная, знак поменьше под ней.
     body = (
       <>
         <h2>{t.voice.parsing}</h2>
-        <div className={`voice-quote${heard ? '' : ' pending'}`}>{heard ? `«${heard}»` : <span className="skel-line" />}</div>
-        <div className="voice-skel" aria-hidden>
-          {[0, 1, 2].map((i) => (
-            <div key={i} style={{ opacity: 1 - i * 0.3 }}>
-              <i />
-              <span>
-                <b />
-                <small />
-              </span>
-            </div>
+        <p className="voice-hint">{heard ? t.voice.subParse : t.voice.subTranscribe}</p>
+        {heard && <div className="voice-quote">«{heard}»</div>}
+        <div className={`parse-cells${heard ? ' small' : ''}`} aria-hidden>
+          {LOGO_LEVELS.map((level, i) => (
+            <i key={i} style={{ '--to': `var(--heat-${level || 1})`, animationDelay: `${i * 0.12}s` } as CSSProperties} />
           ))}
         </div>
       </>

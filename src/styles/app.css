@@ -336,15 +336,6 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .voice-link { align-self: center; min-height: var(--tap); margin-top: 6px; padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 16px; font-weight: 500; }
 .voice-quote { margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: var(--bg); font-size: 16px; line-height: 22px; }
 .voice-quote small { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
-.voice-quote.pending { padding-block: 18px; }
-.skel-line, .voice-skel b, .voice-skel small, .voice-skel i { display: block; border-radius: 8px; background: color-mix(in srgb, var(--muted) 16%, transparent); animation: pulse 1.4s ease-in-out infinite; }
-.skel-line { height: 14px; width: 70%; }
-.voice-skel { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
-.voice-skel > div { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 18px; background: var(--bg); }
-.voice-skel i { width: 44px; height: 44px; border-radius: 14px; flex: none; }
-.voice-skel span { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.voice-skel b { height: 12px; width: 55%; }
-.voice-skel small { height: 10px; width: 35%; }
 .voice-list { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .voice-list li { display: flex; align-items: center; border-radius: 18px; background: var(--bg); transition: opacity 200ms; }
 .voice-list li.wont-fit { opacity: 0.45; }
@@ -354,7 +345,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .voice-row small { color: var(--muted); font-size: 14px; line-height: 19px; }
 .voice-x { flex: none; width: var(--tap); height: var(--tap); margin-right: 4px; display: grid; place-items: center; color: var(--muted); border-radius: 12px; }
 .act.with-icon { gap: 8px; }
-@media (prefers-reduced-motion: reduce) { .voice-stop, .skel-line, .voice-skel b, .voice-skel small, .voice-skel i { animation: none; } .wave i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .voice-stop { animation: none; } .wave i { transition: none; } }
 
 /* ── Дела на день ── */
 .section-label { margin: 24px 4px 8px; font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
@@ -382,3 +373,11 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .later-day h3::first-letter { text-transform: uppercase; }
 .voice-section { margin: 16px 4px 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .todo-tile { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+
+/* Разбор: знак 3×3, клетки по очереди зеленеют до своего уровня и гаснут (круг 14 · A). */
+.parse-cells { align-self: center; margin: 56px 0 72px; display: grid; grid-template-columns: repeat(3, 34px); gap: 8px; padding: 14px; border-radius: 24px; background: var(--surface); box-shadow: 0 6px 24px rgba(31, 42, 31, 0.08), inset 0 0 0 1px var(--line); transition: margin 300ms var(--ease-out); }
+.parse-cells i { width: 34px; height: 34px; border-radius: 9px; background: var(--heat-0); transform: scale(0.86); animation: parse-cell 3.2s ease-in-out infinite both; transition: width 300ms var(--ease-out), height 300ms var(--ease-out); }
+.parse-cells.small { margin: 28px 0 40px; grid-template-columns: repeat(3, 18px); gap: 5px; padding: 9px; border-radius: 15px; }
+.parse-cells.small i { width: 18px; height: 18px; border-radius: 5px; animation-duration: 2.6s; }
+@keyframes parse-cell { 0%, 100% { background: var(--heat-0); transform: scale(0.86); } 25%, 58% { background: var(--to); transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .parse-cells i { animation: none; background: var(--to); transform: none; } }
