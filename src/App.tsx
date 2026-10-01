@@ -18,7 +18,8 @@ import { MicIcon, VoiceSheet, type VoicePreview } from './components/VoiceSheet'
 type Route =
   | { name: 'today' }
   | { name: 'me' }
-  | { name: 'calendar' }
+  // sheet — сразу открыть «Календари» (вернулись из входа Google по ссылке t.me/…?startapp=calendars).
+  | { name: 'calendar'; sheet?: boolean }
   | { name: 'pick' }
   | { name: 'detail'; id: number }
   | { name: 'task'; id: number | null; kind?: TaskKind }
@@ -79,7 +80,7 @@ export function App(): ReactNode {
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       // Всё нужное первому экрану грузим, пока видна заставка: после неё ждать уже нечего.
-      const { user } = await api.session(timezone);
+      const { user, start_param } = await api.session(timezone);
       const seq = currentChange();
       const [today, heat] = await Promise.all([api.today(), api.heatmap(371)]);
       // Повторная загрузка не должна затереть то, что успели отметить, пока она шла.
@@ -87,6 +88,7 @@ export function App(): ReactNode {
       // Календари телефона подтягиваем в фоне при каждом входе — не задерживая экран.
       void api.syncCalendars().catch(() => {});
       setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 });
+      if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
     } catch {
       setBoot({ state: 'error' });
     }
@@ -186,7 +188,7 @@ export function App(): ReactNode {
         {currentTab === 'me' ? (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         ) : currentTab === 'calendar' ? (
-          <Calendar today={cache.today.day} onChanged={() => void refresh()} />
+          <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} onChanged={() => void refresh()} />
         ) : (
           <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} />
         )}

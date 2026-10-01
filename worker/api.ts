@@ -27,8 +27,10 @@ import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from '.
 import { db, type Env } from './env';
 import { MAX_HABITS, MAX_TODOS, parseHabits, transcribe } from './voice';
 import { occurrences, parseRRule } from '../shared/rrule';
-import { connectApple, deleteRemote, disconnect, moveOwnEvents, pullAccount, pushTodo, retimeCalendars, type AccountRow } from './calsync';
+import { confirmGoogle, connectApple, deleteRemote, disconnect, moveOwnEvents, pullAccount, pushTodo, retimeCalendars, type AccountRow } from './calsync';
 import { DavError, isAuthError } from './caldav';
+import { authUrl } from './gcal';
+import { signState } from './secret';
 
 type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -494,20 +496,43 @@ interface CalendarInfo {
   id: number;
   provider: 'apple' | 'google';
   login: string;
-  status: 'ok' | 'auth_failed' | 'error';
+  status: AccountRow['status'];
   last_sync_at: string | null;
   /** Куда пишем наши дела. */
   default_url: string | null;
-  collections: { url: string; name: string; color: string | null; enabled: boolean }[];
+  collections: { url: string; name: string; color: string | null; enabled: boolean; writable: boolean }[];
 }
 
 api.get('/calendars', async (c) => {
   const sb = c.get('sb');
-  const accounts = must(await sb.from('calendar_accounts').select('id, provider, login, status, last_sync_at, default_url').eq('user_id', c.get('user').id)) as Omit<CalendarInfo, 'collections'>[];
+  const accounts = must(await sb.from('calendar_accounts').select('id, provider, login, status, last_sync_at, default_url').eq('user_id', c.get('user').id).order('created_at')) as Omit<CalendarInfo, 'collections'>[];
   const cols = accounts.length
-    ? (must(await sb.from('calendar_collections').select('account_id, url, name, color, enabled').in('account_id', accounts.map((a) => a.id)).order('name')) as (CalendarInfo['collections'][number] & { account_id: number })[])
+    ? (must(await sb.from('calendar_collections').select('account_id, url, name, color, enabled, writable').in('account_id', accounts.map((a) => a.id)).order('name')) as (CalendarInfo['collections'][number] & { account_id: number })[])
     : [];
   return c.json(accounts.map((a): CalendarInfo => ({ ...a, collections: cols.filter((x) => x.account_id === a.id).map(({ account_id: _a, ...rest }) => rest) })));
+});
+
+// Адрес входа Google — заранее, пока открыта шторка: ссылку надо открыть прямо из нажатия,
+// иначе Telegram на iOS не считает её ответом на жест и не откроет.
+api.get('/calendars/google/url', async (c) => {
+  if (!c.env.CALENDAR_KEY || !c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) throw new HTTPException(503, { message: 'calendar_unavailable' });
+  const redirect = `${new URL(c.req.url).origin}/google/callback`;
+  return c.json({ url: authUrl(c.env, redirect, await signState(c.env.CALENDAR_KEY, c.get('user').id)) });
+});
+
+// Google подключён, человек выбрал календари — забираем события.
+api.post('/calendars/:id/confirm', async (c) => {
+  const sb = c.get('sb');
+  const user = c.get('user');
+  const acc = must(await sb.from('calendar_accounts').select('*').eq('id', Number(c.req.param('id'))).eq('user_id', user.id).maybeSingle()) as AccountRow | null;
+  if (!acc) throw new HTTPException(404, { message: 'not_found' });
+  if (acc.status !== 'setup') return c.json({ ok: true });
+  try {
+    await confirmGoogle(c.env, sb, user, acc);
+  } catch {
+    throw new HTTPException(502, { message: 'google_unreachable' });
+  }
+  return c.json({ ok: true });
 });
 
 // Подключить Apple: Apple ID и пароль приложения (не основной пароль!).
@@ -545,7 +570,7 @@ api.patch('/calendars/:id/default', async (c) => {
   const user = c.get('user');
   const acc = must(await sb.from('calendar_accounts').select('*').eq('id', id).eq('user_id', user.id).maybeSingle()) as AccountRow | null;
   if (!acc) throw new HTTPException(404, { message: 'not_found' });
-  const known = must(await sb.from('calendar_collections').select('url').eq('account_id', id).eq('url', url).maybeSingle());
+  const known = must(await sb.from('calendar_collections').select('url').eq('account_id', id).eq('url', url).eq('writable', true).maybeSingle());
   if (!known) throw new HTTPException(400, { message: 'unknown_calendar' });
   await moveOwnEvents(c.env, sb, user, acc, url, true);
   return c.json({ ok: true });
@@ -554,7 +579,7 @@ api.patch('/calendars/:id/default', async (c) => {
 api.delete('/calendars/:provider', async (c) => {
   const provider = c.req.param('provider');
   if (provider !== 'apple' && provider !== 'google') throw new HTTPException(400, { message: 'bad_provider' });
-  await disconnect(c.get('sb'), c.get('user').id, provider);
+  await disconnect(c.env, c.get('sb'), c.get('user').id, provider);
   return c.json({ ok: true });
 });
 

@@ -28,13 +28,15 @@ interface Props {
   today: string;
   /** Дела поменялись — «Сегодня» перечитает себя в фоне. */
   onChanged: () => void;
+  /** Сразу открыть шторку «Календари». */
+  openSheet?: boolean;
 }
 
 /**
  * Вкладка «Календарь»: день или месяц (точки — сколько дел в дне), ниже — дела выбранного дня.
  * Повторяющиеся дела (из календаря телефона) стоят в каждом своём дне со своей отметкой.
  */
-export function Calendar({ today, onChanged }: Props): ReactNode {
+export function Calendar({ today, onChanged, openSheet = false }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
@@ -60,7 +62,7 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
 
   // Подключённые календари: при открытии вкладки забираем свежие изменения и перечитываем дни.
   const [accounts, setAccounts] = useState<CalendarAccount[] | null>(null);
-  const [sheet, setSheet] = useState(false);
+  const [sheet, setSheet] = useState(openSheet);
   const [bannerHidden, setBannerHidden] = useState(() => {
     try {
       return localStorage.getItem(BANNER_KEY) === '1';
@@ -151,9 +153,9 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
       {accounts && accounts.length > 0 && (
         <div className="cal-chips">
           {accounts.map((a) => (
-            <button key={a.id} className={`cal-chip${a.status !== 'ok' ? ' bad' : ''}`} onClick={() => (a.status === 'ok' ? void syncNow() : setSheet(true))}>
+            <button key={a.id} className={`cal-chip${a.status === 'auth_failed' || a.status === 'error' ? ' bad' : ''}`} onClick={() => (a.status === 'ok' ? void syncNow() : setSheet(true))}>
               <span className={`src-mark ${a.provider}`}>{a.provider === 'apple' ? 'A' : 'G'}</span>
-              {a.status === 'ok' ? syncedLabel(t, a.last_sync_at) : t.cal.newPassword}
+              {a.status === 'ok' ? syncedLabel(t, a.last_sync_at) : a.status === 'setup' ? t.cal.googleSetup : a.provider === 'apple' ? t.cal.newPassword : t.cal.reconnect}
             </button>
           ))}
         </div>

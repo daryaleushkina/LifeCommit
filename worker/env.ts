@@ -15,6 +15,9 @@ export interface Env {
   GEMINI_API_KEY?: string;
   /** Ключ шифрования паролей календарей (AES-GCM, 32 байта в base64). Нет ключа — календари не подключить. */
   CALENDAR_KEY: string;
+  /** Клиент OAuth Google (проект LifeCommit в Google Cloud): подключение Google Календаря. Нет — Google не подключить. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   /** Только для проверки: свой CalDAV-сервер вместо iCloud (например, локальный Radicale). */
   CALDAV_APPLE_URL?: string;
   /** Только в .dev.vars: принимать подделанную initData из mockEnv. */

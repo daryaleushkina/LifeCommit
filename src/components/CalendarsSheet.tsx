@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { openLink, popup } from '@tma.js/sdk-react';
 import { api, ApiError, type CalendarAccount } from '../api';
 import { useT } from '../i18n';
@@ -20,20 +20,36 @@ interface Props {
 }
 
 /**
- * Календари: Google (скоро) и Apple. Apple подключается паролем приложения — объясняем по шагам,
+ * Календари: Google и Apple. Google подключается входом Google в браузере (внутри Telegram он не работает),
+ * после возврата человек выбирает, какие календари забирать. Apple — паролем приложения: объясняем по шагам,
  * основной пароль не просим. Подключённый показывает, когда обновлялся, какие календари забирать
- * и даёт отключить; если Apple перестал пускать — просит новый пароль.
+ * и даёт отключить; если календарь перестал пускать — просит подключить заново.
  */
 export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
   const t = useT();
   const [accounts, setAccounts] = useState<CalendarAccount[] | null>(null);
   const [form, setForm] = useState(false);
+  // Адрес входа Google: null — ещё грузится, '' — Google на сервере не настроен.
+  const [googleUrl, setGoogleUrl] = useState<string | null>(null);
   const load = () => api.calendars().then(setAccounts, () => setAccounts([]));
+  const loadUrl = () => api.googleUrl().then((r) => setGoogleUrl(r.url), () => setGoogleUrl(''));
   useEffect(() => {
     void load();
+    void loadUrl();
+    // Вернулись из браузера после входа Google — показать, что подключилось (и обновить ссылку: она живёт 15 минут).
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      void load();
+      void loadUrl();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   const apple = accounts?.find((a) => a.provider === 'apple');
+  const google = accounts?.find((a) => a.provider === 'google');
+  // Новые дела пишутся в подключённый последним (список приходит по порядку подключения).
+  const destination = accounts?.filter((a) => a.status === 'ok' && a.default_url).at(-1);
 
   if (form) {
     return (
@@ -49,26 +65,44 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
     );
   }
 
-  const disconnect = async () => {
-    if (popup.show.isAvailable()) {
-      const answer = await popup.show({ message: t.cal.disconnectConfirm, buttons: [{ id: 'off', type: 'destructive', text: t.cal.disconnect }, { type: 'cancel' }] });
-      if (answer !== 'off') return;
-    }
-    await api.disconnectCalendar('apple').catch(() => {});
+  const changed = () => {
     void load();
     onChanged();
   };
+  // Ссылку открываем прямо из нажатия: так Telegram считает её ответом на жест.
+  const signInGoogle = () => googleUrl && openLink.ifAvailable(googleUrl);
 
   return (
     <Sheet title={t.cal.sheetTitle} onClose={onClose}>
       <p className="sheet-note first">{t.cal.sheetHint}</p>
-      <div className="provider off">
+      <div className={`provider${!google && googleUrl === '' ? ' off' : ''}`}>
         <span className="provider-logo google">G</span>
         <span className="provider-text">
           <b>{t.cal.google}</b>
+          {accounts !== null && google && <small>{google.status === 'ok' ? `${t.cal.connected} · ${syncedLabel(t, google.last_sync_at)}` : google.status === 'setup' ? t.cal.googleSetup : google.login}</small>}
+          {accounts !== null && !google && googleUrl && <small>{t.cal.googleNeeds}</small>}
         </span>
-        <span className="provider-soon">{t.cal.googleSoon}</span>
+        {accounts !== null && !google && googleUrl && (
+          <button className="provider-go" onClick={signInGoogle}>
+            {t.cal.connect}
+          </button>
+        )}
+        {accounts !== null && !google && googleUrl === '' && <span className="provider-soon">{t.cal.googleSoon}</span>}
       </div>
+      {accounts !== null && !google && googleUrl && <p className="sheet-note">{t.cal.googleUnverified}</p>}
+      {google && (google.status === 'auth_failed' || google.status === 'error') && (
+        <div className="cal-warn">
+          {t.cal.googleExpired}{' '}
+          {googleUrl && (
+            <button className="inline-link" onClick={signInGoogle}>
+              {t.cal.reconnect}
+            </button>
+          )}
+        </div>
+      )}
+      {google?.status === 'setup' && <GoogleSetup account={google} setAccounts={setAccounts} onDone={changed} />}
+      {google && google.status !== 'setup' && <AccountSettings account={google} name={t.cal.google} isDestination={destination?.id === google.id} setAccounts={setAccounts} onChanged={changed} />}
+
       <div className="provider">
         <span className="provider-logo apple">A</span>
         <span className="provider-text">
@@ -92,48 +126,108 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
         </div>
       )}
 
-      {apple && apple.collections.length > 0 && (
+      {apple && <AccountSettings account={apple} name={t.cal.apple} isDestination={destination?.id === apple.id} setAccounts={setAccounts} onChanged={changed} />}
+    </Sheet>
+  );
+}
+
+type SetAccounts = Dispatch<SetStateAction<CalendarAccount[] | null>>;
+
+/** Включить или выключить календарь: на экране сразу, сервер догоняет. */
+function useToggle(account: CalendarAccount, setAccounts: SetAccounts, onChanged?: () => void) {
+  return async (url: string, enabled: boolean) => {
+    setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, collections: a.collections.map((x) => (x.url === url ? { ...x, enabled } : x)) } : a)) ?? list);
+    await api.toggleCollection(account.id, url, enabled).catch(() => {});
+    onChanged?.();
+  };
+}
+
+function CollectionToggles({ account, onToggle }: { account: CalendarAccount; onToggle: (url: string, enabled: boolean) => void }): ReactNode {
+  return (
+    <div className="card flat">
+      {account.collections.map((c) => (
+        <label key={c.url} className="row toggle-row">
+          <span className="cal-color" style={{ background: c.color ?? 'var(--heat-2)' }} aria-hidden />
+          <span className="label">{c.name}</span>
+          <input type="checkbox" className="switch" checked={c.enabled} onChange={(e) => onToggle(c.url, e.target.checked)} />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** Подключённый календарь: куда пишем наши дела (только у того, куда пишем сейчас), что забирать, отключить. */
+function AccountSettings({ account, name, isDestination, setAccounts, onChanged }: { account: CalendarAccount; name: string; isDestination: boolean; setAccounts: SetAccounts; onChanged: () => void }): ReactNode {
+  const t = useT();
+  const toggle = useToggle(account, setAccounts, onChanged);
+  const writable = account.collections.filter((c) => c.writable);
+
+  const disconnect = async () => {
+    if (popup.show.isAvailable()) {
+      const answer = await popup.show({ message: t.cal.disconnectConfirm, buttons: [{ id: 'off', type: 'destructive', text: t.cal.disconnect }, { type: 'cancel' }] });
+      if (answer !== 'off') return;
+    }
+    await api.disconnectCalendar(account.provider).catch(() => {});
+    onChanged();
+  };
+
+  return (
+    <>
+      {isDestination && writable.length > 0 && (
+        <div className="card flat">
+          <SelectRow
+            label={t.cal.writeTo}
+            value={account.default_url ?? ''}
+            options={writable.map((c) => ({ value: c.url, label: c.name }))}
+            onChange={async (url) => {
+              setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, default_url: url } : a)) ?? list);
+              await api.setDefaultCalendar(account.id, url).catch(() => {});
+              onChanged();
+            }}
+          />
+        </div>
+      )}
+      {account.collections.length > 0 && (
         <>
-          <div className="card flat">
-            <SelectRow
-              label={t.cal.writeTo}
-              value={apple.default_url ?? ''}
-              options={apple.collections.map((c) => ({ value: c.url, label: c.name }))}
-              onChange={async (url) => {
-                setAccounts((list) => list?.map((a) => (a.id === apple.id ? { ...a, default_url: url } : a)) ?? list);
-                await api.setDefaultCalendar(apple.id, url).catch(() => {});
-                onChanged();
-              }}
-            />
-          </div>
           <h3 className="sheet-subtitle">{t.cal.whatToTake}</h3>
-          <div className="card flat">
-            {apple.collections.map((c) => (
-              <label key={c.url} className="row toggle-row">
-                <span className="cal-color" style={{ background: c.color ?? 'var(--heat-2)' }} aria-hidden />
-                <span className="label">{c.name}</span>
-                <input
-                  type="checkbox"
-                  className="switch"
-                  checked={c.enabled}
-                  onChange={async (e) => {
-                    const enabled = e.target.checked;
-                    setAccounts((list) => list?.map((a) => (a.id === apple.id ? { ...a, collections: a.collections.map((x) => (x.url === c.url ? { ...x, enabled } : x)) } : a)) ?? list);
-                    await api.toggleCollection(apple.id, c.url, enabled).catch(() => {});
-                    onChanged();
-                  }}
-                />
-              </label>
-            ))}
-          </div>
+          <CollectionToggles account={account} onToggle={(url, on) => void toggle(url, on)} />
         </>
       )}
-      {apple && (
-        <button className="quiet-link danger" onClick={() => void disconnect()}>
-          {t.cal.disconnect}
-        </button>
-      )}
-    </Sheet>
+      <button className="quiet-link danger" onClick={() => void disconnect()}>
+        {t.cal.disconnectOf(name)}
+      </button>
+    </>
+  );
+}
+
+/** Google только что подключили: какие календари забирать. События приходят после «Готово». */
+function GoogleSetup({ account, setAccounts, onDone }: { account: CalendarAccount; setAccounts: SetAccounts; onDone: () => void }): ReactNode {
+  const t = useT();
+  const toggle = useToggle(account, setAccounts);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+
+  const confirm = async () => {
+    setBusy(true);
+    setError(false);
+    try {
+      await api.confirmGoogle(account.id);
+      onDone();
+    } catch {
+      setError(true);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="sheet-note">{t.cal.googleChoose}</p>
+      <CollectionToggles account={account} onToggle={(url, on) => void toggle(url, on)} />
+      {error && <p className="error">{t.cal.errGoogle}</p>}
+      <button className="act primary wide" disabled={busy || !account.collections.some((c) => c.enabled)} onClick={() => void confirm()}>
+        {busy ? t.cal.connecting : t.done}
+      </button>
+    </>
   );
 }
 
