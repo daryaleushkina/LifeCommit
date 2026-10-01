@@ -137,6 +137,10 @@ export async function listCollections(homeUrl: string, auth: DavAuth): Promise<C
     'collections',
   );
   const out: Collection[] = [];
+  // ВРЕМЕННО (01.10.2026): iCloud отдал ответ, в котором мы не нашли ни одного календаря.
+  // Пишем в лог только устройство ответа — без текста (названий, адресов).
+  const shape = res.text.replace(/>[^<]+</g, '><').slice(0, 6000);
+  console.warn('caldav collections shape', res.res.status, blocks(res.text, 'response').length, shape);
   for (const r of blocks(res.text, 'response')) {
     const type = first(r, 'resourcetype') ?? '';
     if (!has(type, 'calendar')) continue;
