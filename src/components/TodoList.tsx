@@ -47,7 +47,7 @@ function endTime(start: string, minutes: number): string | null {
   return total < 24 * 60 ? `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}` : null;
 }
 
-/** Блок «Дела» на «Сегодня»: разовые дела с кружком-галочкой, строка для нового дела, «Потом · N». */
+/** Блок «Дела» на «Сегодня»: свои дела с кружком-галочкой, события из календаря без него, строка для нового дела, «Потом · N». */
 export function TodoList({ todos, later = 0, today, heading, addLabel, showCarry = true, canAdd = true, onToggle, onAdd, onUpdate, onRemove }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
@@ -73,9 +73,14 @@ export function TodoList({ todos, later = 0, today, heading, addLabel, showCarry
           const note = [when, end && t.todo.until(end)].filter(Boolean).join(' · ');
           return (
             <li key={`${d.id}:${d.day}`} className={d.done ? 'done' : undefined}>
-              <button className="todo-check" aria-pressed={d.done} aria-label={d.done ? t.todo.uncheck(d.title) : t.todo.check(d.title)} onClick={() => onToggle(d)}>
-                <Check />
-              </button>
+              {/* Событие из календаря — «что сегодня будет»: отмечать нечего, на карту не влияет. */}
+              {d.source ? (
+                <span className="todo-event" aria-hidden />
+              ) : (
+                <button className="todo-check" aria-pressed={d.done} aria-label={d.done ? t.todo.uncheck(d.title) : t.todo.check(d.title)} onClick={() => onToggle(d)}>
+                  <Check />
+                </button>
+              )}
               <button className="todo-main" onClick={() => setEditing(d)}>
                 {d.time && <time className="todo-time">{d.time}</time>}
                 <span className="todo-text">

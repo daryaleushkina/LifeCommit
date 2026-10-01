@@ -452,8 +452,10 @@ api.patch('/todos/:id', async (c) => {
   const sb = c.get('sb');
   const body = await c.req.json<{ title?: string; day?: string; time?: string | null; done?: boolean; on?: string }>();
   const day = today(user);
-  const todo = must(await sb.from('todos').select('id, rrule').eq('id', id).eq('user_id', user.id).maybeSingle<{ id: number; rrule: string | null }>());
+  const todo = must(await sb.from('todos').select('id, rrule, source').eq('id', id).eq('user_id', user.id).maybeSingle<{ id: number; rrule: string | null; source: Todo['source'] }>());
   if (!todo) throw new HTTPException(404, { message: 'not_found' });
+  // События из календаря не отмечают: это «что сегодня будет», а не дело.
+  if (body.done !== undefined && todo.source) throw new HTTPException(400, { message: 'event_not_checkable' });
 
   if (body.done !== undefined && todo.rrule) {
     const on = isDay(body.on) ? body.on : day;

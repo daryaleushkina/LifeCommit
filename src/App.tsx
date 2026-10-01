@@ -221,8 +221,8 @@ export function App(): ReactNode {
 /** Карта с сегодняшним днём, посчитанным из отметок на экране (без ожидания сервера). */
 function heatWithToday(cache: Cache) {
   const day = cache.today.day;
-  // Сделанное дело на день зеленит клетку так же, как привычка.
-  const score = cache.today.tasks.reduce((sum, x) => sum + taskScore(x), 0) + cache.today.todos.filter((d) => d.done).length;
+  // Сделанное дело на день зеленит клетку так же, как привычка; события из календаря — нет.
+  const score = cache.today.tasks.reduce((sum, x) => sum + taskScore(x), 0) + cache.today.todos.filter((d) => d.done && !d.source).length;
   return [...cache.heat.filter((d) => d.day !== day), { day, score }];
 }
 
