@@ -132,6 +132,7 @@ export async function pullAccount(env: Env, sb: SupabaseClient, user: UserLite, 
     }
     if (needExport) await exportPending(env, sb, user, acc);
     if (acc.retime) await rewriteTimed(env, sb, user, acc);
+    await removeUntimed(sb, auth, user.id);
   } catch (e) {
     console.error('calendar pull failed', acc.id, e);
     await markFailed(sb, acc, e);
@@ -244,6 +245,12 @@ async function writeTodo(sb: SupabaseClient, user: UserLite, auth: DavAuth, acc:
   if (todo.source) return;
   // Наше дело. Повторяющихся своих дел пока нет — их не выгружаем.
   if (todo.rrule) return;
+  // Дела без времени в календарь не пишем (решение владелицы: «Напоминания» Apple закрыты для приложений,
+  // а событие «на весь день» — не то). Время убрали — убираем и событие.
+  if (!time) {
+    if (todo.external_href) await unlinkAndDelete(sb, auth, todo);
+    return;
+  }
   const uid = `lifecommit-${todo.id}`;
   const href = todo.external_href ?? `${acc.default_url}${uid}.ics`;
   const ics = buildEvent({ uid, title: todo.title, day: todo.day, time, durationMin: todo.duration_min, tz: user.timezone });
@@ -256,6 +263,18 @@ async function writeTodo(sb: SupabaseClient, user: UserLite, auth: DavAuth, acc:
     etag = await putEvent(href, auth, ics, (await getEvent(href, auth)).etag);
   }
   await sb.from('todos').update({ external_uid: uid, external_href: href, external_etag: etag, calendar_url: todo.external_href ? undefined : acc.default_url }).eq('id', todo.id);
+}
+
+/** Сначала забываем связь (чтобы синхронизация не приняла удаление за удаление дела), потом удаляем событие. */
+async function unlinkAndDelete(sb: SupabaseClient, auth: DavAuth, todo: Pick<TodoSyncRow, 'id' | 'external_href'>) {
+  await sb.from('todos').update({ external_uid: null, external_href: null, external_etag: null, calendar_url: null }).eq('id', todo.id);
+  if (todo.external_href) await deleteEvent(todo.external_href, auth, null).catch((e) => console.error('untimed delete failed', e));
+}
+
+/** Наши дела без времени, выгруженные раньше (когда выгружали всё), убираем из календаря. */
+async function removeUntimed(sb: SupabaseClient, auth: DavAuth, userId: number) {
+  const rows = check(await sb.from('todos').select('id, external_href').eq('user_id', userId).is('source', null).is('time', null).not('external_href', 'is', null).limit(60)) as Pick<TodoSyncRow, 'id' | 'external_href'>[];
+  for (const t of rows) await unlinkAndDelete(sb, auth, t);
 }
 
 /** Дело удаляют у нас — удаляем и событие (для повторяющегося — всю серию). Строку дела передают до удаления. */
@@ -276,7 +295,7 @@ async function exportPending(env: Env, sb: SupabaseClient, user: UserLite, acc: 
   if (!acc.default_url) return;
   const today = logicalDay(user.timezone, user.day_start_hour);
   const rows = check(
-    await sb.from('todos').select(TODO_SYNC_COLS).eq('user_id', user.id).is('source', null).is('external_href', null).is('done_on', null).is('rrule', null).gte('day', today).lte('day', addDays(today, 366)).limit(40),
+    await sb.from('todos').select(TODO_SYNC_COLS).eq('user_id', user.id).is('source', null).is('external_href', null).is('done_on', null).is('rrule', null).not('time', 'is', null).gte('day', today).lte('day', addDays(today, 366)).limit(40),
   ) as TodoSyncRow[];
   const auth = await authOf(env, acc);
   for (const t of rows) {
