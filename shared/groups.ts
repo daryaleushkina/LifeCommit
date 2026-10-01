@@ -73,6 +73,10 @@ export interface GroupDayItem {
   total: number | null;
   unit: GoalUnit | null;
   goal_until: string | null;
+  /** Как задано (для правки): первый день, повтор, выбранные люди. */
+  start: string;
+  rrule: string | null;
+  assignees: number[];
 }
 
 export interface GroupToday {
@@ -144,6 +148,9 @@ export function dayItem(item: GroupItemRow, memberIds: number[], me: number, day
     total: item.total === null ? null : Number(item.total),
     unit: item.unit,
     goal_until: item.goal_until,
+    start: item.day,
+    rrule: item.rrule,
+    assignees: item.assignees,
   };
 }
 

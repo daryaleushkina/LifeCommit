@@ -1,4 +1,5 @@
 import { retrieveRawInitData } from '@tma.js/sdk-react';
+import type { GroupKind, GroupMode, GroupToday } from '../shared/groups';
 import type { TaskHistory } from '../shared/stats';
 import type { HeatDay, TaskInput, Todo, TodoInput, TodayResponse, UserSettings, VoiceAction, VoiceEvent } from '../shared/types';
 
@@ -75,7 +76,53 @@ export const api = {
   settings: (patch: Partial<UserSettings>) => call<UserSettings>('PATCH', '/settings', patch),
   writeAccess: () => call<{ ok: true }>('POST', '/write-access'),
   deleteAccount: () => call<{ ok: true }>('DELETE', '/account'),
+  // Группы
+  groups: () => call<GroupToday[]>('GET', '/groups'),
+  group: (id: number) => call<GroupDetail>('GET', `/groups/${id}`),
+  createGroup: (title: string, kind: GroupKind) => call<{ id: number }>('POST', '/groups', { title, kind }),
+  updateGroup: (id: number, patch: Partial<GroupSettings & { title: string; kind: GroupKind }>) => call<{ ok: true }>('PATCH', `/groups/${id}`, patch),
+  deleteGroup: (id: number) => call<{ ok: true }>('DELETE', `/groups/${id}`),
+  leaveGroup: (id: number) => call<{ ok: true }>('POST', `/groups/${id}/leave`),
+  invite: (id: number) => call<{ code: string; link: string; expires_at: string }>('POST', `/groups/${id}/invite`),
+  invitation: (code: string) => call<Invitation>('GET', `/invites/${code}`),
+  join: (code: string) => call<{ id: number }>('POST', `/invites/${code}/join`),
+  createItem: (groupId: number, input: GroupItemInput) => call<{ id: number }>('POST', `/groups/${groupId}/items`, input),
+  updateItem: (groupId: number, itemId: number, patch: Partial<GroupItemInput>) => call<{ ok: true }>('PATCH', `/groups/${groupId}/items/${itemId}`, patch),
+  deleteItem: (groupId: number, itemId: number) => call<{ ok: true }>('DELETE', `/groups/${groupId}/items/${itemId}`),
+  markItem: (groupId: number, itemId: number, done: boolean) => call<{ ok: true; taken: boolean }>('PUT', `/groups/${groupId}/items/${itemId}/mark`, { done }),
+  addEntry: (groupId: number, itemId: number, amount: number) => call<{ ok: true }>('POST', `/groups/${groupId}/items/${itemId}/entries`, { amount }),
 };
+
+export interface GroupSettings {
+  admins_only_edit: boolean;
+  rating_enabled: boolean;
+  chat_digest: boolean;
+  chat_reminders: boolean;
+  tg_chat_title: string | null;
+}
+
+export type GroupDetail = GroupToday & { settings: GroupSettings };
+
+export interface Invitation {
+  group: { id: number; title: string; kind: GroupKind; color: string | null };
+  inviter: string | null;
+  members: { id: number; name: string }[];
+  member: boolean;
+}
+
+export interface GroupItemInput {
+  title: string;
+  mode: GroupMode;
+  day?: string | null;
+  time?: string | null;
+  rrule?: string | null;
+  due_day?: string | null;
+  assignees?: number[];
+  all_members?: boolean;
+  rotate?: boolean;
+  target?: number | null;
+  goal_until?: string | null;
+}
 
 /**
  * Голос → действия. Ответ сервера построчный: сначала расслышанная фраза (onText — показать её,
