@@ -9,6 +9,8 @@ export interface CalendarAccount {
   login: string;
   status: 'ok' | 'auth_failed' | 'error';
   last_sync_at: string | null;
+  /** Куда пишем наши дела. */
+  default_url: string | null;
   collections: { url: string; name: string; color: string | null; enabled: boolean }[];
 }
 
@@ -52,6 +54,7 @@ export const api = {
   calendars: () => call<CalendarAccount[]>('GET', '/calendars'),
   connectApple: (login: string, password: string) => call<{ ok: true }>('POST', '/calendars/apple', { login, password }),
   toggleCollection: (accountId: number, url: string, enabled: boolean) => call<{ ok: true }>('PATCH', `/calendars/${accountId}/collections`, { url, enabled }),
+  setDefaultCalendar: (accountId: number, url: string) => call<{ ok: true }>('PATCH', `/calendars/${accountId}/default`, { url }),
   disconnectCalendar: (provider: 'apple' | 'google') => call<{ ok: true }>('DELETE', `/calendars/${provider}`),
   syncCalendars: () => call<{ ok: boolean }>('POST', '/calendars/sync'),
   deleteTodo: (id: number) => call<{ ok: true }>('DELETE', `/todos/${id}`),

@@ -84,6 +84,8 @@ export function App(): ReactNode {
       const [today, heat] = await Promise.all([api.today(), api.heatmap(371)]);
       // Повторная загрузка не должна затереть то, что успели отметить, пока она шла.
       if (seq === currentChange()) setCache({ today, heat: heat.days, loadedAt: Date.now() });
+      // Календари телефона подтягиваем в фоне при каждом входе — не задерживая экран.
+      void api.syncCalendars().catch(() => {});
       setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 });
     } catch {
       setBoot({ state: 'error' });

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { openLink, popup } from '@tma.js/sdk-react';
 import { api, ApiError, type CalendarAccount } from '../api';
 import { useT } from '../i18n';
-import { Sheet } from './Picker';
+import { SelectRow, Sheet } from './Picker';
 
 const APPLE_ID_URL = 'https://account.apple.com/account/manage';
 
@@ -94,6 +94,18 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
 
       {apple && apple.collections.length > 0 && (
         <>
+          <div className="card flat">
+            <SelectRow
+              label={t.cal.writeTo}
+              value={apple.default_url ?? ''}
+              options={apple.collections.map((c) => ({ value: c.url, label: c.name }))}
+              onChange={async (url) => {
+                setAccounts((list) => list?.map((a) => (a.id === apple.id ? { ...a, default_url: url } : a)) ?? list);
+                await api.setDefaultCalendar(apple.id, url).catch(() => {});
+                onChanged();
+              }}
+            />
+          </div>
           <h3 className="sheet-subtitle">{t.cal.whatToTake}</h3>
           <div className="card flat">
             {apple.collections.map((c) => (
