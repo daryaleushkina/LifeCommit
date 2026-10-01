@@ -53,7 +53,7 @@ export function Join({ code, onJoined, onClose }: Props): ReactNode {
   return (
     <main className="app-shell join-screen">
       <div className="join-hero">
-        <GroupBadge kind={inv.group.kind} title={inv.group.title} size={96} />
+        <GroupBadge id={inv.group.id} title={inv.group.title} size={96} />
         <span className="join-from">{inv.inviter ? j.invites(inv.inviter) : j.invitesAnon}</span>
         <h1>{inv.group.title}</h1>
         <span className="join-members">

@@ -41,18 +41,26 @@ interface Props {
  * Вкладка «Календарь»: день или месяц (точки — сколько дел в дне), ниже — дела выбранного дня.
  * Повторяющиеся дела (из календаря телефона) стоят в каждом своём дне со своей отметкой.
  */
+/**
+ * Что уже показывали — между переключениями вкладок: экран открывается сразу, свежее подтягивается тихо.
+ * Живёт, пока открыто приложение.
+ */
+const daysCache = new Map<string, { todos: Todo[]; groups: GroupDayBlock[] }>();
+let accountsCache: CalendarAccount[] | null = null;
+
 export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   const [mode, setMode] = useState<Mode>('day');
   const [selected, setSelected] = useState(today);
-  const [todos, setTodos] = useState<Todo[] | null>(null);
-  // Дела групп, которые касаются меня, по дням.
-  const [groupDays, setGroupDays] = useState<GroupDayBlock[]>([]);
   const days = rangeOf(mode, selected);
   const from = days[0]!;
   const to = days[days.length - 1]!;
+  const cached = daysCache.get(`${from}:${to}`);
+  const [todos, setTodos] = useState<Todo[] | null>(cached?.todos ?? null);
+  // Дела групп, которые касаются меня, по дням.
+  const [groupDays, setGroupDays] = useState<GroupDayBlock[]>(cached?.groups ?? []);
   // Ответ на старый промежуток (быстро листали) не должен затереть новый.
   const asked = useRef('');
 
@@ -60,6 +68,7 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
     const key = `${from}:${to}`;
     asked.current = key;
     const res = await api.calendar(from, to).catch(() => null);
+    if (res) daysCache.set(key, { todos: res.todos, groups: res.groups ?? [] });
     if (res && asked.current === key) {
       setTodos(res.todos);
       setGroupDays(res.groups ?? []);
@@ -67,11 +76,18 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
   }, [from, to]);
 
   useEffect(() => {
+    // Уже показывали этот промежуток — сразу его, свежее подтянется без мигания.
+    const hit = daysCache.get(`${from}:${to}`);
+    if (hit) {
+      setTodos(hit.todos);
+      setGroupDays(hit.groups);
+    }
     void load();
   }, [load]);
 
-  // Подключённые календари: при открытии вкладки забираем свежие изменения и перечитываем дни.
-  const [accounts, setAccounts] = useState<CalendarAccount[] | null>(null);
+  // Подключённые календари. Синхронизация — при запуске приложения и по кнопке «Обновить» (решение владелицы 02.10.2026),
+  // при открытии вкладки — нет: вкладка должна открываться сразу.
+  const [accounts, setAccounts] = useState<CalendarAccount[] | null>(accountsCache);
   const [sheet, setSheet] = useState(openSheet);
   const [bannerHidden, setBannerHidden] = useState(() => {
     try {
@@ -84,17 +100,17 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
   const syncNow = useCallback(async () => {
     setSyncing(true);
     await api.syncCalendars().catch(() => null);
-    setAccounts(await api.calendars().catch(() => []));
+    accountsCache = await api.calendars().catch(() => []);
+    setAccounts(accountsCache);
     await load();
     setSyncing(false);
     onChanged();
   }, [load, onChanged]);
   useEffect(() => {
     api.calendars().then((list) => {
+      accountsCache = list;
       setAccounts(list);
-      if (list.length) void syncNow();
-    }, () => setAccounts([]));
-    // Только при открытии вкладки.
+    }, () => setAccounts((cur) => cur ?? []));
   }, []);
 
   const actions = useTodoActions({
