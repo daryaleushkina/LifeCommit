@@ -7,6 +7,7 @@ import { dayCount, dayItem, type GoalUnit, type GroupItemRow, type GroupKind, ty
 import { parseRRule } from '../shared/rrule';
 import type { App, UserRow } from './api';
 import { addDays, logicalDay } from './day';
+import { refreshChat } from './groupBot';
 
 export const groups = new Hono<App>();
 
@@ -251,6 +252,7 @@ groups.post('/groups/:id/items', async (c) => {
   if (!canEdit) throw new HTTPException(403, { message: 'admins_only' });
   const fields = cleanItem(await c.req.json<ItemInput>(), todayOf(user), await memberIds(sb, id), false);
   const row = must(await sb.from('group_items').insert({ ...fields, group_id: id, created_by: user.id }).select('id').single()) as { id: number };
+  c.executionCtx.waitUntil(refreshChat(c.env, id));
   return c.json({ id: row.id }, 201);
 });
 
@@ -292,8 +294,11 @@ export async function markItem(sb: SupabaseClient, user: UserRow, groupIdNum: nu
 
 groups.put('/groups/:id/items/:item/mark', async (c) => {
   const body = await c.req.json<{ done?: boolean; day?: string }>();
-  const res = await markItem(c.get('sb'), c.get('user'), groupId(c.req.param('id')), groupId(c.req.param('item')), body.done !== false, body.day);
+  const gid = groupId(c.req.param('id'));
+  const res = await markItem(c.get('sb'), c.get('user'), gid, groupId(c.req.param('item')), body.done !== false, body.day);
   if (res === 'forbidden') throw new HTTPException(403, { message: 'not_yours' });
+  // Сообщение «Сегодня в группе» в чате — тоже обновить.
+  c.executionCtx.waitUntil(refreshChat(c.env, gid));
   return c.json({ ok: true, taken: res === 'taken' });
 });
 

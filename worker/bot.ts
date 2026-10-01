@@ -4,6 +4,7 @@ import { FREE_TASK_LIMIT, MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT } from '../shared
 import { countActive, insertTasks, insertTodos, isPremium, takeVoiceQuota, today, USER_COLS, type UserRow } from './api';
 import { addDays } from './day';
 import { byTelegram, db, tg, type Env } from './env';
+import { handleGroupUpdate, type GroupUpdate } from './groupBot';
 import { parseHabits, transcribe } from './voice';
 
 interface TgFrom {
@@ -116,6 +117,8 @@ bot.post('/webhook', async (c) => {
 });
 
 async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
+  // Всё, что про групповые чаты (привязка, отметки кнопками, дела ответом боту), — в groupBot.ts.
+  if (await handleGroupUpdate(env, update as GroupUpdate)) return;
   if (update.callback_query) return undo(env, update.callback_query);
   const msg = update.message;
   if (!msg?.from || msg.from.is_bot) return;
@@ -137,6 +140,12 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
       { onConflict: 'id' },
     );
     const param = msg.text.split(' ')[1];
+    // Из чата группы без LifeCommit: одной кнопкой — в приложение, на экран «Вступить».
+    if (param?.startsWith('g_') && /^g_[a-z0-9]{6,20}$/.test(param)) {
+      const g = msg.from.language_code?.startsWith('ru') ? 'Откройте LifeCommit — и дела группы появятся у вас на «Сегодня».' : "Open LifeCommit — the group's to-dos will show up on your Today.";
+      await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: g, reply_markup: { inline_keyboard: [[{ text: t.open, web_app: { url: `${appUrl}/?join=${param.slice(2)}` } }]] } });
+      return;
+    }
     const url = param && /^[\w-]{1,64}$/.test(param) ? `${appUrl}/?ref=${param}` : appUrl;
     await tg(env, 'sendMessage', {
       chat_id: msg.chat.id,
