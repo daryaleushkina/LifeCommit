@@ -1,44 +1,55 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
 import { hapticFeedback } from '@tma.js/sdk-react';
-import type { Todo } from '../shared/types';
+import { sortTodos, type Todo } from '../shared/types';
 import { api } from './api';
 import { bumpChange, type Cache } from './useTaskLog';
 
-/** Несделанные сверху (в порядке дней), сделанные опускаются вниз. */
-export const sortTodos = (list: Todo[]): Todo[] => [...list.filter((d) => !d.done), ...list.filter((d) => d.done)];
+/** Тот же раз дела: у повторяющегося дела один id на все дни, различает их день. */
+export const sameTodo = (a: Todo, b: Todo): boolean => a.id === b.id && (!a.recurring || a.day === b.day);
+
+/** Что меняют в шторке дела. */
+export interface TodoEdit {
+  title: string;
+  day: string;
+  time: string | null;
+}
+
+interface Options {
+  /** Поменять свой список дел (на «Сегодня» — кэш, в «Календаре» — дни на экране). */
+  patchList: (fn: (list: Todo[]) => Todo[]) => void;
+  /** Перечитать список с сервера: после переноса на другой день или удаления он меняется целиком. */
+  reload: () => Promise<void>;
+  errorText: string;
+}
 
 /**
- * Дела на «Сегодня»: отметить, добавить, поправить, удалить.
- * Экран меняется сразу, сервер догоняет; при ошибке всё откатывается.
+ * Действия с делами: отметить, добавить, поправить, удалить.
+ * Экран меняется сразу, сервер догоняет; при ошибке отметка откатывается.
  */
-export function useTodos(setCache: Dispatch<SetStateAction<Cache>>, errorText: string) {
+export function useTodoActions({ patchList, reload, errorText }: Options) {
   const [error, setError] = useState<string | null>(null);
-
-  const patchList = useCallback(
-    (fn: (list: Todo[]) => Todo[]) => setCache((c) => ({ ...c, today: { ...c.today, todos: sortTodos(fn(c.today.todos)) } })),
-    [setCache],
-  );
 
   const toggle = useCallback(
     async (todo: Todo) => {
       const done = !todo.done;
       bumpChange();
-      patchList((list) => list.map((d) => (d.id === todo.id ? { ...d, done } : d)));
+      patchList((list) => list.map((d) => (sameTodo(d, todo) ? { ...d, done } : d)));
       if (done) hapticFeedback.notificationOccurred.ifAvailable('success');
       try {
-        await api.updateTodo(todo.id, { done });
+        // У повторяющегося дела «сделано» — на этот его день.
+        await api.updateTodo(todo.id, { done, ...(todo.recurring && { on: todo.day }) });
       } catch {
-        patchList((list) => list.map((d) => (d.id === todo.id ? todo : d)));
+        patchList((list) => list.map((d) => (sameTodo(d, todo) ? todo : d)));
         setError(errorText);
       }
     },
     [patchList, errorText],
   );
 
-  /** Новое дело на сегодня: появляется сразу, id приходит с сервером. */
+  /** Новое дело: появляется сразу, id приходит с сервера. */
   const add = useCallback(
     async (title: string, day: string) => {
-      const temp: Todo = { id: -Date.now(), title, day, done: false };
+      const temp: Todo = { id: -Date.now(), title, day, done: false, time: null, duration_min: null, recurring: false, source: null };
       bumpChange();
       patchList((list) => [...list, temp]);
       try {
@@ -52,18 +63,16 @@ export function useTodos(setCache: Dispatch<SetStateAction<Cache>>, errorText: s
     [patchList, errorText],
   );
 
-  /** Перечитать «Сегодня»: после переноса дела на другой день или удаления список меняется целиком. */
-  const reload = useCallback(async () => {
-    bumpChange();
-    const today = await api.today().catch(() => null);
-    if (today) setCache((c) => ({ ...c, today, loadedAt: Date.now() }));
-  }, [setCache]);
-
   const update = useCallback(
-    async (todo: Todo, title: string, day: string) => {
-      const patch = { ...(title !== todo.title && { title }), ...(day !== todo.day && { day }) };
+    async (todo: Todo, edit: TodoEdit) => {
+      const patch = {
+        ...(edit.title !== todo.title && { title: edit.title }),
+        ...(edit.day !== todo.day && !todo.recurring && { day: edit.day }),
+        ...(edit.time !== todo.time && { time: edit.time }),
+      };
       if (!Object.keys(patch).length) return;
-      patchList((list) => list.map((d) => (d.id === todo.id ? { ...d, title } : d)));
+      bumpChange();
+      patchList((list) => list.map((d) => (d.id === todo.id ? { ...d, title: edit.title, time: edit.time } : d)));
       try {
         await api.updateTodo(todo.id, patch);
       } catch {
@@ -76,6 +85,8 @@ export function useTodos(setCache: Dispatch<SetStateAction<Cache>>, errorText: s
 
   const remove = useCallback(
     async (todo: Todo) => {
+      bumpChange();
+      // Повторяющееся удаляется целиком — со всеми днями.
       patchList((list) => list.filter((d) => d.id !== todo.id));
       try {
         await api.deleteTodo(todo.id);
@@ -88,4 +99,18 @@ export function useTodos(setCache: Dispatch<SetStateAction<Cache>>, errorText: s
   );
 
   return { toggle, add, update, remove, error, clearError: () => setError(null) };
+}
+
+/** Дела на «Сегодня»: список живёт в кэше приложения. */
+export function useTodos(setCache: Dispatch<SetStateAction<Cache>>, errorText: string) {
+  const patchList = useCallback(
+    (fn: (list: Todo[]) => Todo[]) => setCache((c) => ({ ...c, today: { ...c.today, todos: sortTodos(fn(c.today.todos)) } })),
+    [setCache],
+  );
+  const reload = useCallback(async () => {
+    bumpChange();
+    const today = await api.today().catch(() => null);
+    if (today) setCache((c) => ({ ...c, today, loadedAt: Date.now() }));
+  }, [setCache]);
+  return useTodoActions({ patchList, reload, errorText });
 }

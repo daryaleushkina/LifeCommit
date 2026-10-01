@@ -54,15 +54,34 @@ export interface UserSettings {
 export interface Todo {
   id: number;
   title: string;
-  /** На какой день запланировано; раньше сегодняшнего — значит, переехало («со вчера»). */
+  /** На какой день запланировано; раньше сегодняшнего — значит, переехало («со вчера»). У повторяющегося — день этого раза. */
   day: string;
   done: boolean;
+  /** «HH:MM» — дело на это время; null — на весь день. */
+  time: string | null;
+  /** Длительность события из календаря, минуты. */
+  duration_min: number | null;
+  /** Повторяется, как событие календаря: «сделано» у каждого дня своё. */
+  recurring: boolean;
+  /** Пришло из календаря. */
+  source: 'apple' | 'google' | null;
 }
 
 export interface TodoInput {
   title: string;
   /** YYYY-MM-DD; не указан — сегодня. */
   day?: string | null;
+  /** «HH:MM»; не указано — на весь день. */
+  time?: string | null;
+}
+
+/** Порядок дел в списке: несделанные со временем — по часам, потом без времени, сделанные — вниз. */
+export function sortTodos<T extends Pick<Todo, 'done' | 'time'>>(list: readonly T[]): T[] {
+  const rank = (d: T) => (d.done ? 2 : d.time ? 0 : 1);
+  return list
+    .map((d, i) => ({ d, i }))
+    .sort((a, b) => rank(a.d) - rank(b.d) || (rank(a.d) === 0 ? a.d.time!.localeCompare(b.d.time!) : 0) || a.i - b.i)
+    .map(({ d }) => d);
 }
 
 export interface TodayResponse {

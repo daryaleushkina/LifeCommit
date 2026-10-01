@@ -36,7 +36,9 @@ export const api = {
   voice,
   createTodo: (input: TodoInput) => call<{ id: number }>('POST', '/todos', input),
   createTodos: (todos: TodoInput[]) => call<{ ids: number[] }>('POST', '/todos/batch', { todos }),
-  updateTodo: (id: number, patch: { title?: string; day?: string; done?: boolean }) => call<{ ok: true }>('PATCH', `/todos/${id}`, patch),
+  updateTodo: (id: number, patch: { title?: string; day?: string; time?: string | null; done?: boolean; on?: string }) =>
+    call<{ ok: true }>('PATCH', `/todos/${id}`, patch),
+  calendar: (from: string, to: string) => call<{ today: string; todos: Todo[] }>('GET', `/calendar?from=${from}&to=${to}`),
   deleteTodo: (id: number) => call<{ ok: true }>('DELETE', `/todos/${id}`),
   laterTodos: () => call<Todo[]>('GET', '/todos/later'),
   updateTask: (id: number, patch: Partial<TaskInput>) =>

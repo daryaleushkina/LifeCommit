@@ -70,8 +70,8 @@ const SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { title: { type: 'string' }, day: { type: 'string' } },
-        required: ['title', 'day'],
+        properties: { title: { type: 'string' }, day: { type: 'string' }, time: { type: 'string' } },
+        required: ['title', 'day', 'time'],
       },
     },
   },
@@ -83,6 +83,7 @@ A HABIT repeats: something done every day, on some weekdays or N times a week, a
 Every to-do has ALL of these fields:
 - title: short, in the SAME language as the input, capitalised, the action itself without date words ("Купить молоко", "Позвонить маме").
 - day: the date it is for as YYYY-MM-DD, counted from the "Today is" line at the start of the input ("завтра"/"tomorrow" = the next day, "в пятницу"/"on Friday" = the nearest coming Friday); "" when no day is said (it means today).
+- time: the time of day as 24-hour HH:MM when one is said ("в 15:00", "в три часа дня" = "15:00", "в 9 утра" = "09:00", "at 7pm" = "19:00"); "" when no time is said. The time words are not part of the title.
 Every habit has ALL of these fields:
 - title: short, 1-3 words, in the SAME language as the input, capitalised, naming the thing itself — no numbers and no schedule words ("Читать", "Вода", "Спортзал", "Не курить", "Меньше телефона").
 - kind: "count" when a daily amount is given (20 pages, 8 glasses, 30 minutes); "abstain" when the person wants to quit, stop or do less of something (smoking, alcohol, sweets, phone); otherwise "check".
@@ -103,11 +104,11 @@ const SHOTS: [string, object][] = [
         { title: 'Спортзал', kind: 'check', target: 0, unit: '', schedule: 'per_week', weekdays: [], per_week: 3 },
         { title: 'Не курить', kind: 'abstain', target: 0, unit: '', schedule: 'daily', weekdays: [], per_week: 0 },
       ],
-      todos: [{ title: 'Купить молоко', day: '2026-01-08' }],
+      todos: [{ title: 'Купить молоко', day: '2026-01-08', time: '' }],
     },
   ],
   [
-    'Today is 2026-03-02, Monday.\ncall the bank, run on mondays and thursdays, drink 8 glasses of water, less sugar, and on friday send the report, thanks!',
+    'Today is 2026-03-02, Monday.\ncall the bank, run on mondays and thursdays, drink 8 glasses of water, less sugar, on friday send the report and tomorrow at 3:30 pm dentist, thanks!',
     {
       habits: [
         { title: 'Run', kind: 'check', target: 0, unit: '', schedule: 'weekdays', weekdays: [1, 4], per_week: 0 },
@@ -115,8 +116,9 @@ const SHOTS: [string, object][] = [
         { title: 'Less sugar', kind: 'abstain', target: 0, unit: '', schedule: 'daily', weekdays: [], per_week: 0 },
       ],
       todos: [
-        { title: 'Call the bank', day: '' },
-        { title: 'Send the report', day: '2026-03-06' },
+        { title: 'Call the bank', day: '', time: '' },
+        { title: 'Send the report', day: '2026-03-06', time: '' },
+        { title: 'Dentist', day: '2026-03-03', time: '15:30' },
       ],
     },
   ],
@@ -180,11 +182,13 @@ export function toTodoInputs(raw: unknown): TodoInput[] {
   const list = (raw as { todos?: unknown })?.todos;
   if (!Array.isArray(list)) return [];
   const out: TodoInput[] = [];
-  for (const d of list as { title?: unknown; day?: unknown }[]) {
+  for (const d of list as { title?: unknown; day?: unknown; time?: unknown }[]) {
     const title = typeof d?.title === 'string' ? d.title.trim().slice(0, 120) : '';
     if (!title) continue;
     const day = typeof d.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.day) ? d.day : null;
-    out.push({ title, day });
+    const tm = typeof d.time === 'string' ? /^(\d{1,2}):(\d{2})$/.exec(d.time.trim()) : null;
+    const time = tm && Number(tm[1]) < 24 && Number(tm[2]) < 60 ? `${tm[1]!.padStart(2, '0')}:${tm[2]}` : null;
+    out.push({ title, day, time });
     if (out.length >= MAX_TODOS) break;
   }
   return out;
