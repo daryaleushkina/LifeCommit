@@ -10,6 +10,8 @@ interface ReminderUser {
   remind_evening: string | null;
   last_morning_reminder: string | null;
   last_evening_reminder: string | null;
+  /** Связанные аккаунты Telegram того же человека — напоминание приходит и туда. */
+  telegram_aliases: number[];
 }
 
 const WINDOW_MIN = 15; // cron раз в 15 минут
@@ -25,7 +27,7 @@ export async function sendReminders(env: Env, appUrl: string): Promise<void> {
   const sb = db(env);
   const { data: users, error } = await sb
     .from('users')
-    .select('id, language_code, timezone, day_start_hour, remind_morning, remind_evening, last_morning_reminder, last_evening_reminder')
+    .select('id, language_code, timezone, day_start_hour, remind_morning, remind_evening, last_morning_reminder, last_evening_reminder, telegram_aliases')
     .eq('bot_chat_ok', true)
     .or('remind_morning.not.is.null,remind_evening.not.is.null')
     .returns<ReminderUser[]>();
@@ -69,12 +71,11 @@ async function remindOne(env: Env, u: ReminderUser, day: string, kind: 'morning'
       : ru
         ? `Осталось ${left.length} 🌙 Даже немного — уже засчитается:\n\n${list}`
         : `${left.length} left 🌙 Even a little counts:\n\n${list}`;
-  await tg(env, 'sendMessage', {
-    chat_id: u.id,
-    text,
-    reply_markup: { inline_keyboard: [[{ text: ru ? 'Отметить' : 'Check in', web_app: { url: appUrl } }]] },
-  }).catch(async (e: Error) => {
+  const message = { text, reply_markup: { inline_keyboard: [[{ text: ru ? 'Отметить' : 'Check in', web_app: { url: appUrl } }]] } };
+  await tg(env, 'sendMessage', { chat_id: u.id, ...message }).catch(async (e: Error) => {
     // Человек заблокировал бота — больше не пишем.
     if (/blocked|deactivated|chat not found/i.test(e.message)) await sb.from('users').update({ bot_chat_ok: false }).eq('id', u.id);
   });
+  // Связанные аккаунты: туда же; не вышло (бот там не запущен) — не страшно.
+  for (const alias of u.telegram_aliases ?? []) await tg(env, 'sendMessage', { chat_id: alias, ...message }).catch(() => {});
 }

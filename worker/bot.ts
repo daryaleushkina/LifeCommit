@@ -3,7 +3,7 @@ import type { TaskInput, TodoInput } from '../shared/types';
 import { FREE_TASK_LIMIT, MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT } from '../shared/types';
 import { countActive, insertTasks, insertTodos, isPremium, takeVoiceQuota, today, USER_COLS, type UserRow } from './api';
 import { addDays } from './day';
-import { db, tg, type Env } from './env';
+import { byTelegram, db, tg, type Env } from './env';
 import { parseHabits, transcribe } from './voice';
 
 interface TgFrom {
@@ -124,7 +124,9 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
 
   if (msg.chat.type === 'private' && msg.text?.startsWith('/start')) {
     // Человек сам написал боту — теперь ему можно присылать напоминания.
-    await sb.from('users').upsert(
+    // Связанный аккаунт (другой Telegram того же человека) отдельного пользователя не заводит.
+    const { data: linked } = await sb.from('users').select('id').contains('telegram_aliases', [msg.from.id]).limit(1).maybeSingle<{ id: number }>();
+    if (!linked) await sb.from('users').upsert(
       {
         id: msg.from.id,
         first_name: msg.from.first_name ?? '',
@@ -150,7 +152,7 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
   const chat = msg.chat.id;
   const say = (text: string, extra: object = {}) => tg(env, 'sendMessage', { chat_id: chat, text, ...extra });
 
-  const { data: user } = await sb.from('users').select(USER_COLS).eq('id', msg.from.id).maybeSingle<UserRow>();
+  const { data: user } = await sb.from('users').select(USER_COLS).or(byTelegram(msg.from.id)).limit(1).maybeSingle<UserRow>();
   if (!user) {
     await say(t.openFirst, { reply_markup: { inline_keyboard: [[{ text: t.open, web_app: { url: appUrl } }]] } });
     return;
@@ -214,11 +216,12 @@ async function undo(env: Env, q: NonNullable<Update['callback_query']>): Promise
   const ids = idList(habitPart);
   const todoIds = idList(todoPart);
   const sb = db(env);
-  const { data: user } = await sb.from('users').select('language_code').eq('id', q.from.id).maybeSingle<{ language_code: string }>();
+  const { data: user } = await sb.from('users').select('id, language_code').or(byTelegram(q.from.id)).limit(1).maybeSingle<{ id: number; language_code: string }>();
   const t = user?.language_code === 'en' ? texts.en : texts.ru;
   // Удаляем только свои: чужой id в данных кнопки ничего не заденет.
-  if (ids.length) await sb.from('tasks').delete().in('id', ids).eq('user_id', q.from.id);
-  if (todoIds.length) await sb.from('todos').delete().in('id', todoIds).eq('user_id', q.from.id);
+  const owner = user?.id ?? q.from.id;
+  if (ids.length) await sb.from('tasks').delete().in('id', ids).eq('user_id', owner);
+  if (todoIds.length) await sb.from('todos').delete().in('id', todoIds).eq('user_id', owner);
   await tg(env, 'answerCallbackQuery', { callback_query_id: q.id });
   if (q.message) {
     await tg(env, 'editMessageText', { chat_id: q.message.chat.id, message_id: q.message.message_id, text: t.undone });
