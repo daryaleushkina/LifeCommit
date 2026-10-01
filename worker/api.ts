@@ -27,7 +27,7 @@ import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from '.
 import { db, type Env } from './env';
 import { MAX_HABITS, MAX_TODOS, parseHabits, transcribe } from './voice';
 import { occurrences, parseRRule } from '../shared/rrule';
-import { connectApple, deleteRemote, disconnect, pullAccount, pushTodo, type AccountRow } from './calsync';
+import { connectApple, deleteRemote, disconnect, moveOwnEvents, pullAccount, pushTodo, retimeCalendars, type AccountRow } from './calsync';
 import { DavError, isAuthError } from './caldav';
 
 type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
@@ -116,12 +116,14 @@ api.post('/session', async (c) => {
     photo_url: tgUser.photo_url ?? null,
     last_seen_at: new Date().toISOString(),
   };
+  // Часовой пояс — всегда пояс телефона: человек уехал — дни и время дел живут по-новому.
   const tz = body.timezone && isValidTimeZone(body.timezone) ? body.timezone : undefined;
   const fresh = existing
-    ? profile
+    ? { ...profile, ...(tz && { timezone: tz }) }
     : { ...profile, language_code: tgUser.language_code?.startsWith('ru') ? 'ru' : 'en', ...(tz && { timezone: tz }) };
 
   const user = must(await sb.from('users').upsert(fresh).select(USER_COLS).single<UserRow>());
+  if (existing && tz && tz !== existing.timezone) await retimeCalendars(sb, user.id);
   return c.json({ user: toSettings(user), start_param: c.get('startParam') ?? null, is_new: !existing });
 });
 
@@ -492,12 +494,14 @@ interface CalendarInfo {
   login: string;
   status: 'ok' | 'auth_failed' | 'error';
   last_sync_at: string | null;
+  /** Куда пишем наши дела. */
+  default_url: string | null;
   collections: { url: string; name: string; color: string | null; enabled: boolean }[];
 }
 
 api.get('/calendars', async (c) => {
   const sb = c.get('sb');
-  const accounts = must(await sb.from('calendar_accounts').select('id, provider, login, status, last_sync_at').eq('user_id', c.get('user').id)) as Omit<CalendarInfo, 'collections'>[];
+  const accounts = must(await sb.from('calendar_accounts').select('id, provider, login, status, last_sync_at, default_url').eq('user_id', c.get('user').id)) as Omit<CalendarInfo, 'collections'>[];
   const cols = accounts.length
     ? (must(await sb.from('calendar_collections').select('account_id, url, name, color, enabled').in('account_id', accounts.map((a) => a.id)).order('name')) as (CalendarInfo['collections'][number] & { account_id: number })[])
     : [];
@@ -528,6 +532,20 @@ api.patch('/calendars/:id/collections', async (c) => {
   // Выключили календарь — его дела убираем; включили — заберём заново с нуля.
   must(await sb.from('calendar_collections').update({ enabled: Boolean(enabled), sync_token: null }).eq('account_id', id).eq('url', url));
   if (!enabled) must(await sb.from('todos').delete().eq('user_id', c.get('user').id).eq('calendar_url', url).not('source', 'is', null));
+  return c.json({ ok: true });
+});
+
+// Куда писать наши дела: выбрал сам человек — переносим уже выгруженные и дальше не двигаем.
+api.patch('/calendars/:id/default', async (c) => {
+  const id = Number(c.req.param('id'));
+  const { url } = await c.req.json<{ url: string }>();
+  const sb = c.get('sb');
+  const user = c.get('user');
+  const acc = must(await sb.from('calendar_accounts').select('*').eq('id', id).eq('user_id', user.id).maybeSingle()) as AccountRow | null;
+  if (!acc) throw new HTTPException(404, { message: 'not_found' });
+  const known = must(await sb.from('calendar_collections').select('url').eq('account_id', id).eq('url', url).maybeSingle());
+  if (!known) throw new HTTPException(400, { message: 'unknown_calendar' });
+  await moveOwnEvents(c.env, sb, user, acc, url, true);
   return c.json({ ok: true });
 });
 

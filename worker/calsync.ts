@@ -34,6 +34,10 @@ export interface AccountRow {
   default_url: string | null;
   status: 'ok' | 'auth_failed' | 'error';
   last_sync_at: string | null;
+  /** Календарь для наших дел выбрал сам человек — тогда не двигаем его сами. */
+  default_manual?: boolean;
+  /** Сменился часовой пояс — перезаписать наши дела со временем. */
+  retime?: boolean;
 }
 
 interface TodoSyncRow {
@@ -116,9 +120,18 @@ export async function pullAccount(env: Env, sb: SupabaseClient, user: UserLite, 
       }
     }
     const collections = check(await sb.from('calendar_collections').select('url, sync_token').eq('account_id', acc.id).eq('enabled', true)) as { url: string; sync_token: string | null }[];
-    for (const col of collections) await pullCollection(sb, user, auth, col.url, col.sync_token, acc.id);
+    for (const col of collections) await pullCollection(sb, user, auth, col.url, col.sync_token, acc.id, Boolean(acc.retime));
     await sb.from('calendar_accounts').update({ status: 'ok', last_error: null, last_sync_at: new Date().toISOString() }).eq('id', acc.id);
+    // Пока человек не выбрал сам, наши дела пишем туда, где живёт больше всего его событий.
+    if (!acc.default_manual) {
+      const busiest = await busiestCalendar(sb, user.id);
+      if (busiest && busiest !== acc.default_url) {
+        await moveOwnEvents(env, sb, user, acc, busiest, false);
+        needExport = true;
+      }
+    }
     if (needExport) await exportPending(env, sb, user, acc);
+    if (acc.retime) await rewriteTimed(env, sb, user, acc);
   } catch (e) {
     console.error('calendar pull failed', acc.id, e);
     await markFailed(sb, acc, e);
@@ -126,7 +139,7 @@ export async function pullAccount(env: Env, sb: SupabaseClient, user: UserLite, 
   }
 }
 
-async function pullCollection(sb: SupabaseClient, user: UserLite, auth: DavAuth, url: string, token: string | null, accountId: number) {
+async function pullCollection(sb: SupabaseClient, user: UserLite, auth: DavAuth, url: string, token: string | null, accountId: number, retime: boolean) {
   let sync;
   let full = !token;
   try {
@@ -139,7 +152,7 @@ async function pullCollection(sb: SupabaseClient, user: UserLite, auth: DavAuth,
   const oldest = addDays(logicalDay(user.timezone, user.day_start_hour), -PAST_DAYS);
   for (let i = 0; i < sync.changed.length; i += MULTIGET_BATCH) {
     const batch = await multiget(url, auth, sync.changed.slice(i, i + MULTIGET_BATCH).map((c) => c.href));
-    await applyBatch(sb, user, url, batch.map((item) => ({ href: item.href, etag: item.etag, events: parseEvents(item.data, user.timezone).filter((e) => e.rrule || e.day >= oldest) })));
+    await applyBatch(sb, user, url, batch.map((item) => ({ href: item.href, etag: item.etag, events: parseEvents(item.data, user.timezone).filter((e) => e.rrule || e.day >= oldest) })), retime);
   }
   if (sync.removed.length) await removeHrefs(sb, user.id, sync.removed);
   // Полная перечитка не сообщает об удалённом — убираем всё из этого календаря, чего в нём больше нет.
@@ -156,7 +169,7 @@ async function pullCollection(sb: SupabaseClient, user: UserLite, auth: DavAuth,
  * Пачка событий из календаря → дела. Своё (lifecommit-<id>) обновляет наше дело, чужое — создаёт
  * или правит «пришедшее». Всё чужое пишется одним запросом, лишнее (пропавшие изменённые разы) — одним удалением.
  */
-async function applyBatch(sb: SupabaseClient, user: UserLite, calendarUrl: string, items: { href: string; etag: string | null; events: CalEvent[] }[]) {
+async function applyBatch(sb: SupabaseClient, user: UserLite, calendarUrl: string, items: { href: string; etag: string | null; events: CalEvent[] }[], retime = false) {
   const foreign: Record<string, unknown>[] = [];
   const keep = new Set<string>();
   for (const { href, etag, events } of items) {
@@ -166,7 +179,9 @@ async function applyBatch(sb: SupabaseClient, user: UserLite, calendarUrl: strin
       const own = OWN_UID.exec(e.uid);
       if (own) {
         // Своих событий в пачке мало — это наши же дела, поправленные в календаре.
-        await sb.from('todos').update({ title: e.title, day: e.day, time: e.time, duration_min: e.durationMin, external_uid: e.uid, ...link }).eq('id', Number(own[1])).eq('user_id', user.id);
+        // После смены пояса событие ещё в старом поясе: время дела главнее, его и перезапишем в календарь.
+        const fields = retime ? { external_uid: e.uid, ...link } : { title: e.title, day: e.day, time: e.time, duration_min: e.durationMin, external_uid: e.uid, ...link };
+        await sb.from('todos').update(fields).eq('id', Number(own[1])).eq('user_id', user.id);
         continue;
       }
       foreign.push({ user_id: user.id, external_uid: e.uid, source: 'apple', title: e.title, day: e.day, time: e.time, duration_min: e.durationMin, rrule: e.rrule, exdates: e.exdates, ...link });
@@ -271,6 +286,56 @@ async function exportPending(env: Env, sb: SupabaseClient, user: UserLite, acc: 
       console.error('export failed', t.id, e);
     }
   }
+}
+
+/** Календарь, из которого пришло больше всего событий. */
+async function busiestCalendar(sb: SupabaseClient, userId: number): Promise<string | null> {
+  const rows = check(await sb.from('todos').select('calendar_url').eq('user_id', userId).eq('source', 'apple').not('calendar_url', 'is', null).limit(2000)) as { calendar_url: string }[];
+  const count = new Map<string, number>();
+  for (const r of rows) count.set(r.calendar_url, (count.get(r.calendar_url) ?? 0) + 1);
+  return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
+/**
+ * Писать наши дела в другой календарь: уже выгруженные переезжают (удаляем старое событие,
+ * создаём в новом календаре). manual — выбрал сам человек, дальше не двигаем.
+ */
+export async function moveOwnEvents(env: Env, sb: SupabaseClient, user: UserLite, acc: AccountRow, url: string, manual: boolean): Promise<void> {
+  const from = acc.default_url;
+  acc.default_url = url;
+  acc.default_manual = manual || acc.default_manual;
+  check(await sb.from('calendar_accounts').update({ default_url: url, default_manual: acc.default_manual }).eq('id', acc.id));
+  if (!from || from === url) return;
+  const auth = await authOf(env, acc);
+  const moved = check(await sb.from('todos').select(TODO_SYNC_COLS).eq('user_id', user.id).is('source', null).eq('calendar_url', from).limit(60)) as TodoSyncRow[];
+  for (const t of moved) {
+    try {
+      if (t.external_href) await deleteEvent(t.external_href, auth, null);
+      const fresh = { ...t, external_href: null, external_etag: null };
+      await sb.from('todos').update({ external_href: null, external_etag: null, calendar_url: null }).eq('id', t.id);
+      await writeTodo(sb, user, auth, acc, fresh);
+    } catch (e) {
+      console.error('move failed', t.id, e);
+    }
+  }
+}
+
+/**
+ * Сменился часовой пояс человека. Здесь только пометка — это быстро: при следующей синхронизации
+ * календарь перечитается целиком в новом поясе, а наши дела со временем перезапишутся
+ * («18:00» значит 18:00 там, где человек сейчас). Делать это прямо при входе — слишком долго.
+ */
+export async function retimeCalendars(sb: SupabaseClient, userId: number): Promise<void> {
+  const accounts = check(await sb.from('calendar_accounts').update({ retime: true, last_sync_at: null }).eq('user_id', userId).select('id')) as { id: number }[];
+  if (accounts.length) check(await sb.from('calendar_collections').update({ sync_token: null }).in('account_id', accounts.map((a) => a.id)));
+}
+
+/** Перезаписать в календаре наши дела со временем — после смены пояса. */
+async function rewriteTimed(env: Env, sb: SupabaseClient, user: UserLite, acc: AccountRow) {
+  const auth = await authOf(env, acc);
+  const timed = check(await sb.from('todos').select(TODO_SYNC_COLS).eq('user_id', user.id).is('source', null).not('external_href', 'is', null).not('time', 'is', null).limit(60)) as TodoSyncRow[];
+  for (const t of timed) await writeTodo(sb, user, auth, acc, t).catch((e) => console.error('retime write failed', t.id, e));
+  await sb.from('calendar_accounts').update({ retime: false }).eq('id', acc.id);
 }
 
 // ── Отключение ──
