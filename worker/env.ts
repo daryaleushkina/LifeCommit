@@ -24,6 +24,12 @@ export interface Env {
   DEV_AUTH_BYPASS?: string;
 }
 
+/**
+ * Фильтр «пользователь этого аккаунта Telegram»: свой id или связанный (другой аккаунт того же человека,
+ * users.telegram_aliases). Одним запросом: `.or(byTelegram(id)).limit(1)`.
+ */
+export const byTelegram = (telegramId: number) => `id.eq.${Math.trunc(telegramId)},telegram_aliases.cs.{${Math.trunc(telegramId)}}`;
+
 export function db(env: Env): SupabaseClient {
   return createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },

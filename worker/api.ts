@@ -24,7 +24,7 @@ import {
 import type { TaskHistory } from '../shared/stats';
 import { requireTelegram, type AuthVars } from './auth';
 import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from './day';
-import { db, type Env } from './env';
+import { byTelegram, db, type Env } from './env';
 import { MAX_HABITS, MAX_TODOS, parseHabits, transcribe } from './voice';
 import { occurrences, parseRRule } from '../shared/rrule';
 import { confirmGoogle, connectApple, deleteRemote, disconnect, moveOwnEvents, pullAccount, pushTodo, retimeCalendars, type AccountRow } from './calsync';
@@ -109,7 +109,15 @@ api.post('/session', async (c) => {
   const body = await c.req.json<{ timezone?: string }>().catch(() => ({}) as { timezone?: string });
   const sb = c.get('sb');
 
-  const existing = must(await sb.from('users').select(USER_COLS).eq('id', tgUser.id).maybeSingle<UserRow>());
+  const existing = must(await sb.from('users').select(USER_COLS).or(byTelegram(tgUser.id)).limit(1).maybeSingle<UserRow>());
+  // Часовой пояс — всегда пояс телефона: человек уехал — дни и время дел живут по-новому.
+  const tz = body.timezone && isValidTimeZone(body.timezone) ? body.timezone : undefined;
+  // Вошли со связанного аккаунта (другой Telegram того же человека): профиль остаётся от основного.
+  if (existing && existing.id !== tgUser.id) {
+    const user = must(await sb.from('users').update({ last_seen_at: new Date().toISOString(), ...(tz && { timezone: tz }) }).eq('id', existing.id).select(USER_COLS).single<UserRow>());
+    if (tz && tz !== existing.timezone) await retimeCalendars(sb, user.id);
+    return c.json({ user: toSettings(user), start_param: c.get('startParam') ?? null, is_new: false });
+  }
   const profile = {
     id: tgUser.id,
     first_name: tgUser.first_name ?? '',
@@ -118,8 +126,6 @@ api.post('/session', async (c) => {
     photo_url: tgUser.photo_url ?? null,
     last_seen_at: new Date().toISOString(),
   };
-  // Часовой пояс — всегда пояс телефона: человек уехал — дни и время дел живут по-новому.
-  const tz = body.timezone && isValidTimeZone(body.timezone) ? body.timezone : undefined;
   const fresh = existing
     ? { ...profile, ...(tz && { timezone: tz }) }
     : { ...profile, language_code: tgUser.language_code?.startsWith('ru') ? 'ru' : 'en', ...(tz && { timezone: tz }) };
@@ -132,7 +138,7 @@ api.post('/session', async (c) => {
 // Всё ниже — только для уже созданного пользователя.
 api.use('*', async (c, next) => {
   const user = must(
-    await c.get('sb').from('users').select(USER_COLS).eq('id', c.get('tgUser').id).maybeSingle<UserRow>(),
+    await c.get('sb').from('users').select(USER_COLS).or(byTelegram(c.get('tgUser').id)).limit(1).maybeSingle<UserRow>(),
   );
   if (!user) throw new HTTPException(401, { message: 'no_session' });
   c.set('user', user);
@@ -803,6 +809,8 @@ api.post('/write-access', async (c) => {
 
 // Полное удаление аккаунта: каскадом уходят задачи, отметки и связи.
 api.delete('/account', async (c) => {
+  // Со связанного аккаунта удалить общего пользователя нельзя — только с основного.
+  if (c.get('user').id !== c.get('tgUser').id) throw new HTTPException(403, { message: 'linked_account' });
   must(await c.get('sb').from('users').delete().eq('id', c.get('user').id));
   return c.json({ ok: true });
 });
