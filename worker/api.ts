@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { stream } from 'hono/streaming';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -27,6 +27,8 @@ import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from '.
 import { db, type Env } from './env';
 import { MAX_HABITS, MAX_TODOS, parseHabits, transcribe } from './voice';
 import { occurrences, parseRRule } from '../shared/rrule';
+import { connectApple, deleteRemote, disconnect, pullAccount, pushTodo, type AccountRow } from './calsync';
+import { DavError, isAuthError } from './caldav';
 
 type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -418,15 +420,26 @@ function expandRecurring(rows: TodoRow[], from: string, to: string, doneDays: Se
 }
 
 // Разовые дела. Лимита нет (решение 01.10.2026).
+/** Дела поменялись — в фоне отправляем в подключённый календарь (ответ человеку не ждёт). */
+function pushLater(c: Context<App>, ids: number[]) {
+  const { sb, user } = { sb: c.get('sb'), user: c.get('user') };
+  c.executionCtx.waitUntil((async () => {
+    for (const id of ids) await pushTodo(c.env, sb, user, id);
+  })().catch((e) => console.error('push failed', e)));
+}
+
 api.post('/todos', async (c) => {
   const [id] = await insertTodos(c.get('sb'), c.get('user'), [await c.req.json<TodoInput>()]);
+  if (id) pushLater(c, [id]);
   return c.json({ id }, 201);
 });
 
 api.post('/todos/batch', async (c) => {
   const { todos } = await c.req.json<{ todos: TodoInput[] }>();
   if (!Array.isArray(todos) || !todos.length) throw new HTTPException(400, { message: 'no_todos' });
-  return c.json({ ids: await insertTodos(c.get('sb'), c.get('user'), todos) }, 201);
+  const ids = await insertTodos(c.get('sb'), c.get('user'), todos);
+  pushLater(c, ids);
+  return c.json({ ids }, 201);
 });
 
 // Правка: название, дата, время, «сделано». У повторяющегося дела «сделано» ставится на конкретный день (on);
@@ -455,12 +468,84 @@ api.patch('/todos/:id', async (c) => {
   if (body.time !== undefined) fields.time = todoTime(body.time);
   if (body.done !== undefined && !todo.rrule) fields.done_on = body.done ? day : null;
   if (Object.keys(fields).length) must(await sb.from('todos').update(fields).eq('id', id).eq('user_id', user.id));
+  // «Сделано» в календарь не уходит; название, день и время — уходят.
+  if (fields.title !== undefined || fields.day !== undefined || fields.time !== undefined) pushLater(c, [id]);
   return c.json({ ok: true });
 });
 
 api.delete('/todos/:id', async (c) => {
-  must(await c.get('sb').from('todos').delete().eq('id', Number(c.req.param('id'))).eq('user_id', c.get('user').id));
+  const id = Number(c.req.param('id'));
+  const user = c.get('user');
+  const sb = c.get('sb');
+  // Связь с событием читаем до удаления: потом её уже не будет.
+  const row = must(await sb.from('todos').select('external_href').eq('id', id).eq('user_id', user.id).maybeSingle<{ external_href: string | null }>());
+  must(await sb.from('todos').delete().eq('id', id).eq('user_id', user.id));
+  if (row?.external_href) c.executionCtx.waitUntil(deleteRemote(c.env, sb, user.id, row));
   return c.json({ ok: true });
+});
+
+// ── Подключённые календари ──
+
+interface CalendarInfo {
+  id: number;
+  provider: 'apple' | 'google';
+  login: string;
+  status: 'ok' | 'auth_failed' | 'error';
+  last_sync_at: string | null;
+  collections: { url: string; name: string; color: string | null; enabled: boolean }[];
+}
+
+api.get('/calendars', async (c) => {
+  const sb = c.get('sb');
+  const accounts = must(await sb.from('calendar_accounts').select('id, provider, login, status, last_sync_at').eq('user_id', c.get('user').id)) as Omit<CalendarInfo, 'collections'>[];
+  const cols = accounts.length
+    ? (must(await sb.from('calendar_collections').select('account_id, url, name, color, enabled').in('account_id', accounts.map((a) => a.id)).order('name')) as (CalendarInfo['collections'][number] & { account_id: number })[])
+    : [];
+  return c.json(accounts.map((a): CalendarInfo => ({ ...a, collections: cols.filter((x) => x.account_id === a.id).map(({ account_id: _a, ...rest }) => rest) })));
+});
+
+// Подключить Apple: Apple ID и пароль приложения (не основной пароль!).
+api.post('/calendars/apple', async (c) => {
+  if (!c.env.CALENDAR_KEY) throw new HTTPException(503, { message: 'calendar_unavailable' });
+  const { login, password } = await c.req.json<{ login?: string; password?: string }>();
+  if (!login?.includes('@') || !password || password.replace(/[\s-]/g, '').length < 12) throw new HTTPException(400, { message: 'apple_bad_input' });
+  try {
+    await connectApple(c.env, c.get('sb'), c.get('user'), login, password);
+  } catch (e) {
+    if (isAuthError(e)) throw new HTTPException(401, { message: 'apple_auth' });
+    if (e instanceof DavError || e instanceof TypeError) throw new HTTPException(502, { message: 'apple_unreachable' });
+    throw e;
+  }
+  return c.json({ ok: true }, 201);
+});
+
+api.patch('/calendars/:id/collections', async (c) => {
+  const id = Number(c.req.param('id'));
+  const { url, enabled } = await c.req.json<{ url: string; enabled: boolean }>();
+  const sb = c.get('sb');
+  const acc = must(await sb.from('calendar_accounts').select('id').eq('id', id).eq('user_id', c.get('user').id).maybeSingle());
+  if (!acc) throw new HTTPException(404, { message: 'not_found' });
+  // Выключили календарь — его дела убираем; включили — заберём заново с нуля.
+  must(await sb.from('calendar_collections').update({ enabled: Boolean(enabled), sync_token: null }).eq('account_id', id).eq('url', url));
+  if (!enabled) must(await sb.from('todos').delete().eq('user_id', c.get('user').id).eq('calendar_url', url).not('source', 'is', null));
+  return c.json({ ok: true });
+});
+
+api.delete('/calendars/:provider', async (c) => {
+  const provider = c.req.param('provider');
+  if (provider !== 'apple' && provider !== 'google') throw new HTTPException(400, { message: 'bad_provider' });
+  await disconnect(c.get('sb'), c.get('user').id, provider);
+  return c.json({ ok: true });
+});
+
+// Забрать изменения из календарей сейчас (открыли вкладку, нажали «обновить»). Чаще раза в минуту не ходим.
+api.post('/calendars/sync', async (c) => {
+  const sb = c.get('sb');
+  const user = c.get('user');
+  const accounts = must(await sb.from('calendar_accounts').select('*').eq('user_id', user.id).eq('status', 'ok')) as AccountRow[];
+  const fresh = (a: AccountRow) => a.last_sync_at && Date.now() - Date.parse(a.last_sync_at) < 60_000;
+  const results = await Promise.allSettled(accounts.filter((a) => !fresh(a)).map((a) => pullAccount(c.env, sb, user, a)));
+  return c.json({ ok: results.every((r) => r.status === 'fulfilled') });
 });
 
 // Запланированные на потом — список открывают редко, поэтому отдельным запросом.
