@@ -460,3 +460,22 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .steps li::before { content: counter(s); flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 12px; display: grid; place-items: center; }
 .sheet .sheet-input + .sheet-input { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) { .icon-btn.spinning svg { animation: none; } }
+
+.head-actions { display: flex; gap: 8px; }
+.icon-btn:disabled { opacity: 1; }
+.today-link { align-self: center; margin-top: 0; }
+
+/* Блок «Месяц / Год» в профиле — пониже (просьба владелицы 01.10.2026): квадратные клетки 28 px
+   по всей ширине (между колонками — сколько останется), число активных дней — под названием месяца. */
+.heat-card { padding-block: 14px 16px; }
+.heat-card .segmented button { min-height: 36px; }
+.heat-card .month-nav { margin-top: 6px; min-height: 40px; }
+.heat-card .month-nav button { height: 40px; }
+.heat-card .period { display: flex; flex-direction: column; align-items: center; line-height: 20px; }
+.heat-card .period b { display: block; font-weight: 600; }
+.heat-card .period b::first-letter { text-transform: uppercase; }
+.heat-card .period small { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.heat-card .views { margin-top: 8px; }
+.heat-card .cal { grid-template-columns: repeat(7, 28px); justify-content: space-between; gap: 7px 0; }
+.heat-card .cal i { width: 28px; height: 28px; border-radius: 8px; }
+.heat-card .year-week { grid-template-columns: 22px; grid-template-rows: 16px repeat(7, 22px); }

@@ -95,7 +95,7 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
         </div>
       </header>
 
-      <section className="card pad">
+      <section className="card pad heat-card">
         <div className="segmented two">
           <button className={view === 'month' ? 'on' : ''} onClick={() => setView('month')}>
             {t.month}
@@ -109,12 +109,14 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
           <button aria-label={t.prevMonth} hidden={view === 'year'} disabled={offset <= -MONTHS_BACK} onClick={() => setOffset(offset - 1)}>
             ‹
           </button>
-          <span>{view === 'month' ? monthLabel : yearLabel}</span>
+          <span className="period">
+            <b>{view === 'month' ? monthLabel : yearLabel}</b>
+            <small>{t.activeDays(active)}</small>
+          </span>
           <button aria-label={t.nextMonth} hidden={view === 'year'} disabled={offset >= 0} onClick={() => setOffset(offset + 1)}>
             ›
           </button>
         </div>
-        <p className="big-number">{t.activeDays(active)}</p>
         {/* Оба вида лежат в одной клетке сетки: высота блока всегда по большему из них. */}
         <div className="views">
           <div className={view === 'month' ? '' : 'off'}>

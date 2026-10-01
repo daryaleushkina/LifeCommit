@@ -7,15 +7,15 @@ import { TodoList } from '../components/TodoList';
 import { LangContext, useT } from '../i18n';
 import { useTodoActions } from '../useTodos';
 
-type Mode = 'week' | 'month';
+type Mode = 'day' | 'month';
 const BANNER_KEY = 'lc-cal-banner-hidden';
 
 const weekdayIndex = (day: string) => (new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7;
 const weekStartOf = (day: string) => addDays(day, -weekdayIndex(day));
 
-/** Дни на экране: неделя с понедельника или месяц целыми неделями (до 6 строк). */
+/** Дни на экране: один день или месяц целыми неделями (до 6 строк). */
 function rangeOf(mode: Mode, anchor: string): string[] {
-  if (mode === 'week') return Array.from({ length: 7 }, (_, i) => addDays(weekStartOf(anchor), i));
+  if (mode === 'day') return [anchor];
   const first = `${monthOf(anchor)}-01`;
   const last = addDays(`${shiftMonth(monthOf(anchor), 1)}-01`, -1);
   const days: string[] = [];
@@ -31,14 +31,14 @@ interface Props {
 }
 
 /**
- * Вкладка «Календарь»: неделя или месяц, точки — сколько дел в дне, ниже — дела выбранного дня.
+ * Вкладка «Календарь»: день или месяц (точки — сколько дел в дне), ниже — дела выбранного дня.
  * Повторяющиеся дела (из календаря телефона) стоят в каждом своём дне со своей отметкой.
  */
 export function Calendar({ today, onChanged }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
-  const [mode, setMode] = useState<Mode>('week');
+  const [mode, setMode] = useState<Mode>('day');
   const [selected, setSelected] = useState(today);
   const [todos, setTodos] = useState<Todo[] | null>(null);
   const days = rangeOf(mode, selected);
@@ -94,7 +94,7 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
     errorText: t.error,
   });
 
-  const shift = (n: number) => setSelected(mode === 'week' ? addDays(selected, 7 * n) : `${shiftMonth(monthOf(selected), n)}-01`);
+  const shift = (n: number) => setSelected(mode === 'day' ? addDays(selected, n) : `${shiftMonth(monthOf(selected), n)}-01`);
   const ofDay = (day: string) => (todos ?? []).filter((d) => d.day === day);
   const dayTodos = sortTodos(ofDay(selected));
   const monthTitle = new Date(`${monthOf(selected)}-15T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' }).replace(' г.', '');
@@ -104,12 +104,23 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
     <>
       <header className="page-head with-action">
         <h1>{t.calendar}</h1>
-        <button className={`icon-btn${syncing ? ' spinning' : ''}`} aria-label={t.cal.sheetTitle} onClick={() => setSheet(true)}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3" />
-            <path d="M18 3v4h-4M6 21v-4h4" />
-          </svg>
-        </button>
+        <span className="head-actions">
+          {/* Обновить — просто обновляет, крутится, пока идёт; настройки календарей — отдельная кнопка. */}
+          {accounts && accounts.length > 0 && (
+            <button className={`icon-btn${syncing ? ' spinning' : ''}`} aria-label={t.cal.refresh} disabled={syncing} onClick={() => void syncNow()}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3" />
+                <path d="M18 3v4h-4M6 21v-4h4" />
+              </svg>
+            </button>
+          )}
+          <button className="icon-btn" aria-label={t.cal.sheetTitle} onClick={() => setSheet(true)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            </svg>
+          </button>
+        </span>
       </header>
 
       {accounts && accounts.length === 0 && !bannerHidden && (
@@ -140,7 +151,7 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
       {accounts && accounts.length > 0 && (
         <div className="cal-chips">
           {accounts.map((a) => (
-            <button key={a.id} className={`cal-chip${a.status !== 'ok' ? ' bad' : ''}`} onClick={() => setSheet(true)}>
+            <button key={a.id} className={`cal-chip${a.status !== 'ok' ? ' bad' : ''}`} onClick={() => (a.status === 'ok' ? void syncNow() : setSheet(true))}>
               <span className={`src-mark ${a.provider}`}>{a.provider === 'apple' ? 'A' : 'G'}</span>
               {a.status === 'ok' ? syncedLabel(t, a.last_sync_at) : t.cal.newPassword}
             </button>
@@ -157,23 +168,29 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
       )}
 
       <div className="segmented two cal-mode" role="radiogroup" aria-label={t.calendar}>
-        {(['week', 'month'] as const).map((m) => (
+        {(['day', 'month'] as const).map((m) => (
           <button key={m} role="radio" aria-checked={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
-            {m === 'week' ? t.week : t.month}
+            {m === 'day' ? t.day : t.month}
           </button>
         ))}
       </div>
 
       <div className="month-nav flat">
-        <button aria-label={t.prevMonth} onClick={() => shift(-1)}>
+        <button aria-label={mode === 'day' ? t.prevDay : t.prevMonth} onClick={() => shift(-1)}>
           ‹
         </button>
-        <span>{monthTitle}</span>
-        <button aria-label={t.nextMonth} onClick={() => shift(1)}>
+        <span>{mode === 'day' ? dayTitle : monthTitle}</span>
+        <button aria-label={mode === 'day' ? t.nextDay : t.nextMonth} onClick={() => shift(1)}>
           ›
         </button>
       </div>
+      {mode === 'day' && selected !== today && (
+        <button className="link-btn today-link" onClick={() => setSelected(today)}>
+          {t.backToToday}
+        </button>
+      )}
 
+      {mode === 'month' && (
       <div className={`cal-grid ${mode}`} role="grid" aria-label={monthTitle}>
         {t.weekdaysShort.map((w) => (
           <span key={w} className="cal-wd" aria-hidden>
@@ -203,6 +220,7 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
           );
         })}
       </div>
+      )}
 
       {actions.error && (
         <p className="error" onClick={actions.clearError}>
@@ -214,7 +232,7 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
         <TodoList
           todos={dayTodos}
           today={today}
-          heading={dayTitle}
+          heading={mode === 'day' ? undefined : dayTitle}
           addLabel={t.calAdd}
           showCarry={false}
           canAdd={selected >= today}
