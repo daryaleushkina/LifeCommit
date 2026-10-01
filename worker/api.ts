@@ -31,8 +31,9 @@ import { confirmGoogle, connectApple, deleteRemote, disconnect, moveOwnEvents, p
 import { DavError, isAuthError } from './caldav';
 import { authUrl } from './gcal';
 import { signState } from './secret';
+import { groups, groupsToday } from './groups';
 
-type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
+export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
 export interface UserRow {
   id: number;
@@ -173,7 +174,8 @@ interface TodayRow extends TaskRow {
 async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayResponse> {
   const day = today(user);
   // Весь экран — один запрос к базе (в Франкфурт), а не три круга подряд.
-  const screen = must(await sb.rpc('today_screen', { p_user: user.id, p_day: day, p_from: weekStart(day) })) as {
+  const [screenRes, groupBlocks] = await Promise.all([sb.rpc('today_screen', { p_user: user.id, p_day: day, p_from: weekStart(day) }), groupsToday(sb, user, day)]);
+  const screen = must(screenRes) as {
     tasks: TodayRow[];
     archived: ArchivedTask[];
     logs: { task_id: number; day: string; value: number; status: 'clean' | 'slip' | null }[];
@@ -229,6 +231,7 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
       ...expandRecurring(screen.todos_recurring, day, day, new Set(screen.todos_recurring.filter((r) => r.done).map((r) => `${r.id}:${day}`))),
     ]),
     todos_later: Number(screen.todos_later),
+    groups: groupBlocks,
   };
 }
 
@@ -814,3 +817,6 @@ api.delete('/account', async (c) => {
   must(await c.get('sb').from('users').delete().eq('id', c.get('user').id));
   return c.json({ ok: true });
 });
+
+// Группы: участники, приглашения, групповые дела (worker/groups.ts).
+api.route('/', groups);

@@ -28,7 +28,7 @@ type Route =
   | { name: 'draft'; index: number; back: Tab };
 type Tab = 'today' | 'calendar' | 'me';
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
-const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 }, todos: [], todos_later: 0 }, heat: [], loadedAt: 0 };
+const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 }, todos: [], todos_later: 0, groups: [] }, heat: [], loadedAt: 0 };
 
 /** Фон приложения (стиль A) — им же красим шапку и низ Telegram. */
 const BG = { light: '#F6F4EE', dark: '#0F1511' } as const;
