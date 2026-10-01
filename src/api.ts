@@ -7,11 +7,13 @@ export interface CalendarAccount {
   id: number;
   provider: 'apple' | 'google';
   login: string;
-  status: 'ok' | 'auth_failed' | 'error';
+  /** setup — Google подключён, но календари ещё не выбраны. */
+  status: 'ok' | 'auth_failed' | 'error' | 'setup';
   last_sync_at: string | null;
   /** Куда пишем наши дела. */
   default_url: string | null;
-  collections: { url: string; name: string; color: string | null; enabled: boolean }[];
+  /** writable — можно ли писать туда наши дела (чужие календари Google — только читать). */
+  collections: { url: string; name: string; color: string | null; enabled: boolean; writable: boolean }[];
 }
 
 export class ApiError extends Error {
@@ -53,6 +55,8 @@ export const api = {
   calendar: (from: string, to: string) => call<{ today: string; todos: Todo[] }>('GET', `/calendar?from=${from}&to=${to}`),
   calendars: () => call<CalendarAccount[]>('GET', '/calendars'),
   connectApple: (login: string, password: string) => call<{ ok: true }>('POST', '/calendars/apple', { login, password }),
+  googleUrl: () => call<{ url: string }>('GET', '/calendars/google/url'),
+  confirmGoogle: (accountId: number) => call<{ ok: true }>('POST', `/calendars/${accountId}/confirm`),
   toggleCollection: (accountId: number, url: string, enabled: boolean) => call<{ ok: true }>('PATCH', `/calendars/${accountId}/collections`, { url, enabled }),
   setDefaultCalendar: (accountId: number, url: string) => call<{ ok: true }>('PATCH', `/calendars/${accountId}/default`, { url }),
   disconnectCalendar: (provider: 'apple' | 'google') => call<{ ok: true }>('DELETE', `/calendars/${provider}`),

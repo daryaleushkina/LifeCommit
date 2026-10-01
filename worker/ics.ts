@@ -113,6 +113,17 @@ function durationMinutes(v: string): number | null {
   return total > 0 ? total : null;
 }
 
+/** Строки повтора (RRULE, EXDATE) — так их отдаёт Google в поле recurrence. */
+export function parseRecurrence(lines: string[], userTz: string): { rrule: string | null; exdates: string[] } {
+  const props = lines.map(parseLine).filter((p): p is Prop => p !== null);
+  const rrule = props.find((p) => p.name === 'RRULE')?.value.trim() ?? null;
+  const exdates = props
+    .filter((p) => p.name === 'EXDATE')
+    .flatMap((p) => p.value.split(',').map((v) => readMoment({ ...p, value: v }, userTz)?.day))
+    .filter((d): d is string => Boolean(d));
+  return { rrule: rrule && parseRRule(rrule) ? rrule : null, exdates };
+}
+
 /**
  * Все события из текста календаря (обычно один объект с одним событием и его изменёнными разами).
  * Изменённый раз повторяющегося события (RECURRENCE-ID) становится отдельным делом, а у самого
