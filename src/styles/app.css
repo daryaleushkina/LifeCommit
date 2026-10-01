@@ -261,15 +261,13 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .archive-item .label { flex: 1; font-weight: 500; }
 
 /* ── Нижняя навигация ── */
-.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 96px 1fr; padding: 6px 8px calc(var(--app-inset-bottom) + 12px); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 1fr 84px 1fr; padding: 6px 8px calc(var(--app-inset-bottom) + 12px); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5); }
 .tabbar button { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .tabbar button.active { color: var(--accent); font-weight: 700; }
-/* Микрофон — посередине панели, крупнее вкладок и чуть выступает над ней. */
-.tabbar button:nth-of-type(2) { grid-column: 1; grid-row: 1; }
-.tabbar button:nth-of-type(3) { grid-column: 3; grid-row: 1; }
-.tabbar .tab-mic { grid-column: 2; grid-row: 1; justify-self: center; align-self: start; width: 68px; height: 68px; min-height: 0; margin-top: -26px; border-radius: 50%; background: var(--accent); color: var(--accent-text); box-shadow: 0 0 0 7px var(--bg), 0 8px 22px rgba(35, 122, 70, 0.28); transition: transform 160ms var(--ease-out); }
+/* Вкладки: Сегодня · Календарь · микрофон · Я. Микрофон крупнее вкладок и чуть выступает над панелью. */
+.tabbar .tab-mic { justify-self: center; align-self: start; width: 68px; height: 68px; min-height: 0; margin-top: -26px; border-radius: 50%; background: var(--accent); color: var(--accent-text); box-shadow: 0 0 0 7px var(--bg), 0 8px 22px rgba(35, 122, 70, 0.28); transition: transform 160ms var(--ease-out); }
 .tabbar .tab-mic:active { transform: scale(0.94); }
-.tabbar .pill { width: 52px; height: 30px; border-radius: 999px; display: grid; place-items: center; }
+.tabbar .pill { width: 48px; height: 30px; border-radius: 999px; display: grid; place-items: center; }
 .tabbar button.active .pill { background: var(--accent-soft); }
 
 .skeleton { margin-top: calc(var(--app-inset-top) + 24px); height: 280px; border-radius: var(--radius); background: var(--surface); animation: pulse 1.4s ease-in-out infinite; }
@@ -358,9 +356,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .todo-list li.done .todo-check svg { background: var(--accent); color: var(--accent-text); box-shadow: none; }
 .todo-check:active svg { transform: scale(0.9); }
 .todo-main { flex: 1; min-width: 0; min-height: 52px; padding: 8px 14px 8px 4px; display: flex; flex-direction: column; justify-content: center; text-align: left; }
-.todo-main span { font-size: 16px; line-height: 21px; overflow-wrap: anywhere; }
-.todo-main small { margin-top: 1px; font-size: 13px; color: var(--muted); }
-.todo-list li.done .todo-main span { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.todo-text > span { font-size: 16px; line-height: 21px; overflow-wrap: anywhere; }
+.todo-text small { margin-top: 1px; font-size: 13px; color: var(--muted); }
 .todo-add button, .todo-add form { flex: 1; min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 14px; color: var(--muted); font-size: 15px; font-weight: 500; }
 .todo-add form { padding-left: 6px; }
 .todo-add input { flex: 1; height: 44px; border: 0; background: none; font-size: 16px; color: var(--text); outline: none; }
@@ -393,3 +390,31 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
   .parse-box, .parse-ink, .parse-ink::after, .voice-list li { animation: none; }
   .parse-box { opacity: 1; } .parse-ink { width: var(--w); }
 }
+
+/* ── Время и источник у дела ── */
+.todo-main { flex-direction: row; align-items: center; gap: 10px; }
+.todo-time { flex: none; min-width: 40px; font-size: 14px; font-weight: 600; color: var(--accent); }
+.todo-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.todo-list li.done .todo-time { color: var(--muted); }
+.todo-list li.done .todo-text > span { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.src-mark { flex: none; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--heat-0); color: var(--muted); }
+.src-mark.google { background: color-mix(in srgb, #4A78D6 16%, var(--surface)); color: #4A78D6; }
+.todo-empty { justify-content: center; color: var(--muted); font-size: 14px; }
+.sheet-note { margin: 10px 4px 0; color: var(--muted); font-size: 14px; }
+
+/* ── Вкладка «Календарь» ── */
+.segmented.cal-mode { margin-top: 16px; }
+.cal-grid { margin-top: 4px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; text-align: center; }
+.cal-wd { font-size: 11px; font-weight: 600; color: var(--muted); padding-bottom: 2px; }
+.cal-day { min-height: 52px; padding: 6px 0 4px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 3px; transition: background-color 160ms; }
+.cal-grid.month .cal-day { min-height: 44px; padding-top: 5px; }
+.cal-day b { font-size: 16px; font-weight: 600; }
+.cal-grid.month .cal-day b { font-size: 14px; font-weight: 500; }
+.cal-day.today b { color: var(--accent); font-weight: 700; }
+.cal-day.on { background: var(--accent); color: var(--accent-text); }
+.cal-day.on b { color: var(--accent-text); }
+.cal-day.out { opacity: 0.4; }
+.cal-dots { height: 5px; display: flex; gap: 3px; }
+.cal-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--heat-3); }
+.cal-dots i.ext { background: #6E8FD9; }
+.cal-day.on .cal-dots i { background: var(--accent-text); }

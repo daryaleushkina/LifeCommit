@@ -13,6 +13,7 @@ import {
   type TaskTemplate,
   type Todo,
   type TodoInput,
+  sortTodos,
   type TodayResponse,
   type TodayTask,
   type UserSettings,
@@ -25,6 +26,7 @@ import { requireTelegram, type AuthVars } from './auth';
 import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from './day';
 import { db, type Env } from './env';
 import { MAX_HABITS, MAX_TODOS, parseHabits, transcribe } from './voice';
+import { occurrences, parseRRule } from '../shared/rrule';
 
 type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -163,7 +165,8 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
     tasks: TodayRow[];
     archived: ArchivedTask[];
     logs: { task_id: number; day: string; value: number; status: 'clean' | 'slip' | null }[];
-    todos: Todo[];
+    todos: (Omit<TodoRow, 'rrule' | 'exdates'> & { done: boolean })[];
+    todos_recurring: (TodoRow & { done: boolean })[];
     todos_later: number;
   };
   const { tasks, archived, logs: logRows } = screen;
@@ -208,8 +211,11 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
     tasks: result,
     archived,
     limits: { max_tasks: isPremium(user) ? null : FREE_TASK_LIMIT, active: personal },
-    // Несделанные сверху (переехавшие — первыми), сделанные опускаются вниз.
-    todos: [...screen.todos.filter((d) => !d.done), ...screen.todos.filter((d) => d.done)],
+    // Несделанные со временем — по часам, потом без времени (переехавшие — первыми), сделанные — вниз.
+    todos: sortTodos([
+      ...screen.todos.map((r) => asTodo(r, r.day, r.done, false)),
+      ...expandRecurring(screen.todos_recurring, day, day, new Set(screen.todos_recurring.filter((r) => r.done).map((r) => `${r.id}:${day}`))),
+    ]),
     todos_later: Number(screen.todos_later),
   };
 }
@@ -341,19 +347,30 @@ api.post('/voice', async (c) => {
 
 /** Дальше этого дело не планируем: почти наверняка ошибка в дате. */
 const TODO_MAX_DAYS_AHEAD = 366;
+/** Сколько дней можно запросить для вкладки «Календарь» за раз (месяц с хвостами недель). */
+const CALENDAR_MAX_DAYS = 62;
+
+const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
 
 /** Дата дела: не раньше сегодня и не позже чем через год; нет или битая — сегодня. */
 function todoDay(value: string | null | undefined, today: string): string {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) return today;
-  if (value < today) return today;
+  if (!isDay(value) || value < today) return today;
   const last = addDays(today, TODO_MAX_DAYS_AHEAD);
   return value > last ? last : value;
+}
+
+/** «HH:MM» или null; всё остальное — ошибка запроса. */
+function todoTime(value: string | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value);
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) throw new HTTPException(400, { message: 'bad_time' });
+  return `${m[1]!.padStart(2, '0')}:${m[2]}`;
 }
 
 function cleanTodo(input: TodoInput, today: string) {
   const title = String(input.title ?? '').trim().slice(0, 120);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
-  return { title, day: todoDay(input.day, today) };
+  return { title, day: todoDay(input.day, today), time: todoTime(input.time) };
 }
 
 export async function insertTodos(sb: SupabaseClient, user: UserRow, inputs: TodoInput[]): Promise<number[]> {
@@ -361,6 +378,43 @@ export async function insertTodos(sb: SupabaseClient, user: UserRow, inputs: Tod
   const rows = inputs.slice(0, MAX_TODOS).map((input, i) => ({ ...cleanTodo(input, day), user_id: user.id, position: (Date.now() % 1e9) + i }));
   if (!rows.length) return [];
   return (must(await sb.from('todos').insert(rows).select('id')) as { id: number }[]).map((r) => r.id);
+}
+
+/** Строка `todos` из базы — как её читают экраны. */
+interface TodoRow {
+  id: number;
+  title: string;
+  day: string;
+  done_on?: string | null;
+  time: string | null;
+  duration_min: number | null;
+  rrule: string | null;
+  exdates: string[] | null;
+  source: Todo['source'];
+}
+const TODO_COLS = 'id, title, day, done_on, time, duration_min, rrule, exdates, source';
+const hm = (t: string | null) => (t ? t.slice(0, 5) : null);
+
+const asTodo = (r: Omit<TodoRow, 'rrule' | 'exdates'>, day: string, done: boolean, recurring: boolean): Todo => ({
+  id: r.id,
+  title: r.title,
+  day,
+  done,
+  time: hm(r.time),
+  duration_min: r.duration_min,
+  recurring,
+  source: r.source,
+});
+
+/** Повторяющиеся дела → их разы в промежутке дней; правило, которое не поняли, — один раз в день начала. */
+function expandRecurring(rows: TodoRow[], from: string, to: string, doneDays: Set<string>): Todo[] {
+  const out: Todo[] = [];
+  for (const r of rows) {
+    const rule = r.rrule ? parseRRule(r.rrule) : null;
+    const days = rule ? occurrences(rule, r.day, from, to, r.exdates ?? []) : r.day >= from && r.day <= to ? [r.day] : [];
+    for (const d of days) out.push(asTodo(r, d, doneDays.has(`${r.id}:${d}`), true));
+  }
+  return out;
 }
 
 // Разовые дела. Лимита нет (решение 01.10.2026).
@@ -375,19 +429,32 @@ api.post('/todos/batch', async (c) => {
   return c.json({ ids: await insertTodos(c.get('sb'), c.get('user'), todos) }, 201);
 });
 
-// Правка: название, дата, «сделано» (сделано сегодня — в сегодняшний логический день).
+// Правка: название, дата, время, «сделано». У повторяющегося дела «сделано» ставится на конкретный день (on);
+// у разового — на сегодняшний логический день.
 api.patch('/todos/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const user = c.get('user');
-  const body = await c.req.json<{ title?: string; day?: string; done?: boolean }>();
+  const sb = c.get('sb');
+  const body = await c.req.json<{ title?: string; day?: string; time?: string | null; done?: boolean; on?: string }>();
   const day = today(user);
+  const todo = must(await sb.from('todos').select('id, rrule').eq('id', id).eq('user_id', user.id).maybeSingle<{ id: number; rrule: string | null }>());
+  if (!todo) throw new HTTPException(404, { message: 'not_found' });
+
+  if (body.done !== undefined && todo.rrule) {
+    const on = isDay(body.on) ? body.on : day;
+    must(
+      body.done
+        ? await sb.from('todo_done').upsert({ todo_id: id, day: on, user_id: user.id })
+        : await sb.from('todo_done').delete().eq('todo_id', id).eq('day', on),
+    );
+  }
   const fields: Record<string, unknown> = {};
   if (body.title !== undefined) fields.title = cleanTodo({ title: body.title }, day).title;
-  if (body.day !== undefined) fields.day = todoDay(body.day, day);
-  if (body.done !== undefined) fields.done_on = body.done ? day : null;
-  if (!Object.keys(fields).length) return c.json({ ok: true });
-  const row = must(await c.get('sb').from('todos').update(fields).eq('id', id).eq('user_id', user.id).select('id').maybeSingle());
-  if (!row) throw new HTTPException(404, { message: 'not_found' });
+  // У повторяющегося дела день начала не двигаем: он задаёт, в какие дни оно бывает.
+  if (body.day !== undefined && !todo.rrule) fields.day = todoDay(body.day, day);
+  if (body.time !== undefined) fields.time = todoTime(body.time);
+  if (body.done !== undefined && !todo.rrule) fields.done_on = body.done ? day : null;
+  if (Object.keys(fields).length) must(await sb.from('todos').update(fields).eq('id', id).eq('user_id', user.id));
   return c.json({ ok: true });
 });
 
@@ -400,9 +467,32 @@ api.delete('/todos/:id', async (c) => {
 api.get('/todos/later', async (c) => {
   const user = c.get('user');
   const rows = must(
-    await c.get('sb').from('todos').select('id, title, day').eq('user_id', user.id).is('done_on', null).gt('day', today(user)).order('day').order('position').order('id'),
-  ) as Omit<Todo, 'done'>[];
-  return c.json(rows.map((r): Todo => ({ ...r, done: false })));
+    await c.get('sb').from('todos').select(TODO_COLS).eq('user_id', user.id).is('done_on', null).is('rrule', null).gt('day', today(user)).order('day').order('position').order('id'),
+  ) as TodoRow[];
+  return c.json(rows.map((r) => asTodo(r, r.day, false, false)));
+});
+
+// Вкладка «Календарь»: дела по дням в промежутке. Разовые — в свой день (сделанные тоже),
+// повторяющиеся — в каждый день, когда они бывают, со своей отметкой «сделано».
+api.get('/calendar', async (c) => {
+  const user = c.get('user');
+  const sb = c.get('sb');
+  const from = c.req.query('from');
+  const to = c.req.query('to');
+  if (!isDay(from) || !isDay(to) || to < from || Date.parse(to) - Date.parse(from) > CALENDAR_MAX_DAYS * 86_400_000) {
+    throw new HTTPException(400, { message: 'bad_range' });
+  }
+  const [oneOff, recurring, done] = await Promise.all([
+    sb.from('todos').select(TODO_COLS).eq('user_id', user.id).is('rrule', null).gte('day', from).lte('day', to).order('position').order('id'),
+    sb.from('todos').select(TODO_COLS).eq('user_id', user.id).not('rrule', 'is', null).lte('day', to),
+    sb.from('todo_done').select('todo_id, day').eq('user_id', user.id).gte('day', from).lte('day', to),
+  ]);
+  const doneDays = new Set((must(done) as { todo_id: number; day: string }[]).map((x) => `${x.todo_id}:${x.day}`));
+  const todos = [
+    ...(must(oneOff) as TodoRow[]).map((r) => asTodo(r, r.day, r.done_on != null, false)),
+    ...expandRecurring(must(recurring) as TodoRow[], from, to, doneDays),
+  ];
+  return c.json({ today: today(user), todos });
 });
 
 // Онбординг: выбор из шаблонов.

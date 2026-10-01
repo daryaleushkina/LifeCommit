@@ -221,10 +221,16 @@ interface TimeRowProps {
   maxHour?: number;
   /** Показывать «Выключить». */
   allowOff?: boolean;
+  /** Что писать, пока время не выбрано (по умолчанию «Выкл»). */
+  offLabel?: string;
+  /** Как назвать кнопку «выключить» (у дела — «Без времени»). */
+  offAction?: string;
+  /** С какого времени открывать барабаны, если его ещё нет. */
+  initial?: string;
 }
 
 /** Строка со временем: тап открывает шторку с барабанами часов и минут. */
-export function TimeRow({ label, value, onChange, minuteStep = 5, maxHour = 23, allowOff }: TimeRowProps): ReactNode {
+export function TimeRow({ label, value, onChange, minuteStep = 5, maxHour = 23, allowOff, offLabel, offAction, initial = '21:00' }: TimeRowProps): ReactNode {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [hour, setHour] = useState(0);
@@ -233,7 +239,7 @@ export function TimeRow({ label, value, onChange, minuteStep = 5, maxHour = 23, 
   const minutes = minuteStep >= 60 ? ['00'] : Array.from({ length: 60 / minuteStep }, (_, i) => pad(i * minuteStep));
 
   const show = () => {
-    const [h = 21, m = 0] = (value ?? '21:00').split(':').map(Number);
+    const [h = 21, m = 0] = (value ?? initial).split(':').map(Number);
     setHour(Math.min(maxHour, h));
     setMinute(Math.min(minutes.length - 1, Math.round(m / minuteStep)));
     setOpen(true);
@@ -247,7 +253,7 @@ export function TimeRow({ label, value, onChange, minuteStep = 5, maxHour = 23, 
     <>
       <button className="row" aria-haspopup="dialog" onClick={show}>
         <span className="label">{label}</span>
-        <span className="value">{value ?? t.off}</span>
+        <span className="value">{value ?? offLabel ?? t.off}</span>
         <Chevron />
       </button>
       {open && (
@@ -262,7 +268,7 @@ export function TimeRow({ label, value, onChange, minuteStep = 5, maxHour = 23, 
           </button>
           {allowOff && value !== null && (
             <button className="quiet-link" onClick={() => done(null)}>
-              {t.turnOff}
+              {offAction ?? t.turnOff}
             </button>
           )}
         </Sheet>

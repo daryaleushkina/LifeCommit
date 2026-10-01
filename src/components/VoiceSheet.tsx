@@ -180,7 +180,7 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
                     </span>
                     <span className="voice-text">
                       <b>{d.title}</b>
-                      <small>{todoWhen(t, d.day || today, today, locale) ?? t.todo.today.toLowerCase()}</small>
+                      <small>{[todoWhen(t, d.day || today, today, locale) ?? t.todo.today.toLowerCase(), d.time].filter(Boolean).join(' · ')}</small>
                     </span>
                   </button>
                   <button className="voice-x" aria-label={t.voice.remove(d.title)} onClick={() => drop({ ...preview, todos: preview.todos.filter((_, j) => j !== i) })}>
@@ -229,8 +229,9 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
           <TodoSheet
             title={todoDraft.title}
             day={todoDraft.day || today}
+            time={todoDraft.time ?? null}
             today={today}
-            onSave={(title, day) => setPreview({ ...preview, todos: preview.todos.map((d, j) => (j === editingTodo ? { title, day } : d)) })}
+            onSave={(edit) => setPreview({ ...preview, todos: preview.todos.map((d, j) => (j === editingTodo ? edit : d)) })}
             onClose={() => setEditingTodo(null)}
           />
         )}

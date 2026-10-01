@@ -5,6 +5,7 @@ import { api } from './api';
 import { Splash } from './components/Logo';
 import { LangContext, dictionaries, useT, type Lang } from './i18n';
 import { Archive } from './screens/Archive';
+import { Calendar } from './screens/Calendar';
 import { Onboarding } from './screens/Onboarding';
 import { Profile } from './screens/Profile';
 import { TaskEditor } from './screens/TaskEditor';
@@ -17,12 +18,14 @@ import { MicIcon, VoiceSheet, type VoicePreview } from './components/VoiceSheet'
 type Route =
   | { name: 'today' }
   | { name: 'me' }
+  | { name: 'calendar' }
   | { name: 'pick' }
   | { name: 'detail'; id: number }
   | { name: 'task'; id: number | null; kind?: TaskKind }
   | { name: 'archive' }
   // Правка привычки из голосового разбора; back — вкладка, с которой открыли шторку.
-  | { name: 'draft'; index: number; back: 'today' | 'me' };
+  | { name: 'draft'; index: number; back: Tab };
+type Tab = 'today' | 'calendar' | 'me';
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
 const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 }, todos: [], todos_later: 0 }, heat: [], loadedAt: 0 };
 
@@ -121,7 +124,8 @@ export function App(): ReactNode {
   };
   const home = () => setRoute({ name: 'today' });
 
-  const tab = (name: 'today' | 'me'): Route => (name === 'me' ? { name: 'me' } : { name: 'today' });
+  const tab = (name: Tab): Route => ({ name });
+  const currentTab: Tab = route.name === 'me' || route.name === 'calendar' ? route.name : 'today';
   const closeVoice = () => {
     setVoiceOpen(false);
     setVoicePreview(null);
@@ -177,18 +181,20 @@ export function App(): ReactNode {
   } else {
     screen = (
       <main className="app-shell with-tabs">
-        {route.name !== 'me' ? (
-          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} />
-        ) : (
+        {currentTab === 'me' ? (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
+        ) : currentTab === 'calendar' ? (
+          <Calendar today={cache.today.day} onChanged={() => void refresh()} />
+        ) : (
+          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} />
         )}
-        <TabBar route={route.name === 'me' ? 'me' : 'today'} onRoute={(name) => setRoute(tab(name))} onMic={() => setVoiceOpen(true)} />
+        <TabBar route={currentTab} onRoute={(name) => setRoute(tab(name))} onMic={() => setVoiceOpen(true)} />
         {voiceOpen && (
           <VoiceSheet
             preview={voicePreview}
             setPreview={setVoicePreview}
             room={limits.max_tasks === null ? null : Math.max(0, limits.max_tasks - limits.active)}
-            onEdit={(index) => setRoute({ name: 'draft', index, back: route.name === 'me' ? 'me' : 'today' })}
+            onEdit={(index) => setRoute({ name: 'draft', index, back: currentTab })}
             today={cache.today.day}
             onAdd={async (todos, habits) => {
               await Promise.all([todos.length ? api.createTodos(todos) : null, habits.length ? api.createTasks(habits) : null]);
@@ -218,31 +224,52 @@ function heatWithToday(cache: Cache) {
   return [...cache.heat.filter((d) => d.day !== day), { day, score }];
 }
 
-function TabBar({ route, onRoute, onMic }: { route: 'today' | 'me'; onRoute: (r: 'today' | 'me') => void; onMic: () => void }): ReactNode {
+const TABS: { name: Tab; icon: ReactNode }[] = [
+  {
+    name: 'today',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        {[3, 10, 17].flatMap((y) => [3, 10, 17].map((x) => <rect key={`${x}-${y}`} x={x} y={y} width="5" height="5" rx="1.4" />))}
+      </svg>
+    ),
+  },
+  {
+    name: 'calendar',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <rect x="3.5" y="5" width="17" height="15.5" rx="3.5" />
+        <path d="M3.5 10h17M8 3v4M16 3v4" />
+      </svg>
+    ),
+  },
+  {
+    name: 'me',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4.5 20c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5" />
+      </svg>
+    ),
+  },
+];
+
+/** Нижняя панель: Сегодня · Календарь · микрофон · Я. */
+function TabBar({ route, onRoute, onMic }: { route: Tab; onRoute: (r: Tab) => void; onMic: () => void }): ReactNode {
   const t = useT();
+  const tabButton = ({ name, icon }: (typeof TABS)[number]) => (
+    <button key={name} className={route === name ? 'active' : ''} aria-current={route === name ? 'page' : undefined} onClick={() => onRoute(name)}>
+      <span className="pill">{icon}</span>
+      {t[name]}
+    </button>
+  );
   return (
     <nav className="tabbar">
-      {/* Голос — главное действие приложения: крупная кнопка посередине, между вкладками. */}
+      {TABS.slice(0, 2).map(tabButton)}
+      {/* Голос — главное действие приложения: крупная кнопка, чуть выступает над панелью. */}
       <button className="tab-mic" aria-label={t.voice.mic} onClick={onMic}>
         <MicIcon size={28} />
       </button>
-      <button className={route === 'today' ? 'active' : ''} aria-current={route === 'today' ? 'page' : undefined} onClick={() => onRoute('today')}>
-        <span className="pill">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            {[3, 10, 17].flatMap((y) => [3, 10, 17].map((x) => <rect key={`${x}-${y}`} x={x} y={y} width="5" height="5" rx="1.4" />))}
-          </svg>
-        </span>
-        {t.today}
-      </button>
-      <button className={route === 'me' ? 'active' : ''} aria-current={route === 'me' ? 'page' : undefined} onClick={() => onRoute('me')}>
-        <span className="pill">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-            <circle cx="12" cy="8" r="4" />
-            <path d="M4.5 20c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5" />
-          </svg>
-        </span>
-        {t.me}
-      </button>
+      {TABS.slice(2).map(tabButton)}
     </nav>
   );
 }
