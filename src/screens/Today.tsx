@@ -1,6 +1,7 @@
 import { useContext, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { api } from '../api';
 import { isDone, TaskCard } from '../components/TaskCard';
+import { GroupBlocks } from '../components/GroupBlocks';
 import { TodoList } from '../components/TodoList';
 import { LangContext, useT } from '../i18n';
 import { currentChange, useTaskLog, type Cache } from '../useTaskLog';
@@ -14,9 +15,12 @@ interface Props {
   setCache: Dispatch<SetStateAction<Cache>>;
   onEdit: (id: number | null) => void;
   onArchive: () => void;
+  /** Мой id — кому групповые дела и чья очередь. */
+  me: number;
+  onOpenGroup: (id: number) => void;
 }
 
-export function Today({ cache, setCache, onEdit, onArchive }: Props): ReactNode {
+export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const data = cache.today;
@@ -100,6 +104,9 @@ export function Today({ cache, setCache, onEdit, onArchive }: Props): ReactNode 
           ))}
         </section>
       )}
+
+      {/* Группы — под личным: мои дела каждой группы, «кто-то один», мероприятия и общие цели. */}
+      <GroupBlocks groups={data.groups ?? []} me={me} setCache={setCache} onOpen={onOpenGroup} />
 
       {canAdd ? (
         <button className="link-btn" onClick={() => onEdit(null)}>

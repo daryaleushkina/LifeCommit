@@ -14,6 +14,9 @@ import { Today } from './screens/Today';
 import { bumpChange, currentChange, type Cache } from './useTaskLog';
 import { taskScore } from './components/TaskCard';
 import { MicIcon, VoiceSheet, type VoicePreview } from './components/VoiceSheet';
+import { Group } from './screens/Group';
+import { Groups } from './screens/Groups';
+import { Join } from './screens/Join';
 
 type Route =
   | { name: 'today' }
@@ -24,9 +27,14 @@ type Route =
   | { name: 'detail'; id: number }
   | { name: 'task'; id: number | null; kind?: TaskKind }
   | { name: 'archive' }
+  | { name: 'groups' }
+  // Экран группы; back — вкладка, откуда пришли.
+  | { name: 'group'; id: number; back: Tab }
+  // Вступление по ссылке t.me/…?startapp=g_<код>.
+  | { name: 'join'; code: string }
   // Правка привычки из голосового разбора; back — вкладка, с которой открыли шторку.
   | { name: 'draft'; index: number; back: Tab };
-type Tab = 'today' | 'calendar' | 'me';
+type Tab = 'today' | 'calendar' | 'groups' | 'me';
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
 const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 }, todos: [], todos_later: 0, groups: [] }, heat: [], loadedAt: 0 };
 
@@ -89,6 +97,7 @@ export function App(): ReactNode {
       void api.syncCalendars().catch(() => {});
       setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 });
       if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
+      else if (start_param?.startsWith('g_')) setRoute({ name: 'join', code: start_param.slice(2) });
     } catch {
       setBoot({ state: 'error' });
     }
@@ -129,7 +138,8 @@ export function App(): ReactNode {
   const home = () => setRoute({ name: 'today' });
 
   const tab = (name: Tab): Route => ({ name });
-  const currentTab: Tab = route.name === 'me' || route.name === 'calendar' ? route.name : 'today';
+  const currentTab: Tab = route.name === 'me' || route.name === 'calendar' || route.name === 'groups' ? route.name : 'today';
+  const openGroup = (id: number) => setRoute({ name: 'group', id, back: currentTab });
   const closeVoice = () => {
     setVoiceOpen(false);
     setVoicePreview(null);
@@ -180,6 +190,15 @@ export function App(): ReactNode {
     screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} onBack={home} />;
   } else if (route.name === 'detail' && detailTask) {
     screen = <TaskDetail task={detailTask} today={cache.today.day} setCache={setCache} onEdit={() => setRoute({ name: 'task', id: detailTask.id })} onClose={home} />;
+  } else if (route.name === 'join') {
+    screen = <Join code={route.code} onJoined={(id) => {
+      void refresh();
+      setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
+      setRoute({ name: 'group', id, back: 'groups' });
+    }} onClose={home} />;
+  } else if (route.name === 'group') {
+    const back = route.back;
+    screen = <Group key={route.id} id={route.id} me={boot.user.id} today={cache.today.day} onBack={() => setRoute(tab(back))} onChanged={() => void refresh()} />;
   } else if (route.name === 'archive') {
     screen = <Archive archived={cache.today.archived} onChanged={refresh} onClose={home} />;
   } else {
@@ -187,10 +206,12 @@ export function App(): ReactNode {
       <main className="app-shell with-tabs">
         {currentTab === 'me' ? (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
+        ) : currentTab === 'groups' ? (
+          <Groups me={boot.user.id} onOpen={openGroup} />
         ) : currentTab === 'calendar' ? (
           <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} onChanged={() => void refresh()} />
         ) : (
-          <Today cache={cache} setCache={setCache} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} />
+          <Today cache={cache} setCache={setCache} me={boot.user.id} onOpenGroup={openGroup} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} />
         )}
         <TabBar route={currentTab} onRoute={(name) => setRoute(tab(name))} onMic={() => setVoiceOpen(true)} />
         {voiceOpen && (
@@ -247,6 +268,15 @@ const TABS: { name: Tab; icon: ReactNode }[] = [
     ),
   },
   {
+    name: 'groups',
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <circle cx="9" cy="8" r="3.5" />
+        <path d="M2.5 19.5c.6-3 3.2-4.8 6.5-4.8s5.9 1.8 6.5 4.8M15.5 4.8a3.5 3.5 0 0 1 0 6.4M17.5 14.9c2.3.5 3.8 2.1 4.2 4.6" />
+      </svg>
+    ),
+  },
+  {
     name: 'me',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -257,7 +287,7 @@ const TABS: { name: Tab; icon: ReactNode }[] = [
   },
 ];
 
-/** Нижняя панель: Сегодня · Календарь · микрофон · Я. */
+/** Нижняя панель: Сегодня · Календарь · микрофон · Вместе · Я. */
 function TabBar({ route, onRoute, onMic }: { route: Tab; onRoute: (r: Tab) => void; onMic: () => void }): ReactNode {
   const t = useT();
   const tabButton = ({ name, icon }: (typeof TABS)[number]) => (
