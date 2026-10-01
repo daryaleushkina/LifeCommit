@@ -96,7 +96,15 @@ export interface GroupDraft {
   unit: GoalUnit | null;
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]/g, '');
+/** Латиница → кириллица для сравнения имён: «Dasha» в Telegram и «Даше» в голосе — один человек. */
+const LAT: [string, string][] = [['shch', 'щ'], ['sch', 'щ'], ['sh', 'ш'], ['ch', 'ч'], ['zh', 'ж'], ['kh', 'х'], ['ts', 'ц'], ['ya', 'я'], ['yu', 'ю'], ['yo', 'е'], ['ye', 'е'], ['ia', 'я'], ['iu', 'ю'],
+  ['a', 'а'], ['b', 'б'], ['v', 'в'], ['w', 'в'], ['g', 'г'], ['d', 'д'], ['e', 'е'], ['z', 'з'], ['i', 'и'], ['y', 'и'], ['j', 'й'], ['k', 'к'], ['l', 'л'], ['m', 'м'], ['n', 'н'], ['o', 'о'], ['p', 'п'], ['r', 'р'], ['s', 'с'], ['t', 'т'], ['u', 'у'], ['f', 'ф'], ['h', 'х'], ['c', 'к'], ['x', 'кс'], ['q', 'к']];
+function toCyr(s: string): string {
+  let out = s;
+  for (const [l, c] of LAT) out = out.split(l).join(c);
+  return out;
+}
+const norm = (s: string) => toCyr(s.toLowerCase().replace(/ё/g, 'е')).replace(/[ьъ]/g, '').replace(/[^a-zа-я0-9]/g, '');
 
 /**
  * Имя из ответа модели → участник. Сначала точное совпадение, потом по основе:

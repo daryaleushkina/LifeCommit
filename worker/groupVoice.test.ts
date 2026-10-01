@@ -10,6 +10,8 @@ describe('имена из голоса → участники', () => {
     expect(matchMember('Алёной', members)).toBe(2);
     expect(matchMember('Пете', members)).toBe(3);
     expect(matchMember('Вася', members)).toBeNull();
+    expect(matchMember('Даше', [{ id: 9, name: 'Dasha' }, { id: 2, name: 'Алёна' }])).toBe(9);
+    expect(matchMember('Наташе', [{ id: 5, name: 'Natasha' }])).toBe(5);
   });
 });
 
