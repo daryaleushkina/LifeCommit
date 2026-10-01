@@ -24,8 +24,6 @@ type Phase = 'recording' | 'parsing' | 'nothing' | 'nomic' | 'failed' | 'limit';
 /** Короче не отправляем: это случайное касание, а попытка из дневного лимита ушла бы. */
 const MIN_SECONDS = 0.8;
 const BARS = 17;
-/** Уровни клеток знака (как в `Logo`): самые тёмные складываются в галочку. */
-const LOGO_LEVELS = [0, 1, 4, 1, 4, 2, 4, 2, 0];
 
 interface Props {
   preview: VoicePreview | null;
@@ -254,16 +252,23 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
       </div>
     );
   } else if (phase === 'parsing') {
-    // «Круг 14 · A» (выбор владелицы 01.10.2026): клетки знака загораются по очереди, как на заставке.
-    // Пока фразы нет — знак крупный по центру; пришла фраза — она главная, знак поменьше под ней.
+    // «Список пишется» (выбор владелицы 01.10.2026): невидимое перо выводит строки будущего списка.
+    // Пока фразы нет — три строки; пришла фраза — она сверху, перо продолжает писать под ней.
     body = (
       <>
         <h2>{t.voice.parsing}</h2>
         <p className="voice-hint">{heard ? t.voice.subParse : t.voice.subTranscribe}</p>
-        {heard && <div className="voice-quote">«{heard}»</div>}
-        <div className={`parse-cells${heard ? ' small' : ''}`} aria-hidden>
-          {LOGO_LEVELS.map((level, i) => (
-            <i key={i} style={{ '--to': `var(--heat-${level || 1})`, animationDelay: `${i * 0.12}s` } as CSSProperties} />
+        {heard && (
+          <div className="voice-quote" aria-label={heard}>
+            «<Decode text={heard} />»
+          </div>
+        )}
+        <div className="parse-list" aria-hidden>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="parse-row" style={{ '--i': i } as CSSProperties}>
+              <span className="parse-box" />
+              <span className="parse-ink" />
+            </div>
           ))}
         </div>
       </>
@@ -351,5 +356,40 @@ function Wave({ recorder }: { recorder: { current: Recorder | null } }): ReactNo
         <i key={i} />
       ))}
     </div>
+  );
+}
+
+const GLYPHS = 'абвгдежзиклмнопрстуфхцчшщыэюя';
+const DECODE_MS = 900;
+
+/**
+ * Расшифровка (из каталога лоадеров, понравилась владелице): фраза за секунду «проявляется»
+ * из перебирающихся букв слева направо — видно, что голос стал текстом.
+ */
+function Decode({ text }: { text: string }): ReactNode {
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const start = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const done = Math.floor(((now - start) / DECODE_MS) * text.length);
+      if (done >= text.length) {
+        el.textContent = text;
+        return;
+      }
+      let out = text.slice(0, done);
+      for (let i = done; i < text.length; i++) out += /[\s.,!?«»-]/.test(text[i]!) ? text[i] : GLYPHS[(Math.random() * GLYPHS.length) | 0];
+      el.textContent = out;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [text]);
+  return (
+    <span ref={box} aria-hidden>
+      {text}
+    </span>
   );
 }
