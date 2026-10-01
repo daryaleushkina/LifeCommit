@@ -95,7 +95,8 @@ export function App(): ReactNode {
       if (seq === currentChange()) setCache({ today, heat: heat.days, loadedAt: Date.now() });
       // Календари телефона подтягиваем в фоне при каждом входе — не задерживая экран.
       void api.syncCalendars().catch(() => {});
-      setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 });
+      const empty = today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 && today.groups.length === 0;
+      setBoot({ state: 'ready', user, onboarding: empty && !onboardingSkipped() });
       if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
       else if (start_param?.startsWith('g_')) setRoute({ name: 'join', code: start_param.slice(2) });
       else if (start_param?.startsWith('grp_')) setRoute({ name: 'group', id: Number(start_param.slice(4)), back: 'groups' });
@@ -191,7 +192,16 @@ export function App(): ReactNode {
       />
     );
   } else if (boot.onboarding) {
-    screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} />;
+    screen = (
+      <Onboarding
+        onPick={(kind) => setRoute({ name: 'task', id: null, kind })}
+        onSkip={() => {
+          rememberSkip();
+          setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
+          setRoute({ name: 'today' });
+        }}
+      />
+    );
   } else if (route.name === 'pick') {
     screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} onBack={home} />;
   } else if (route.name === 'detail' && detailTask) {
@@ -245,6 +255,23 @@ export function App(): ReactNode {
   }
 
   return <LangContext.Provider value={lang}>{screen}</LangContext.Provider>;
+}
+
+/** «Пропустить» на первом экране — запоминаем на этом устройстве, чтобы не спрашивать при каждом входе. */
+const SKIP_KEY = 'lc-onboarding-skipped';
+function onboardingSkipped(): boolean {
+  try {
+    return localStorage.getItem(SKIP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function rememberSkip() {
+  try {
+    localStorage.setItem(SKIP_KEY, '1');
+  } catch {
+    // не запомнили — спросим в следующий раз, это не страшно
+  }
 }
 
 /** Карта с сегодняшним днём, посчитанным из отметок на экране (без ожидания сервера). */

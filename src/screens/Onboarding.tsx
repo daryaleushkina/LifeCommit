@@ -11,7 +11,7 @@ const INTENTS: TaskKind[] = ['check', 'count', 'abstain'];
  * «Чего я хочу?» — первый экран и он же первый шаг при добавлении привычки.
  * onBack есть только при добавлении: с первого экрана уходить некуда.
  */
-export function Onboarding({ onPick, onBack }: { onPick: (kind: TaskKind) => void; onBack?: () => void }): ReactNode {
+export function Onboarding({ onPick, onBack, onSkip }: { onPick: (kind: TaskKind) => void; onBack?: () => void; onSkip?: () => void }): ReactNode {
   const t = useT();
   useBackButton(onBack ?? null);
   return (
@@ -34,6 +34,12 @@ export function Onboarding({ onPick, onBack }: { onPick: (kind: TaskKind) => voi
           </button>
         ))}
       </div>
+      {/* Можно ничего не заводить: посмотреть приложение, вступить в группу, вернуться позже. */}
+      {onSkip && (
+        <button className="quiet-link" onClick={onSkip}>
+          {t.onboardingSkip}
+        </button>
+      )}
     </main>
   );
 }

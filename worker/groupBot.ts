@@ -2,12 +2,13 @@
 // на сообщение бота (текстом или голосом), утренний список и вечерний итог. docs/groups-architecture.md.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { dayCount, dayItem, type GroupDayItem, type GroupItemRow, type GroupMember } from '../shared/groups';
-import { MAX_VOICE_SECONDS, type TaskInput } from '../shared/types';
+import { MAX_VOICE_SECONDS } from '../shared/types';
 import { takeVoiceQuota, USER_COLS, type UserRow } from './api';
 import { logicalDay, localTime } from './day';
 import { byTelegram, db, tg, type Env } from './env';
 import { markItem } from './groups';
-import { parseHabits, transcribe } from './voice';
+import { parseGroupItems, type GroupDraft } from './groupVoice';
+import { transcribe } from './voice';
 
 interface TgUser {
   id: number;
@@ -70,6 +71,18 @@ const T = {
     joinBtn: 'Вступить в группу',
     joinText: 'Откройте LifeCommit — и дела группы появятся у вас на «Сегодня».',
     goal: (title: string, v: string, t: string) => `${title}: ${v} из ${t}`,
+    d: {
+      anyone: 'кто-то один',
+      event: 'мероприятие',
+      each: 'каждому',
+      turns: (names: string) => `по очереди: ${names}`,
+      goal: (v: string) => `общая цель: ${v}`,
+      daily: 'каждый день',
+      weekdays: 'по будням',
+      weekends: 'по выходным',
+      today: 'сегодня',
+      wd: ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'],
+    },
   },
   en: {
     hello: (title: string) => `Hi! This chat is now the “${title}” group in LifeCommit.\n\nReply to my messages with text or voice and I'll add shared to-dos. Check them off with the buttons right here.`,
@@ -101,6 +114,18 @@ const T = {
     joinBtn: 'Join the group',
     joinText: "Open LifeCommit — the group's to-dos will show up on your Today.",
     goal: (title: string, v: string, t: string) => `${title}: ${v} of ${t}`,
+    d: {
+      anyone: 'anyone',
+      event: 'event',
+      each: 'everyone',
+      turns: (names: string) => `taking turns: ${names}`,
+      goal: (v: string) => `shared goal: ${v}`,
+      daily: 'every day',
+      weekdays: 'on weekdays',
+      weekends: 'on weekends',
+      today: 'today',
+      wd: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    },
   },
 };
 type Texts = typeof T.ru;
@@ -312,17 +337,15 @@ async function addFromChat(env: Env, sb: SupabaseClient, g: ChatGroup, msg: NonN
       text = await transcribe(env, await audio.arrayBuffer(), user.language_code === 'en' ? 'en' : 'ru');
     }
     const day = dayOf(g);
-    const { habits, todos } = text ? await parseHabits(env, text, day) : { habits: [], todos: [] };
-    // Пока модель не знает режимов группы: всё — «кто-то один»; привычки — с повтором, дела — на свой день.
-    const rows = [
-      ...todos.map((d) => ({ title: d.title, day: d.day && d.day > day ? d.day : day, time: d.time ?? null, rrule: null as string | null })),
-      ...habits.map((h) => ({ title: h.title, day, time: null, rrule: habitRule(h) })),
-    ].map((r) => ({ ...r, group_id: g.id, created_by: user.id, mode: 'one' }));
-    if (!rows.length) return void (await reply([msg.voice && text ? t.heard(text) : '', t.nothing].filter(Boolean).join('\n\n')));
-    const { data: created } = await sb.from('group_items').insert(rows).select('id, title');
-    const items = (created ?? []) as { id: number; title: string }[];
-    const undoData = `gu:${items.map((i) => i.id).join(',')}`;
-    const body = [msg.voice ? t.heard(text) : '', `${t.added(g.title)}\n${items.map((i) => `• ${i.title}`).join('\n')}`].filter(Boolean).join('\n\n');
+    const { members } = await chatView(sb, g, day);
+    const drafts = text ? await parseGroupItems(env, text, day, members, user.id) : [];
+    if (!drafts.length) return void (await reply([msg.voice && text ? t.heard(text) : '', t.nothing].filter(Boolean).join('\n\n')));
+    const rows = drafts.map((d) => ({ ...d, group_id: g.id, created_by: user.id }));
+    const { data: created } = await sb.from('group_items').insert(rows).select('id');
+    const ids = ((created ?? []) as { id: number }[]).map((x) => x.id);
+    const undoData = `gu:${ids.join(',')}`;
+    const lines = drafts.map((d) => `• ${d.title} — ${describeDraft(d, members, day, t)}`);
+    const body = [msg.voice ? t.heard(text) : '', `${t.added(g.title)}\n${lines.join('\n')}`].filter(Boolean).join('\n\n');
     await reply(body, { reply_markup: { inline_keyboard: [new TextEncoder().encode(undoData).length <= 64 ? [{ text: t.undo, callback_data: undoData }] : []] } });
     await postToday(env, sb, g);
   } catch (e) {
@@ -331,13 +354,27 @@ async function addFromChat(env: Env, sb: SupabaseClient, g: ChatGroup, msg: NonN
   }
 }
 
-/** Повтор привычки из голосового разбора → RRULE группового дела. */
-function habitRule(h: TaskInput): string {
-  if (h.schedule === 'weekdays' && h.weekdays) {
-    const days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'].filter((_, i) => (h.weekdays! & (1 << i)) !== 0);
-    if (days.length) return `FREQ=WEEKLY;BYDAY=${days.join(',')}`;
-  }
-  return 'FREQ=DAILY';
+/** «Алёна · каждый день», «по очереди: Даша → Петя · вт», «мероприятие · 3 окт, 19:00», «цель: 150 000 ₽». */
+function describeDraft(d: GroupDraft, members: GroupMember[], today: string, t: Texts): string {
+  const name = (id: number) => members.find((m) => m.id === id)?.name ?? '…';
+  const fmt = numFmt(t);
+  if (d.mode === 'goal') return t.d.goal(`${fmt.format(d.target ?? 0)}${d.unit?.currency ? ` ${d.unit.currency}` : d.unit ? ` ${d.unit.forms[2]}` : ''}`);
+  const who =
+    d.mode === 'one' ? t.d.anyone
+    : d.mode === 'event' ? t.d.event
+    : d.rotate ? t.d.turns((d.all_members ? members.map((m) => m.id) : d.assignees).map(name).join(' → '))
+    : d.all_members ? t.d.each
+    : d.assignees.map(name).join(', ');
+  const r = d.rrule ?? '';
+  const days = /BYDAY=([A-Z,]+)/.exec(r)?.[1]?.split(',') ?? [];
+  const when =
+    r === 'FREQ=DAILY' ? t.d.daily
+    : days.join(',') === 'MO,TU,WE,TH,FR' ? t.d.weekdays
+    : days.join(',') === 'SA,SU' ? t.d.weekends
+    : days.length ? days.map((x) => t.d.wd[['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'].indexOf(x)]).join(', ')
+    : d.day === today ? t.d.today
+    : new Date(`${d.day}T12:00:00Z`).toLocaleDateString(t === T.ru ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return [who, when + (d.time ? `, ${d.time}` : '')].join(' · ');
 }
 
 async function onCallback(env: Env, sb: SupabaseClient, q: NonNullable<GroupUpdate['callback_query']>) {

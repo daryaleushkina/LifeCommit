@@ -5,6 +5,7 @@ import { countActive, insertTasks, insertTodos, isPremium, takeVoiceQuota, today
 import { addDays } from './day';
 import { byTelegram, db, tg, type Env } from './env';
 import { handleGroupUpdate, type GroupUpdate } from './groupBot';
+import { parseGroupItems } from './groupVoice';
 import { parseHabits, transcribe } from './voice';
 
 interface TgFrom {
@@ -236,6 +237,21 @@ async function undo(env: Env, q: NonNullable<Update['callback_query']>): Promise
     await tg(env, 'editMessageText', { chat_id: q.message.chat.id, message_id: q.message.message_id, text: t.undone });
   }
 }
+
+// Только для локальной разработки: разбор фразы в группе (участники — ?members=Даша,Алёна&speaker=Даша).
+bot.post('/dev-group', async (c) => {
+  if (c.env.DEV_AUTH_BYPASS !== '1') return c.text('not found', 404);
+  const names = (c.req.query('members') ?? 'Даша,Алёна').split(',');
+  const members = names.map((name, i) => ({ id: i + 1, name }));
+  const speaker = members.find((m) => m.name === c.req.query('speaker'))?.id ?? 1;
+  const day = c.req.query('today') ?? new Date().toISOString().slice(0, 10);
+  if (c.req.query('raw') === '1') {
+    const { askModel, todayLine } = await import('./voice');
+    const { GROUP_SPEC } = await import('./groupVoice');
+    return c.json(await askModel(c.env, `Members: ${names.join(', ')}\nSpeaker: ${names[speaker - 1]}\n${todayLine(day)}\n${await c.req.text()}`, GROUP_SPEC));
+  }
+  return c.json(await parseGroupItems(c.env, await c.req.text(), day, members, speaker));
+});
 
 // Только для локальной разработки: проверить распознавание и разбор без Telegram.
 // POST /bot/dev-voice с аудио в теле → { text, habits }; с text/plain → { habits }. Ничего не создаёт.
