@@ -6,7 +6,7 @@
 //  • «Сделано» в календарь не уходит: у событий нет галочки.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { addDays, logicalDay } from './day';
-import { deleteEvent, discover, getEvent, isAuthError, listCollections, multiget, putEvent, SyncTokenExpired, syncCollection, DavError, type DavAuth } from './caldav';
+import { deleteEvent, discover, getEvent, isAuthError, listCollections, multiget, pickDefault, putEvent, SyncTokenExpired, syncCollection, DavError, type DavAuth } from './caldav';
 import type { Env } from './env';
 import { buildEvent, parseEvents, patchEvent, type CalEvent } from './ics';
 import { open, seal } from './secret';
@@ -99,17 +99,26 @@ export async function connectApple(env: Env, sb: SupabaseClient, user: UserLite,
 
 /** Забрать изменения из всех включённых календарей подключения. */
 export async function pullAccount(env: Env, sb: SupabaseClient, user: UserLite, acc: AccountRow): Promise<void> {
+  let needExport = false;
   try {
     const auth = await authOf(env, acc);
     // Новые календари, которые человек завёл после подключения, тоже забираем.
     if (acc.home_url) {
       const known = new Set((check(await sb.from('calendar_collections').select('url').eq('account_id', acc.id)) as { url: string }[]).map((c) => c.url));
-      const fresh = (await listCollections(acc.home_url, auth)).filter((c) => !known.has(c.url));
+      const all = await listCollections(acc.home_url, auth);
+      const fresh = all.filter((c) => !known.has(c.url));
       if (fresh.length) check(await sb.from('calendar_collections').insert(fresh.map((c) => ({ account_id: acc.id, url: c.url, name: c.name, color: c.color, enabled: true }))));
+      // Основной календарь не нашёлся при подключении (раньше не распознавали календари iCloud) — выберем сейчас.
+      if (!acc.default_url && all.length) {
+        acc.default_url = pickDefault(all);
+        await sb.from('calendar_accounts').update({ default_url: acc.default_url }).eq('id', acc.id);
+        needExport = true;
+      }
     }
     const collections = check(await sb.from('calendar_collections').select('url, sync_token').eq('account_id', acc.id).eq('enabled', true)) as { url: string; sync_token: string | null }[];
     for (const col of collections) await pullCollection(sb, user, auth, col.url, col.sync_token, acc.id);
     await sb.from('calendar_accounts').update({ status: 'ok', last_error: null, last_sync_at: new Date().toISOString() }).eq('id', acc.id);
+    if (needExport) await exportPending(env, sb, user, acc);
   } catch (e) {
     console.error('calendar pull failed', acc.id, e);
     await markFailed(sb, acc, e);

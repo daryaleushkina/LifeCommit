@@ -125,7 +125,7 @@ export async function discover(base: string, auth: DavAuth): Promise<Account> {
 }
 
 /** Основной календарь: по привычным названиям, иначе первый. */
-function pickDefault(list: Collection[]): string | null {
+export function pickDefault(list: Collection[]): string | null {
   const names = ['календарь', 'calendar', 'дом', 'home', 'личный', 'personal'];
   return (list.find((c) => names.includes(c.name.trim().toLowerCase())) ?? list[0])?.url ?? null;
 }
@@ -137,15 +137,12 @@ export async function listCollections(homeUrl: string, auth: DavAuth): Promise<C
     'collections',
   );
   const out: Collection[] = [];
-  // ВРЕМЕННО (01.10.2026): iCloud отдал ответ, в котором мы не нашли ни одного календаря.
-  // Пишем в лог только устройство ответа — без текста (названий, адресов).
-  const shape = res.text.replace(/>[^<]+</g, '><').slice(0, 6000);
-  console.warn('caldav collections shape', res.res.status, blocks(res.text, 'response').length, shape);
   for (const r of blocks(res.text, 'response')) {
     const type = first(r, 'resourcetype') ?? '';
     if (!has(type, 'calendar')) continue;
     const comps = first(r, 'supported-calendar-component-set');
-    if (comps !== null && comps.trim() && !/name="VEVENT"/i.test(comps)) continue;
+    // iCloud пишет атрибуты в одинарных кавычках: <comp name='VEVENT'/>.
+    if (comps !== null && comps.trim() && !/name=["']VEVENT["']/i.test(comps)) continue;
     const href = text(r, 'href');
     if (!href) continue;
     out.push({
