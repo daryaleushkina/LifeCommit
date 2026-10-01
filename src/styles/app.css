@@ -418,3 +418,45 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .cal-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--heat-3); }
 .cal-dots i.ext { background: #6E8FD9; }
 .cal-day.on .cal-dots i { background: var(--accent-text); }
+
+/* ── Подключение календарей ── */
+.page-head.with-action { flex-direction: row; align-items: center; justify-content: space-between; }
+.icon-btn.spinning svg { animation: spin-once 1s linear infinite; }
+@keyframes spin-once { to { transform: rotate(360deg); } }
+.cal-banner { position: relative; margin-top: 14px; padding: 14px 40px 14px 16px; border-radius: 18px; background: var(--accent-soft); display: flex; align-items: center; gap: 12px; }
+.cal-banner-text { flex: 1; font-size: 13px; line-height: 18px; color: var(--muted); }
+.cal-banner-text b { display: block; font-size: 15px; color: var(--text); }
+.cal-banner .act { height: 40px; font-size: 14px; }
+.cal-banner-x { position: absolute; top: 2px; right: 2px; width: 36px; height: 36px; font-size: 20px; color: var(--muted); }
+.cal-chips { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.cal-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px 4px 6px; border-radius: 12px; background: var(--glass); box-shadow: var(--glass-edge); font-size: 13px; color: var(--muted); }
+.cal-chip.bad { color: var(--warn); }
+.src-mark.apple { background: var(--heat-0); color: var(--text); }
+.sheet-note.first { margin-top: 0; }
+.provider { margin-top: 10px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: var(--bg); }
+.provider.off { opacity: 0.6; }
+.provider-logo { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-weight: 700; font-size: 17px; }
+.provider-logo.google { background: color-mix(in srgb, #4A78D6 16%, var(--surface)); color: #4A78D6; }
+.provider-logo.apple { background: var(--heat-0); color: var(--text); }
+.provider-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.provider-text b { font-size: 16px; }
+.provider-text small { font-size: 13px; color: var(--muted); }
+.provider-go { flex: none; min-height: 40px; padding: 0 12px; border-radius: 12px; background: var(--accent); color: var(--accent-text); font-weight: 600; font-size: 14px; }
+.provider-soon { flex: none; font-size: 13px; color: var(--muted); }
+.cal-warn { margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: var(--warn-soft); color: var(--warn); font-size: 14px; line-height: 19px; }
+.inline-link { color: var(--accent); font-weight: 600; font-size: inherit; }
+.inline-link.center { align-self: center; min-height: 40px; margin: 6px 0; }
+.cal-warn .inline-link { color: var(--warn); text-decoration: underline; }
+.sheet-subtitle { margin: 16px 4px 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.toggle-row { cursor: pointer; }
+.cal-color { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.switch { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 44px; height: 26px; border-radius: 13px; background: var(--heat-0); transition: background-color 180ms; cursor: pointer; }
+.switch::after { content: ''; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); transition: transform 200ms var(--ease-out); }
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(18px); }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.steps { margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; counter-reset: s; }
+.steps li { counter-increment: s; display: flex; gap: 10px; font-size: 15px; line-height: 20px; }
+.steps li::before { content: counter(s); flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 12px; display: grid; place-items: center; }
+.sheet .sheet-input + .sheet-input { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) { .icon-btn.spinning svg { animation: none; } }

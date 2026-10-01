@@ -2,6 +2,16 @@ import { retrieveRawInitData } from '@tma.js/sdk-react';
 import type { TaskHistory } from '../shared/stats';
 import type { HeatDay, TaskInput, Todo, TodoInput, TodayResponse, UserSettings, VoiceAction, VoiceEvent } from '../shared/types';
 
+/** Подключённый календарь. */
+export interface CalendarAccount {
+  id: number;
+  provider: 'apple' | 'google';
+  login: string;
+  status: 'ok' | 'auth_failed' | 'error';
+  last_sync_at: string | null;
+  collections: { url: string; name: string; color: string | null; enabled: boolean }[];
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -39,6 +49,11 @@ export const api = {
   updateTodo: (id: number, patch: { title?: string; day?: string; time?: string | null; done?: boolean; on?: string }) =>
     call<{ ok: true }>('PATCH', `/todos/${id}`, patch),
   calendar: (from: string, to: string) => call<{ today: string; todos: Todo[] }>('GET', `/calendar?from=${from}&to=${to}`),
+  calendars: () => call<CalendarAccount[]>('GET', '/calendars'),
+  connectApple: (login: string, password: string) => call<{ ok: true }>('POST', '/calendars/apple', { login, password }),
+  toggleCollection: (accountId: number, url: string, enabled: boolean) => call<{ ok: true }>('PATCH', `/calendars/${accountId}/collections`, { url, enabled }),
+  disconnectCalendar: (provider: 'apple' | 'google') => call<{ ok: true }>('DELETE', `/calendars/${provider}`),
+  syncCalendars: () => call<{ ok: boolean }>('POST', '/calendars/sync'),
   deleteTodo: (id: number) => call<{ ok: true }>('DELETE', `/todos/${id}`),
   laterTodos: () => call<Todo[]>('GET', '/todos/later'),
   updateTask: (id: number, patch: Partial<TaskInput>) =>

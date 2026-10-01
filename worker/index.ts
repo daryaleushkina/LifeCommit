@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { api } from './api';
 import { bot } from './bot';
+import { syncDue } from './calsync';
 import { sendReminders } from './cron';
+import { db } from './env';
 import type { Env } from './env';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -21,5 +23,7 @@ export default {
   fetch: app.fetch,
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(sendReminders(env, env.APP_URL));
+    // Календари Apple: забираем изменения у тех, кого дольше всех не обновляли.
+    ctx.waitUntil(syncDue(env, db(env)).catch((e) => console.error('calendar cron failed', e)));
   },
 } satisfies ExportedHandler<Env>;

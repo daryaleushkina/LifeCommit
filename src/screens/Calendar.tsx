@@ -1,12 +1,14 @@
 import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { sortTodos, type Todo } from '../../shared/types';
-import { api } from '../api';
+import { api, type CalendarAccount } from '../api';
+import { CalendarsSheet, syncedLabel } from '../components/CalendarsSheet';
 import { addDays, monthOf, shiftMonth } from '../components/Heatmap';
 import { TodoList } from '../components/TodoList';
 import { LangContext, useT } from '../i18n';
 import { useTodoActions } from '../useTodos';
 
 type Mode = 'week' | 'month';
+const BANNER_KEY = 'lc-cal-banner-hidden';
 
 const weekdayIndex = (day: string) => (new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7;
 const weekStartOf = (day: string) => addDays(day, -weekdayIndex(day));
@@ -56,6 +58,33 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
     void load();
   }, [load]);
 
+  // Подключённые календари: при открытии вкладки забираем свежие изменения и перечитываем дни.
+  const [accounts, setAccounts] = useState<CalendarAccount[] | null>(null);
+  const [sheet, setSheet] = useState(false);
+  const [bannerHidden, setBannerHidden] = useState(() => {
+    try {
+      return localStorage.getItem(BANNER_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [syncing, setSyncing] = useState(false);
+  const syncNow = useCallback(async () => {
+    setSyncing(true);
+    await api.syncCalendars().catch(() => null);
+    setAccounts(await api.calendars().catch(() => []));
+    await load();
+    setSyncing(false);
+    onChanged();
+  }, [load, onChanged]);
+  useEffect(() => {
+    api.calendars().then((list) => {
+      setAccounts(list);
+      if (list.length) void syncNow();
+    }, () => setAccounts([]));
+    // Только при открытии вкладки.
+  }, []);
+
   const actions = useTodoActions({
     patchList: (fn) => setTodos((list) => (list ? fn(list) : list)),
     reload: async () => {
@@ -73,9 +102,59 @@ export function Calendar({ today, onChanged }: Props): ReactNode {
 
   return (
     <>
-      <header className="page-head">
+      <header className="page-head with-action">
         <h1>{t.calendar}</h1>
+        <button className={`icon-btn${syncing ? ' spinning' : ''}`} aria-label={t.cal.sheetTitle} onClick={() => setSheet(true)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3" />
+            <path d="M18 3v4h-4M6 21v-4h4" />
+          </svg>
+        </button>
       </header>
+
+      {accounts && accounts.length === 0 && !bannerHidden && (
+        <div className="cal-banner">
+          <span className="cal-banner-text">
+            <b>{t.cal.connectTitle}</b>
+            {t.cal.connectHint}
+          </span>
+          <button className="act primary" onClick={() => setSheet(true)}>
+            {t.cal.connect}
+          </button>
+          <button
+            className="cal-banner-x"
+            aria-label={t.voice.cancel}
+            onClick={() => {
+              setBannerHidden(true);
+              try {
+                localStorage.setItem(BANNER_KEY, '1');
+              } catch {
+                // не запомнили — покажем в следующий раз
+              }
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {accounts && accounts.length > 0 && (
+        <div className="cal-chips">
+          {accounts.map((a) => (
+            <button key={a.id} className={`cal-chip${a.status !== 'ok' ? ' bad' : ''}`} onClick={() => setSheet(true)}>
+              <span className={`src-mark ${a.provider}`}>{a.provider === 'apple' ? 'A' : 'G'}</span>
+              {a.status === 'ok' ? syncedLabel(t, a.last_sync_at) : t.cal.newPassword}
+            </button>
+          ))}
+        </div>
+      )}
+      {sheet && (
+        <CalendarsSheet
+          onClose={() => setSheet(false)}
+          onChanged={() => {
+            void syncNow();
+          }}
+        />
+      )}
 
       <div className="segmented two cal-mode" role="radiogroup" aria-label={t.calendar}>
         {(['week', 'month'] as const).map((m) => (

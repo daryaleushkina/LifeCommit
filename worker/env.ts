@@ -13,6 +13,10 @@ export interface Env {
   APP_URL: string;
   /** Ключ Gemini API (Google AI Studio, проект LifeCommit). Нет ключа — фразы разбирает Workers AI. */
   GEMINI_API_KEY?: string;
+  /** Ключ шифрования паролей календарей (AES-GCM, 32 байта в base64). Нет ключа — календари не подключить. */
+  CALENDAR_KEY: string;
+  /** Только для проверки: свой CalDAV-сервер вместо iCloud (например, локальный Radicale). */
+  CALDAV_APPLE_URL?: string;
   /** Только в .dev.vars: принимать подделанную initData из mockEnv. */
   DEV_AUTH_BYPASS?: string;
 }
