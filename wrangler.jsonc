@@ -17,13 +17,13 @@
   // а не к пользователю — тогда длинная дорога одна, а не на каждый запрос к базе.
   "placement": { "mode": "smart" },
   // Свой домен (куплен 01.10.2026 в Cloudflare Registrar) — для проверки приложения Google.
-  // workers.dev остаётся: по нему мини-апп открывается у всех, пока BotFather не переведён на домен.
+  // workers.dev остаётся: по нему ещё открываются старые ссылки и кнопки в сообщениях.
   "routes": [{ "pattern": "lifecommit.app", "custom_domain": true }],
   "workers_dev": true,
   "vars": {
     "SUPABASE_URL": "https://jxiehidneahivjebijae.supabase.co",
     "BOT_USERNAME": "LifeCommit_bot",
-    "APP_URL": "https://lifecommit.daryaleushkina.workers.dev",
+    "APP_URL": "https://lifecommit.app",
     // Клиент OAuth Google (проект LifeCommit в Google Cloud) — не секрет; секрет — GOOGLE_CLIENT_SECRET.
     "GOOGLE_CLIENT_ID": "315642604889-jn5ll59j0lgi8t7qipeprieehkpqf4i1.apps.googleusercontent.com"
   }
