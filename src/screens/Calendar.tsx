@@ -1,8 +1,10 @@
 import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { GroupDayBlock } from '../../shared/groups';
 import { sortTodos, type Todo } from '../../shared/types';
 import { api, type CalendarAccount } from '../api';
 import { CalendarsSheet, syncedLabel } from '../components/CalendarsSheet';
 import { addDays, monthOf, shiftMonth } from '../components/Heatmap';
+import { AvatarStack, GroupItemRow } from '../components/groupUi';
 import { TodoList } from '../components/TodoList';
 import { LangContext, useT } from '../i18n';
 import { useTodoActions } from '../useTodos';
@@ -30,19 +32,24 @@ interface Props {
   onChanged: () => void;
   /** Сразу открыть шторку «Календари». */
   openSheet?: boolean;
+  /** Мой id — чьи групповые дела и очередь. */
+  me: number;
+  onOpenGroup: (id: number) => void;
 }
 
 /**
  * Вкладка «Календарь»: день или месяц (точки — сколько дел в дне), ниже — дела выбранного дня.
  * Повторяющиеся дела (из календаря телефона) стоят в каждом своём дне со своей отметкой.
  */
-export function Calendar({ today, onChanged, openSheet = false }: Props): ReactNode {
+export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   const [mode, setMode] = useState<Mode>('day');
   const [selected, setSelected] = useState(today);
   const [todos, setTodos] = useState<Todo[] | null>(null);
+  // Дела групп, которые касаются меня, по дням.
+  const [groupDays, setGroupDays] = useState<GroupDayBlock[]>([]);
   const days = rangeOf(mode, selected);
   const from = days[0]!;
   const to = days[days.length - 1]!;
@@ -53,7 +60,10 @@ export function Calendar({ today, onChanged, openSheet = false }: Props): ReactN
     const key = `${from}:${to}`;
     asked.current = key;
     const res = await api.calendar(from, to).catch(() => null);
-    if (res && asked.current === key) setTodos(res.todos);
+    if (res && asked.current === key) {
+      setTodos(res.todos);
+      setGroupDays(res.groups ?? []);
+    }
   }, [from, to]);
 
   useEffect(() => {
@@ -201,7 +211,8 @@ export function Calendar({ today, onChanged, openSheet = false }: Props): ReactN
         ))}
         {days.map((day) => {
           const list = ofDay(day);
-          const open = list.filter((d) => !d.done);
+          const groupOpen = groupDays.filter((b) => b.day === day).flatMap((b) => b.items).filter((it) => !it.done && it.mode !== 'event');
+          const open = [...list.filter((d) => !d.done), ...groupOpen.map((it) => ({ id: -it.id, day, source: null }))];
           const out = mode === 'month' && monthOf(day) !== monthOf(selected);
           return (
             <button
@@ -244,6 +255,38 @@ export function Calendar({ today, onChanged, openSheet = false }: Props): ReactN
           onRemove={actions.remove}
         />
       )}
+
+      {/* Дела групп в этот день: отметить можно сегодня и в прошлые дни, будущие — только посмотреть. */}
+      {groupDays
+        .filter((b) => b.day === selected)
+        .map((b) => (
+          <section key={b.group.id} className="group-block">
+            <button className="group-block-head" onClick={() => onOpenGroup(b.group.id)}>
+              <b>{b.group.title}</b>
+              <AvatarStack members={b.group.members} size={22} />
+              <span className="spacer" />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </button>
+            <ul className="card todo-list">
+              {b.items.map((it) => (
+                <GroupItemRow
+                  key={it.id}
+                  item={selected > today ? { ...it, can_mark: false } : it}
+                  members={b.group.members}
+                  me={me}
+                  onToggle={async () => {
+                    await api.markItem(b.group.id, it.id, !it.done, selected).catch(() => null);
+                    await load();
+                    onChanged();
+                  }}
+                  onOpen={() => onOpenGroup(b.group.id)}
+                />
+              ))}
+            </ul>
+          </section>
+        ))}
     </>
   );
 }
