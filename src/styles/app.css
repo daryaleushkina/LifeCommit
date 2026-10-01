@@ -565,3 +565,5 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .join-point { gap: 12px; padding: 10px 12px; }
 .join-point svg { flex: none; color: var(--accent); }
 .join-screen .act { margin-top: 24px; }
+
+.chat-connect { margin-top: 20px; background: var(--accent-soft); color: var(--accent-soft-text); }

@@ -73,6 +73,14 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
     setNote(g.inviteSent);
   };
 
+  // Добавить бота в чат Telegram: тот же код приглашения, но ссылка «в группу» (startgroup).
+  const connectChat = async () => {
+    const { link } = await api.invite(group.id);
+    const url = link.replace('?startapp=', '?startgroup=');
+    if (openTelegramLink.isAvailable()) openTelegramLink(url);
+    else window.open(url, '_blank');
+  };
+
   const leave = async (remove: boolean) => {
     if (popup.show.isAvailable()) {
       const answer = await popup.show({ message: remove ? g.removeConfirm : g.leaveConfirm, buttons: [{ id: 'ok', type: 'destructive', text: remove ? g.remove_group : g.leave }, { type: 'cancel' }] });
@@ -158,6 +166,10 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
             {g.invite}
           </button>
           <p className="sheet-note center">{g.inviteHint}</p>
+          <button className="act wide chat-connect" onClick={() => void connectChat()}>
+            {group.settings.tg_chat_title ? g.chatConnected(group.settings.tg_chat_title) : g.connectChat}
+          </button>
+          <p className="sheet-note center">{g.connectChatHint}</p>
           <button className="quiet-link danger" onClick={() => void leave(false)}>
             {g.leave}
           </button>
