@@ -212,21 +212,29 @@ function geminiSchema(node: unknown): unknown {
   return out;
 }
 
-async function parseWithGemini(key: string, text: string): Promise<unknown> {
+/** Чему учим модель: системная подсказка, примеры и схема ответа. Личный разбор — по умолчанию; групповой — worker/groupVoice.ts. */
+export interface ModelSpec {
+  system: string;
+  shots: [string, object][];
+  schema: object;
+}
+const PERSONAL: ModelSpec = { system: SYSTEM, shots: SHOTS, schema: SCHEMA };
+
+async function parseWithGemini(key: string, text: string, spec: ModelSpec = PERSONAL): Promise<unknown> {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: spec.system }] },
       contents: [
-        ...SHOTS.flatMap(([q, a]) => [
+        ...spec.shots.flatMap(([q, a]) => [
           { role: 'user', parts: [{ text: q }] },
           { role: 'model', parts: [{ text: JSON.stringify(a) }] },
         ]),
         { role: 'user', parts: [{ text }] },
       ],
-      generationConfig: { temperature: 0, maxOutputTokens: 1500, responseMimeType: 'application/json', responseSchema: geminiSchema(SCHEMA) },
+      generationConfig: { temperature: 0, maxOutputTokens: 1500, responseMimeType: 'application/json', responseSchema: geminiSchema(spec.schema) },
     }),
   });
   if (!res.ok) throw new Error(`gemini ${res.status}`);
@@ -236,19 +244,19 @@ async function parseWithGemini(key: string, text: string): Promise<unknown> {
   return JSON.parse(out);
 }
 
-async function parseWithWorkersAi(env: Env, text: string): Promise<unknown> {
+async function parseWithWorkersAi(env: Env, text: string, spec: ModelSpec = PERSONAL): Promise<unknown> {
   const res = (await env.AI.run(
     LLM as never,
     {
       messages: [
-        { role: 'system', content: SYSTEM },
-        ...SHOTS.flatMap(([q, a]) => [
+        { role: 'system', content: spec.system },
+        ...spec.shots.flatMap(([q, a]) => [
           { role: 'user', content: q },
           { role: 'assistant', content: JSON.stringify(a) },
         ]),
         { role: 'user', content: text },
       ],
-      response_format: { type: 'json_schema', json_schema: SCHEMA },
+      response_format: { type: 'json_schema', json_schema: spec.schema },
       temperature: 0,
       max_tokens: 1500,
     } as never,
@@ -287,3 +295,17 @@ function safeJson(s: string): unknown {
     return null;
   }
 }
+
+/** Спросить модель по своей подсказке и схеме: сначала Gemini, не вышло — Workers AI. */
+export async function askModel(env: Env, input: string, spec: ModelSpec): Promise<unknown> {
+  if (env.GEMINI_API_KEY) {
+    try {
+      return await parseWithGemini(env.GEMINI_API_KEY, input, spec);
+    } catch (e) {
+      console.warn('gemini failed, falling back to Workers AI', e);
+    }
+  }
+  return parseWithWorkersAi(env, input, spec);
+}
+
+export { todayLine };
