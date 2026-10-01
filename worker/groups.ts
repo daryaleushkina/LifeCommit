@@ -3,7 +3,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { dayCount, dayItem, type GoalUnit, type GroupItemRow, type GroupKind, type GroupMember, type GroupMode, type GroupRole, type GroupToday } from '../shared/groups';
+import { dayCount, dayItem, type GroupDayBlock, type GoalUnit, type GroupItemRow, type GroupKind, type GroupMember, type GroupMode, type GroupRole, type GroupToday } from '../shared/groups';
 import { parseRRule } from '../shared/rrule';
 import type { App, UserRow } from './api';
 import { addDays, logicalDay } from './day';
@@ -54,6 +54,34 @@ export async function groupsToday(sb: SupabaseClient, user: UserRow, day = today
   });
 }
 
+/**
+ * Дела групп по дням периода глазами `user`: календарь и «Скоро».
+ * Разовое несделанное «переезжает» только на сегодня; в будущих и прошедших днях — только в свой день.
+ * mine — только то, что касается меня (на «Календарь»); иначе — все дела группы (экран группы).
+ */
+export async function groupsRange(sb: SupabaseClient, user: UserRow, from: string, to: string, opts: { mine: boolean; groupId?: number }): Promise<GroupDayBlock[]> {
+  type RangeItem = Omit<GroupItemRow, 'marks'> & { first_done: string | null; marks: { user_id: number; at: string; day: string }[] };
+  const raw = must(await sb.rpc('groups_range', { p_user: user.id, p_from: from, p_to: to })) as (Omit<RawGroup, 'items'> & { items: RangeItem[] })[];
+  const today = todayOf(user);
+  const out: GroupDayBlock[] = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    for (const g of raw) {
+      if (opts.groupId !== undefined && g.id !== opts.groupId) continue;
+      const members = g.members ?? [];
+      const ids = members.map((m) => m.id);
+      const items: GroupDayBlock['items'] = [];
+      for (const it of g.items) {
+        const oneOff = !it.rrule && it.mode !== 'event';
+        if (oneOff && it.day !== d && (d !== today || (it.first_done !== null && it.first_done < d))) continue;
+        const di = dayItem({ ...it, marks: it.marks.filter((m) => m.day === d) }, ids, user.id, d);
+        if (di && (!opts.mine || di.for_me)) items.push(di);
+      }
+      if (items.length) out.push({ day: d, group: { id: g.id, title: g.title, kind: g.kind, members }, items });
+    }
+  }
+  return out;
+}
+
 /** Участник ли я и с какой ролью. Не участник — 404 (не выдаём, что группа существует). */
 async function membership(sb: SupabaseClient, groupId: number, userId: number) {
   const row = must(
@@ -96,7 +124,10 @@ groups.get('/groups/:id', async (c) => {
   ]);
   const g = today.find((x) => x.id === id);
   if (!g) throw new HTTPException(404, { message: 'not_found' });
-  return c.json({ ...g, role, settings: must(settings) });
+  // «Скоро» — ближайшие две недели (без сегодняшнего дня).
+  const day = todayOf(user);
+  const upcoming = await groupsRange(sb, user, addDays(day, 1), addDays(day, 14), { mine: false, groupId: id });
+  return c.json({ ...g, role, settings: must(settings), upcoming });
 });
 
 groups.patch('/groups/:id', async (c) => {

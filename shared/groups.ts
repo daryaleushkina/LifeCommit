@@ -79,6 +79,13 @@ export interface GroupDayItem {
   assignees: number[];
 }
 
+/** Дела группы на один день — для «Календаря» и «Скоро». */
+export interface GroupDayBlock {
+  day: string;
+  group: { id: number; title: string; kind: GroupKind; members: GroupMember[] };
+  items: GroupDayItem[];
+}
+
 export interface GroupToday {
   id: number;
   title: string;

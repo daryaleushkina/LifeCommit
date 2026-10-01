@@ -31,7 +31,7 @@ import { confirmGoogle, connectApple, deleteRemote, disconnect, moveOwnEvents, p
 import { DavError, isAuthError } from './caldav';
 import { authUrl } from './gcal';
 import { signState } from './secret';
-import { groups, groupsToday } from './groups';
+import { groups, groupsRange, groupsToday } from './groups';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -621,17 +621,19 @@ api.get('/calendar', async (c) => {
   if (!isDay(from) || !isDay(to) || to < from || Date.parse(to) - Date.parse(from) > CALENDAR_MAX_DAYS * 86_400_000) {
     throw new HTTPException(400, { message: 'bad_range' });
   }
-  const [oneOff, recurring, done] = await Promise.all([
+  const [oneOff, recurring, done, groupDays] = await Promise.all([
     sb.from('todos').select(TODO_COLS).eq('user_id', user.id).is('rrule', null).gte('day', from).lte('day', to).order('position').order('id'),
     sb.from('todos').select(TODO_COLS).eq('user_id', user.id).not('rrule', 'is', null).lte('day', to),
     sb.from('todo_done').select('todo_id, day').eq('user_id', user.id).gte('day', from).lte('day', to),
+    // Дела групп, которые касаются меня, — в те же дни.
+    groupsRange(sb, user, from, to, { mine: true }),
   ]);
   const doneDays = new Set((must(done) as { todo_id: number; day: string }[]).map((x) => `${x.todo_id}:${x.day}`));
   const todos = [
     ...(must(oneOff) as TodoRow[]).map((r) => asTodo(r, r.day, r.done_on != null, false)),
     ...expandRecurring(must(recurring) as TodoRow[], from, to, doneDays),
   ];
-  return c.json({ today: today(user), todos });
+  return c.json({ today: today(user), todos, groups: groupDays });
 });
 
 // Онбординг: выбор из шаблонов.

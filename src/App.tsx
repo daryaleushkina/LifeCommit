@@ -225,7 +225,7 @@ export function App(): ReactNode {
         ) : currentTab === 'groups' ? (
           <Groups me={boot.user.id} onOpen={openGroup} />
         ) : currentTab === 'calendar' ? (
-          <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} onChanged={() => void refresh()} />
+          <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} onChanged={() => void refresh()} me={boot.user.id} onOpenGroup={openGroup} />
         ) : (
           <Today cache={cache} setCache={setCache} me={boot.user.id} onOpenGroup={openGroup} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} />
         )}

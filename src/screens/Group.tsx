@@ -1,12 +1,12 @@
 // Экран группы (дизайн 16E/16F): дела на сегодня с отметками, люди, приглашение, вклад в общую цель.
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { hapticFeedback, openTelegramLink, popup } from '@tma.js/sdk-react';
 import type { GroupDayItem } from '../../shared/groups';
 import { api, ApiError, type GroupDetail } from '../api';
 import { GroupItemSheet } from '../components/GroupItemSheet';
 import { Avatar, AvatarStack, GroupBadge, GroupItemRow } from '../components/groupUi';
 import { Sheet } from '../components/Picker';
-import { useT } from '../i18n';
+import { LangContext, useT } from '../i18n';
 import { useBackButton } from '../telegram/hooks';
 
 interface Props {
@@ -24,6 +24,7 @@ const order = (it: GroupDayItem) => (it.done ? 3 : it.mode === 'event' ? 2 : it.
 export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   const t = useT();
   const g = t.gr;
+  const locale = useContext(LangContext) === 'ru' ? 'ru-RU' : 'en-US';
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const [tab, setTab] = useState<'items' | 'people'>('items');
@@ -93,6 +94,8 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
 
   const goals = group.items.filter((it) => it.mode === 'goal');
   const items = group.items.filter((it) => it.mode !== 'goal').sort((a, b) => order(a) - order(b) || (a.time ?? '').localeCompare(b.time ?? ''));
+  // «Скоро» — разовые дела и мероприятия; повторяющиеся и так видны каждый день.
+  const soon = group.upcoming.map((b) => ({ ...b, items: b.items.filter((it) => !it.recurring || it.mode === 'event') })).filter((b) => b.items.length > 0);
   const doneToday = (uid: number) => group.items.filter((it) => it.done_by.includes(uid)).map((it) => it.title);
 
   return (
@@ -139,6 +142,21 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
               <GroupItemRow key={it.id} item={it} members={group.members} me={me} onToggle={() => void toggle(it)} onOpen={() => setEditing(it)} />
             ))}
           </ul>
+          {soon.length > 0 && (
+            <>
+              <h2 className="section-label">{g.soon}</h2>
+              {soon.map((b) => (
+                <section key={b.day} className="later-day">
+                  <h3>{new Date(`${b.day}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+                  <ul className="card todo-list flat">
+                    {b.items.map((it) => (
+                      <GroupItemRow key={it.id} item={{ ...it, can_mark: false }} members={group.members} me={me} onOpen={() => setEditing(it)} />
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </>
+          )}
           <button className="fab" onClick={() => setEditing('new')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
               <path d="M12 5v14M5 12h14" />
