@@ -1,4 +1,5 @@
 // Типы, общие для Worker'а и мини-аппа.
+import type { GroupToday } from './groups';
 
 export type TaskKind = 'count' | 'check' | 'abstain';
 export type Schedule = 'daily' | 'weekdays' | 'per_week';
@@ -93,6 +94,8 @@ export interface TodayResponse {
   todos: Todo[];
   /** Сколько дел запланировано на потом. */
   todos_later: number;
+  /** Мои группы с делами на сегодня (блоки под личным). */
+  groups: GroupToday[];
 }
 
 export interface HeatDay {
