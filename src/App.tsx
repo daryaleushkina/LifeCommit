@@ -223,7 +223,7 @@ export function App(): ReactNode {
         {currentTab === 'me' ? (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         ) : currentTab === 'groups' ? (
-          <Groups me={boot.user.id} onOpen={openGroup} />
+          <Groups me={boot.user.id} initial={cache.today.groups} onOpen={openGroup} />
         ) : currentTab === 'calendar' ? (
           <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} onChanged={() => void refresh()} me={boot.user.id} onOpenGroup={openGroup} />
         ) : (

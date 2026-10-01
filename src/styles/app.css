@@ -549,7 +549,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .group-screen { padding-bottom: 120px; }
 .group-screen .segmented + .card, .group-screen .segmented + .note { margin-top: 16px; }
 .group-header { margin: 28px 0 16px; display: flex; align-items: center; gap: 14px; }
-.group-header > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.group-header > .group-header-text { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.group-header > .icon-btn { align-self: flex-start; }
 .group-header h1 { margin: 0; font-size: 26px; line-height: 30px; letter-spacing: -0.02em; }
 .group-sub { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); flex-wrap: wrap; }
 .member-row { gap: 12px; padding: 8px 12px; }
@@ -567,3 +568,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .join-screen .act { margin-top: 24px; }
 
 .chat-connect { margin-top: 20px; background: var(--accent-soft); color: var(--accent-soft-text); }
+
+/* Клетки месяца: еле заметная рамка — чтобы сетку было видно (особенно в тёмной теме, 02.10.2026). */
+.cal-grid.month .cal-day { box-shadow: inset 0 0 0 1px var(--line); }
+:root[data-color-scheme='dark'] .cal-grid.month .cal-day { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+.cal-grid.month .cal-day.on, .cal-grid.month .cal-day.out { box-shadow: none; }

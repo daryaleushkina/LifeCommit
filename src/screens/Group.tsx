@@ -18,6 +18,9 @@ interface Props {
   onChanged: () => void;
 }
 
+/** Экраны групп, которые уже открывали, — между переходами (открываются сразу, свежее подтягивается). */
+const groupCache = new Map<number, GroupDetail>();
+
 /** Порядок: несделанные по времени, потом без времени, мероприятия, сделанные вниз; цели — отдельно сверху. */
 const order = (it: GroupDayItem) => (it.done ? 3 : it.mode === 'event' ? 2 : it.time ? 0 : 1);
 
@@ -25,7 +28,16 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   const t = useT();
   const g = t.gr;
   const locale = useContext(LangContext) === 'ru' ? 'ru-RU' : 'en-US';
-  const [group, setGroup] = useState<GroupDetail | null>(null);
+  const [group, setGroupState] = useState<GroupDetail | null>(groupCache.get(id) ?? null);
+  // Что показали — запоминаем: вернулись на экран — он открывается сразу.
+  const setGroup = useCallback((next: GroupDetail | null | ((cur: GroupDetail | null) => GroupDetail | null)) => {
+    setGroupState((cur) => {
+      const v = typeof next === 'function' ? next(cur) : next;
+      if (v) groupCache.set(id, v);
+      return v;
+    });
+  }, [id]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [missing, setMissing] = useState(false);
   const [tab, setTab] = useState<'items' | 'people'>('items');
   const [editing, setEditing] = useState<GroupDayItem | 'new' | null>(null);
@@ -33,7 +45,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   const [note, setNote] = useState<string | null>(null);
 
   useBackButton(onBack);
-  const load = useCallback(() => api.group(id).then(setGroup, () => setMissing(true)), [id]);
+  const load = useCallback(() => api.group(id).then(setGroup, () => setMissing(true)), [id, setGroup]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -101,8 +113,8 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   return (
     <main className="app-shell group-screen">
       <header className="group-header">
-        <GroupBadge kind={group.kind} title={group.title} size={60} />
-        <span>
+        <GroupBadge id={group.id} title={group.title} size={60} />
+        <span className="group-header-text">
           <h1>{group.title}</h1>
           <span className="group-sub">
             <AvatarStack members={group.members} size={20} />
@@ -110,6 +122,12 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
             {group.planned > 0 && ` · ${g.progress(group.done, group.planned)}`}
           </span>
         </span>
+        <button className="icon-btn" aria-label={g.settings} onClick={() => setSettingsOpen(true)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+          </svg>
+        </button>
       </header>
 
       <div className="segmented two" role="radiogroup">
@@ -184,21 +202,23 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
             {g.invite}
           </button>
           <p className="sheet-note center">{g.inviteHint}</p>
-          <button className="act wide chat-connect" onClick={() => void connectChat()}>
-            {group.settings.tg_chat_title ? g.chatConnected(group.settings.tg_chat_title) : g.connectChat}
-          </button>
-          <p className="sheet-note center">{g.connectChatHint}</p>
-          <button className="quiet-link danger" onClick={() => void leave(false)}>
-            {g.leave}
-          </button>
-          {group.role === 'owner' && (
-            <button className="quiet-link danger" onClick={() => void leave(true)}>
-              {g.remove_group}
-            </button>
-          )}
         </>
       )}
 
+      {settingsOpen && (
+        <GroupSettingsSheet
+          group={group}
+          onClose={() => setSettingsOpen(false)}
+          onRenamed={(title) => {
+            setGroup((cur) => cur && { ...cur, title });
+            onChanged();
+          }}
+          onAdminsOnly={(on) => setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, admins_only_edit: on } })}
+          onConnectChat={() => void connectChat()}
+          onLeave={() => void leave(false)}
+          onDelete={() => void leave(true)}
+        />
+      )}
       {editing && (
         <GroupItemSheet
           group={group}
@@ -250,6 +270,81 @@ function PutSheet({ item, groupTitle, onClose, onPut }: { item: GroupDayItem; gr
       >
         {g.put}
       </button>
+    </Sheet>
+  );
+}
+
+/** Настройки группы: название, «только админы заводят дела», чат Telegram, выйти, удалить. */
+function GroupSettingsSheet({
+  group,
+  onClose,
+  onRenamed,
+  onAdminsOnly,
+  onConnectChat,
+  onLeave,
+  onDelete,
+}: {
+  group: GroupDetail;
+  onClose: () => void;
+  onRenamed: (title: string) => void;
+  onAdminsOnly: (on: boolean) => void;
+  onConnectChat: () => void;
+  onLeave: () => void;
+  onDelete: () => void;
+}): ReactNode {
+  const t = useT();
+  const g = t.gr;
+  const canManage = group.role !== 'member';
+  const [title, setTitle] = useState(group.title);
+  const save = async () => {
+    const next = title.trim();
+    if (!next || next === group.title) return;
+    await api.updateGroup(group.id, { title: next }).catch(() => {});
+    onRenamed(next);
+  };
+  return (
+    <Sheet title={g.settings} onClose={() => { void save(); onClose(); }}>
+      {canManage ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+            (document.activeElement as HTMLElement | null)?.blur();
+          }}
+        >
+          <input className="sheet-input" maxLength={60} enterKeyHint="done" aria-label={g.name} placeholder={g.namePh} value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => void save()} />
+        </form>
+      ) : (
+        <p className="sheet-note first">{group.title}</p>
+      )}
+      {canManage && (
+        <div className="card flat">
+          <label className="row toggle-row">
+            <span className="label">{g.adminsOnly}</span>
+            <input
+              type="checkbox"
+              className="switch"
+              checked={group.settings.admins_only_edit}
+              onChange={(e) => {
+                onAdminsOnly(e.target.checked);
+                void api.updateGroup(group.id, { admins_only_edit: e.target.checked }).catch(() => {});
+              }}
+            />
+          </label>
+        </div>
+      )}
+      <button className="act wide chat-connect" onClick={onConnectChat}>
+        {group.settings.tg_chat_title ? g.chatConnected(group.settings.tg_chat_title) : g.connectChat}
+      </button>
+      <p className="sheet-note center">{g.connectChatHint}</p>
+      <button className="quiet-link danger" onClick={onLeave}>
+        {g.leave}
+      </button>
+      {group.role === 'owner' && (
+        <button className="quiet-link danger" onClick={onDelete}>
+          {g.remove_group}
+        </button>
+      )}
     </Sheet>
   );
 }

@@ -1,6 +1,6 @@
 // Вкладка «Вместе» (дизайн 16A): мои группы с прогрессом дня и «Новая группа» (16Q).
 import { useEffect, useState, type ReactNode } from 'react';
-import type { GroupKind, GroupToday } from '../../shared/groups';
+import type { GroupToday } from '../../shared/groups';
 import { api } from '../api';
 import { AvatarStack, GroupBadge } from '../components/groupUi';
 import { Sheet } from '../components/Picker';
@@ -8,15 +8,27 @@ import { useT } from '../i18n';
 
 interface Props {
   me: number;
+  /** Группы из «Сегодня» — чтобы вкладка открылась сразу, без ожидания. */
+  initial: GroupToday[];
   onOpen: (id: number) => void;
 }
 
-export function Groups({ me, onOpen }: Props): ReactNode {
+/** Последний список — между переключениями вкладок. */
+let listCache: GroupToday[] | null = null;
+
+export function Groups({ me, initial, onOpen }: Props): ReactNode {
   const t = useT();
   const g = t.gr;
-  const [list, setList] = useState<GroupToday[] | null>(null);
+  const [list, setList] = useState<GroupToday[] | null>(listCache ?? initial);
   const [creating, setCreating] = useState(false);
-  const load = () => api.groups().then(setList, () => setList([]));
+  const load = () =>
+    api.groups().then(
+      (l) => {
+        listCache = l;
+        setList(l);
+      },
+      () => setList((cur) => cur ?? []),
+    );
   useEffect(() => {
     void load();
   }, []);
@@ -37,7 +49,7 @@ export function Groups({ me, onOpen }: Props): ReactNode {
           return (
             <button key={group.id} className="card group-card" onClick={() => onOpen(group.id)}>
               <span className="group-card-head">
-                <GroupBadge kind={group.kind} title={group.title} />
+                <GroupBadge id={group.id} title={group.title} />
                 <span className="group-card-title">
                   <b>{group.title}</b>
                   <small>{g.people(group.members.length)}</small>
@@ -80,14 +92,11 @@ export function Groups({ me, onOpen }: Props): ReactNode {
   );
 }
 
-const KINDS: GroupKind[] = ['family', 'sport', 'pair', 'friends', 'work', 'other'];
-
-/** Новая группа: название и тип (тип подсказывает значок и примеры дел). */
+/** Новая группа: только название — тип не нужен, значок и цвет берутся из самой группы. */
 function NewGroupSheet({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }): ReactNode {
   const t = useT();
   const g = t.gr;
   const [title, setTitle] = useState('');
-  const [kind, setKind] = useState<GroupKind>('family');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
@@ -95,7 +104,7 @@ function NewGroupSheet({ onClose, onCreated }: { onClose: () => void; onCreated:
     setBusy(true);
     setError(false);
     try {
-      onCreated((await api.createGroup(title.trim(), kind)).id);
+      onCreated((await api.createGroup(title.trim(), 'other')).id);
     } catch {
       setError(true);
       setBusy(false);
@@ -104,18 +113,14 @@ function NewGroupSheet({ onClose, onCreated }: { onClose: () => void; onCreated:
 
   return (
     <Sheet title={g.newGroup} onClose={onClose}>
-      <input className="sheet-input" autoFocus maxLength={60} placeholder={g.namePh} aria-label={g.namePh} value={title} onChange={(e) => setTitle(e.target.value)} />
-      <div className="kind-grid" role="radiogroup" aria-label={g.newGroup}>
-        {KINDS.map((k) => (
-          <button key={k} role="radio" aria-checked={kind === k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>
-            <GroupBadge kind={k} title={g.kinds[k]} size={36} />
-            <span>
-              <b>{g.kinds[k]}</b>
-              <small>{g.kindHints[k]}</small>
-            </span>
-          </button>
-        ))}
-      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (title.trim() && !busy) void create();
+        }}
+      >
+        <input className="sheet-input" autoFocus maxLength={60} enterKeyHint="done" placeholder={g.namePh} aria-label={g.namePh} value={title} onChange={(e) => setTitle(e.target.value)} />
+      </form>
       {error && <p className="error">{t.error}</p>}
       <button className="act primary wide" disabled={busy || !title.trim()} onClick={() => void create()}>
         {g.create}

@@ -47,8 +47,10 @@ export function AvatarStack({ members, size = 24, max = 4 }: { members: GroupMem
   );
 }
 
-export function GroupBadge({ kind, title, size = 48 }: { kind: GroupKind; title: string; size?: number }): ReactNode {
-  const [bg, fg] = KIND_COLORS[kind] ?? KIND_COLORS.other;
+/** Значок группы: первая буква, цвет — по id группы (тип группы не выбирают, 02.10.2026). */
+export function GroupBadge({ id, title, size = 48 }: { id: number; title: string; size?: number }): ReactNode {
+  const palette = Object.values(KIND_COLORS);
+  const [bg, fg] = palette[Math.abs(id) % palette.length]!;
   return (
     <span className="group-badge" aria-hidden style={{ width: size, height: size, background: bg, color: fg, fontSize: Math.round(size * 0.42), borderRadius: Math.round(size * 0.33) }}>
       {title.slice(0, 1).toUpperCase()}
