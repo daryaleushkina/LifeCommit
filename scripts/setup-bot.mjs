@@ -54,3 +54,7 @@ for (const [lang, cmds, description, short] of [
   await call('setMyDescription', { description, language_code });
   await call('setMyShortDescription', { short_description: short, language_code });
 }
+
+// В групповых чатах — своя команда: показать «Сегодня в группе».
+await call('setMyCommands', { commands: [{ command: 'today', description: 'Дела группы на сегодня' }], scope: { type: 'all_group_chats' }, language_code: 'ru' });
+await call('setMyCommands', { commands: [{ command: 'today', description: "The group's to-dos for today" }], scope: { type: 'all_group_chats' } });

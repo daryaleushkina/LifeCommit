@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { api } from './api';
 import { bot } from './bot';
 import { syncDue } from './calsync';
+import { groupChatsTick } from './groupBot';
 import { sendReminders } from './cron';
 import { db } from './env';
 import { google } from './google';
@@ -25,6 +26,8 @@ export default {
   fetch: app.fetch,
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(sendReminders(env, env.APP_URL));
+    // Чаты групп: утром — «Сегодня в группе», вечером — итог.
+    ctx.waitUntil(groupChatsTick(env).catch((e) => console.error('group chats failed', e)));
     // Календари Apple и Google: забираем изменения у тех, кого дольше всех не обновляли.
     ctx.waitUntil(syncDue(env, db(env)).catch((e) => console.error('calendar cron failed', e)));
   },

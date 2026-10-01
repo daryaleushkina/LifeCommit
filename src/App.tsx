@@ -98,6 +98,12 @@ export function App(): ReactNode {
       setBoot({ state: 'ready', user, onboarding: today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 });
       if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
       else if (start_param?.startsWith('g_')) setRoute({ name: 'join', code: start_param.slice(2) });
+      else if (start_param?.startsWith('grp_')) setRoute({ name: 'group', id: Number(start_param.slice(4)), back: 'groups' });
+      else {
+        // Из бота кнопкой web_app: start_param нет, приглашение — в адресе (?join=<код>).
+        const join = new URLSearchParams(window.location.search).get('join');
+        if (join && /^[a-z0-9]{6,20}$/.test(join)) setRoute({ name: 'join', code: join });
+      }
     } catch {
       setBoot({ state: 'error' });
     }
