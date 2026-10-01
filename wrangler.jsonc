@@ -19,7 +19,9 @@
   "vars": {
     "SUPABASE_URL": "https://jxiehidneahivjebijae.supabase.co",
     "BOT_USERNAME": "LifeCommit_bot",
-    "APP_URL": "https://lifecommit.daryaleushkina.workers.dev"
+    "APP_URL": "https://lifecommit.daryaleushkina.workers.dev",
+    // Клиент OAuth Google (проект LifeCommit в Google Cloud) — не секрет; секрет — GOOGLE_CLIENT_SECRET.
+    "GOOGLE_CLIENT_ID": "315642604889-jn5ll59j0lgi8t7qipeprieehkpqf4i1.apps.googleusercontent.com"
   }
-  // Секреты (wrangler secret put): TELEGRAM_BOT_TOKEN, SUPABASE_SECRET_KEY, TELEGRAM_WEBHOOK_SECRET
+  // Секреты (wrangler secret put): TELEGRAM_BOT_TOKEN, SUPABASE_SECRET_KEY, TELEGRAM_WEBHOOK_SECRET, GOOGLE_CLIENT_SECRET
 }
