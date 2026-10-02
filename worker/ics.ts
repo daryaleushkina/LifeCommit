@@ -2,6 +2,8 @@
 // и собрать событие из нашего дела. Время переводится в часовой пояс человека: дело живёт
 // в его днях и часах, а календарь хранит момент (UTC или со своим TZID).
 import { parseRRule } from '../shared/rrule';
+import type { TodoDetails } from '../shared/types';
+import { buildDetails, personName } from './eventDetails';
 
 /** Событие календаря, как его понимает LifeCommit. */
 export interface CalEvent {
@@ -15,6 +17,8 @@ export interface CalEvent {
   /** RRULE, если повтор нам понятен; иначе событие — один раз. */
   rrule: string | null;
   exdates: string[];
+  /** Место, ссылка, участники, описание. */
+  details: TodoDetails | null;
 }
 
 // ── Часовые пояса через Intl: без библиотек и без таблиц поясов ──
@@ -129,7 +133,7 @@ export function parseRecurrence(lines: string[], userTz: string): { rrule: strin
  * Изменённый раз повторяющегося события (RECURRENCE-ID) становится отдельным делом, а у самого
  * повтора этот день исключается; отменённые (STATUS:CANCELLED) — просто исключаются.
  */
-export function parseEvents(ics: string, userTz: string): CalEvent[] {
+export function parseEvents(ics: string, userTz: string, selfEmail = ''): CalEvent[] {
   const blocks: Prop[][] = [];
   let cur: Prop[] | null = null;
   let depth = 0;
@@ -182,6 +186,14 @@ export function parseEvents(ics: string, userTz: string): CalEvent[] {
       durationMin: durationMin && durationMin > 0 && durationMin <= 20160 ? durationMin : null,
       rrule: rrule && parseRRule(rrule) ? rrule : null,
       exdates,
+      details: buildDetails({
+        location: unescape(get('LOCATION')?.value ?? ''),
+        description: unescape(get('DESCRIPTION')?.value ?? ''),
+        conference: get('X-GOOGLE-CONFERENCE')?.value ?? get('URL')?.value ?? null,
+        attendees: props
+          .filter((p) => p.name === 'ATTENDEE' && p.params.CUTYPE !== 'ROOM' && p.params.CUTYPE !== 'RESOURCE')
+          .map((p) => ({ name: personName(p.params.CN, p.value), self: Boolean(selfEmail) && p.value.toLowerCase().endsWith(selfEmail.toLowerCase()) })),
+      }),
     };
     const recurrenceId = get('RECURRENCE-ID');
     if (recurrenceId) {
@@ -232,6 +244,7 @@ export interface OwnEvent {
   durationMin: number | null;
   /** Часовой пояс человека. */
   tz: string;
+  location?: string | null;
 }
 
 /** Наше дело → событие календаря. */
@@ -245,6 +258,7 @@ export function buildEvent(e: OwnEvent, now = Date.now()): string {
     `UID:${e.uid}`,
     `DTSTAMP:${stamp(now)}`,
     `SUMMARY:${escapeText(e.title)}`,
+    ...(e.location ? [`LOCATION:${escapeText(e.location)}`] : []),
     ...whenLines(e.day, e.time, e.durationMin, e.tz),
     'END:VEVENT',
     'END:VCALENDAR',

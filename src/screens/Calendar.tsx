@@ -1,7 +1,7 @@
-import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { GroupDayBlock } from '../../shared/groups';
+import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { sortTodos, type Todo } from '../../shared/types';
 import { api, type CalendarAccount } from '../api';
+import { caches, load as fetchInto, warm } from '../caches';
 import { CalendarsSheet, syncedLabel } from '../components/CalendarsSheet';
 import { addDays, monthOf, shiftMonth } from '../components/Heatmap';
 import { AvatarStack, GroupItemRow } from '../components/groupUi';
@@ -41,12 +41,11 @@ interface Props {
  * Вкладка «Календарь»: день или месяц (точки — сколько дел в дне), ниже — дела выбранного дня.
  * Повторяющиеся дела (из календаря телефона) стоят в каждом своём дне со своей отметкой.
  */
-/**
- * Что уже показывали — между переключениями вкладок: экран открывается сразу, свежее подтягивается тихо.
- * Живёт, пока открыто приложение.
- */
-const daysCache = new Map<string, { todos: Todo[]; groups: GroupDayBlock[] }>();
-let accountsCache: CalendarAccount[] | null = null;
+/** Промежуток дней на экране: день или месяц целыми неделями. */
+const keyOf = (mode: Mode, anchor: string) => {
+  const days = rangeOf(mode, anchor);
+  return [days[0]!, days[days.length - 1]!] as const;
+};
 
 export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup }: Props): ReactNode {
   const t = useT();
@@ -57,37 +56,44 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
   const days = rangeOf(mode, selected);
   const from = days[0]!;
   const to = days[days.length - 1]!;
-  const cached = daysCache.get(`${from}:${to}`);
-  const [todos, setTodos] = useState<Todo[] | null>(cached?.todos ?? null);
+  const key = `${from}:${to}`;
+  // Что на экране — прямо из кэша, ещё до первой отрисовки: уже виденный (или подтянутый заранее) день открывается сразу.
+  // Правки «на месте» (отметили — галочка сразу, сервер догоняет) пишутся в тот же кэш.
+  const [, rerender] = useState(0);
+  const shown = caches.days.get(key);
+  const todos = shown?.todos ?? null;
   // Дела групп, которые касаются меня, по дням.
-  const [groupDays, setGroupDays] = useState<GroupDayBlock[]>(cached?.groups ?? []);
-  // Ответ на старый промежуток (быстро листали) не должен затереть новый.
-  const asked = useRef('');
+  const groupDays = shown?.groups ?? [];
+  const setTodos = (fn: (list: Todo[] | null) => Todo[] | null) => {
+    // Берём текущее из кэша, а не из отрисовки: правку могут применить после ожидания сервера.
+    const cur = caches.days.get(key);
+    if (!cur) return;
+    caches.days.set(key, { todos: fn(cur.todos) ?? [], groups: cur.groups });
+    rerender((n) => n + 1);
+  };
 
   const load = useCallback(async () => {
-    const key = `${from}:${to}`;
-    asked.current = key;
-    const res = await api.calendar(from, to).catch(() => null);
-    if (res) daysCache.set(key, { todos: res.todos, groups: res.groups ?? [] });
-    if (res && asked.current === key) {
-      setTodos(res.todos);
-      setGroupDays(res.groups ?? []);
-    }
+    if (await fetchInto.range(from, to).catch(() => null)) rerender((n) => n + 1);
   }, [from, to]);
 
   useEffect(() => {
-    // Уже показывали этот промежуток — сразу его, свежее подтянется без мигания.
-    const hit = daysCache.get(`${from}:${to}`);
-    if (hit) {
-      setTodos(hit.todos);
-      setGroupDays(hit.groups);
-    }
     void load();
+    // Соседние дни (или месяцы) — заранее: листать стрелками без пустых кадров.
+    for (const n of [1, -1]) {
+      const next = mode === 'day' ? addDays(selected, n) : `${shiftMonth(monthOf(selected), n)}-01`;
+      const [a, b] = keyOf(mode, next);
+      if (!caches.days.has(`${a}:${b}`)) warm(fetchInto.range(a, b));
+    }
+    // И месяц — чтобы «Месяц» открылся сразу.
+    if (mode === 'day') {
+      const [a, b] = keyOf('month', selected);
+      if (!caches.days.has(`${a}:${b}`)) warm(fetchInto.range(a, b));
+    }
   }, [load]);
 
   // Подключённые календари. Синхронизация — при запуске приложения и по кнопке «Обновить» (решение владелицы 02.10.2026),
   // при открытии вкладки — нет: вкладка должна открываться сразу.
-  const [accounts, setAccounts] = useState<CalendarAccount[] | null>(accountsCache);
+  const [accounts, setAccounts] = useState<CalendarAccount[] | null>(caches.accounts);
   const [sheet, setSheet] = useState(openSheet);
   const [bannerHidden, setBannerHidden] = useState(() => {
     try {
@@ -100,17 +106,17 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
   const syncNow = useCallback(async () => {
     setSyncing(true);
     await api.syncCalendars().catch(() => null);
-    accountsCache = await api.calendars().catch(() => []);
-    setAccounts(accountsCache);
+    setAccounts(await fetchInto.accounts().catch(() => caches.accounts ?? []));
+    // Синхронизация могла поменять любые дни — уже виденное перечитаем по мере открытия.
+    caches.days.clear();
     await load();
     setSyncing(false);
     onChanged();
   }, [load, onChanged]);
   useEffect(() => {
-    api.calendars().then((list) => {
-      accountsCache = list;
-      setAccounts(list);
-    }, () => setAccounts((cur) => cur ?? []));
+    fetchInto.accounts().then(setAccounts, () => setAccounts((cur) => cur ?? []));
+    // Нет Google — заранее берём ссылку входа: шторка календарей откроется уже с кнопкой.
+    if (!caches.accounts?.some((a) => a.provider === 'google')) warm(fetchInto.googleUrl());
   }, []);
 
   const actions = useTodoActions({
@@ -212,8 +218,9 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
           ›
         </button>
       </div>
-      {mode === 'day' && selected !== today && (
-        <button className="link-btn today-link" onClick={() => setSelected(today)}>
+      {/* Место под «К сегодня» есть всегда: появилась ссылка — список не съезжает. */}
+      {mode === 'day' && (
+        <button className="link-btn today-link" style={selected === today ? { visibility: 'hidden' } : undefined} aria-hidden={selected === today} tabIndex={selected === today ? -1 : 0} onClick={() => setSelected(today)}>
           {t.backToToday}
         </button>
       )}

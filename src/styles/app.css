@@ -208,6 +208,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 /* ── Шторка снизу: выбор значения вместо системных списков ── */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(0, 0, 0, 0.4); animation: fade 180ms ease-out; }
+/* Внутри шторки ничего не сжимается: длинная шторка прокручивается, а не плющит поля. */
+.sheet > * { flex-shrink: 0; }
 .sheet { width: 100%; max-height: 85%; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 20px 16px calc(var(--app-inset-bottom) + 20px); border-radius: 24px 24px 0 0; background: var(--surface); animation: sheet-up 240ms var(--ease-out); }
 .sheet h2 { padding: 0 4px 10px; font-size: 18px; line-height: 24px; font-weight: 700; }
 .options { display: flex; flex-direction: column; }
@@ -469,7 +471,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 .head-actions { display: flex; gap: 8px; }
 .icon-btn:disabled { opacity: 1; }
-.today-link { align-self: center; margin-top: 0; }
+/* «К сегодня» — место под ссылку есть всегда (иначе список съезжает); компактно, заходит на отступ заголовка ниже. */
+.today-link { align-self: center; margin: 0 0 -18px; min-height: 32px; font-size: 14px; }
 
 /* Блок «Месяц / Год» в профиле — пониже (просьба владелицы 01.10.2026): квадратные клетки 28 px
    по всей ширине (между колонками — сколько останется), число активных дней — под названием месяца. */
@@ -572,7 +575,31 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 .chat-connect { margin-top: 20px; background: var(--accent-soft); color: var(--accent-soft-text); }
 
-/* Клетки месяца: еле заметная рамка — чтобы сетку было видно (особенно в тёмной теме, 02.10.2026). */
-.cal-grid.month .cal-day { box-shadow: inset 0 0 0 1px var(--line); }
-:root[data-color-scheme='dark'] .cal-grid.month .cal-day { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
-.cal-grid.month .cal-day.on, .cal-grid.month .cal-day.out { box-shadow: none; }
+/* Клетки месяца — плитки со своей заливкой: одна рамка терялась на цветных пятнах фона (02.10.2026).
+   Заливка от цвета поверхности, рамка — от цвета текста: видно и в светлой, и в тёмной теме на любом фоне. */
+.cal-grid.month .cal-day { background: color-mix(in srgb, var(--surface) 72%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 9%, transparent); }
+.cal-grid.month .cal-day.out { background: color-mix(in srgb, var(--surface) 30%, transparent); box-shadow: none; }
+.cal-grid.month .cal-day.on { background: var(--accent); box-shadow: none; }
+
+/* Подробности события в шторке: место, созвон, участники, описание — каждая строкой с иконкой. */
+.event-details { margin-top: 10px; }
+.detail-row { min-height: 52px; padding: 10px 14px; gap: 12px; color: var(--text); }
+.detail-row > svg:first-child { flex: none; color: var(--muted); }
+.detail-row:disabled { opacity: 1; cursor: default; }
+.detail-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; white-space: pre-line; }
+.detail-text b { font-weight: 600; }
+.detail-text small { color: var(--muted); font-size: 13px; }
+.detail-text.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.detail-row.notes { align-items: flex-start; }
+.detail-row.notes .detail-text { color: var(--muted); font-size: 14px; }
+.detail-more { flex: none; align-self: flex-end; color: var(--accent); font-size: 14px; font-weight: 600; }
+
+/* Поле прямо в строке карточки («Место»): выглядит как значение справа. */
+.input-row input { flex: 1.6; min-width: 0; height: 40px; border: 0; background: transparent; color: var(--text); font-size: 15px; text-align: right; outline: none; }
+.input-row input::placeholder { color: var(--muted); }
+.row-icon { flex: none; width: 36px; height: 36px; margin-right: -6px; border-radius: 10px; display: grid; place-items: center; color: var(--accent); }
+
+/* Короткая подсказка после действия — поверх экрана, над нижней панелью: ничего не сдвигает. */
+.toast { position: fixed; left: 50%; bottom: calc(var(--app-inset-bottom) + 176px); transform: translateX(-50%); z-index: 6; max-width: calc(100% - 40px); padding: 10px 16px; border-radius: 14px; background: color-mix(in srgb, var(--text) 88%, transparent); color: var(--bg); font-size: 14px; font-weight: 500; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); animation: toast-in 200ms var(--ease-out); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 6px); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }

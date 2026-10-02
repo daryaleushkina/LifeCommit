@@ -7,6 +7,7 @@
 //  • «Сделано» в календарь не уходит: у событий нет галочки.
 //  • Подключены оба — наши дела пишутся в подключённый последним; уже выгруженные остаются, где были.
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { TodoDetails } from '../shared/types';
 import { addDays, logicalDay } from './day';
 import { deleteEvent, discover, getEvent, isAuthError, listCollections, multiget, pickDefault, putEvent, SyncTokenExpired, syncCollection, DavError, type DavAuth } from './caldav';
 import type { Env } from './env';
@@ -76,9 +77,10 @@ interface TodoSyncRow {
   external_href: string | null;
   external_etag: string | null;
   calendar_url: string | null;
+  details: TodoDetails | null;
 }
 
-const TODO_SYNC_COLS = 'id, title, day, time, duration_min, rrule, done_on, source, external_uid, external_href, external_etag, calendar_url';
+const TODO_SYNC_COLS = 'id, title, day, time, duration_min, rrule, done_on, source, external_uid, external_href, external_etag, calendar_url, details';
 
 const baseUrl = (env: Env) => env.CALDAV_APPLE_URL || APPLE_CALDAV;
 
@@ -119,7 +121,7 @@ function appleConn(acc: AccountRow, auth: DavAuth): AppleConn {
     async putOwn(todo, calUrl, tz) {
       const uid = `lifecommit-${todo.id}`;
       const href = todo.external_href ?? `${calUrl}${uid}.ics`;
-      const ics = buildEvent({ uid, title: todo.title, day: todo.day, time: todo.time?.slice(0, 5) ?? null, durationMin: todo.duration_min, tz });
+      const ics = buildEvent({ uid, title: todo.title, day: todo.day, time: todo.time?.slice(0, 5) ?? null, durationMin: todo.duration_min, tz, location: todo.details?.location });
       try {
         return { href, etag: await putEvent(href, auth, ics, todo.external_href ? todo.external_etag : null) };
       } catch (e) {
@@ -150,7 +152,7 @@ function googleConn(acc: AccountRow, token: string): GoogleConn {
     acc,
     token,
     owns: isGoogleHref,
-    putOwn: (todo, calUrl, tz) => putOwnEvent(token, calUrl, todo.external_href, { todoId: todo.id, title: todo.title, day: todo.day, time: todo.time?.slice(0, 5) ?? null, durationMin: todo.duration_min, tz }),
+    putOwn: (todo, calUrl, tz) => putOwnEvent(token, calUrl, todo.external_href, { todoId: todo.id, title: todo.title, day: todo.day, time: todo.time?.slice(0, 5) ?? null, durationMin: todo.duration_min, tz, location: todo.details?.location }),
     patchForeign: (todo, tz) => patchForeignEvent(token, todo.external_href!, { title: todo.title, day: todo.day, time: todo.time?.slice(0, 5) ?? null, durationMin: todo.duration_min, tz }),
     remove: (href) => deleteGoogleEvent(token, href),
   };
@@ -289,11 +291,11 @@ async function pullApple(sb: SupabaseClient, user: UserLite, auth: DavAuth, acc:
     }
   }
   const collections = check(await sb.from('calendar_collections').select('url, sync_token').eq('account_id', acc.id).eq('enabled', true)) as { url: string; sync_token: string | null }[];
-  for (const col of collections) await pullCollection(sb, user, auth, col.url, col.sync_token, acc.id, Boolean(acc.retime));
+  for (const col of collections) await pullCollection(sb, user, auth, col.url, col.sync_token, acc.id, Boolean(acc.retime), acc.login);
   return needExport;
 }
 
-async function pullCollection(sb: SupabaseClient, user: UserLite, auth: DavAuth, url: string, token: string | null, accountId: number, retime: boolean) {
+async function pullCollection(sb: SupabaseClient, user: UserLite, auth: DavAuth, url: string, token: string | null, accountId: number, retime: boolean, selfEmail: string) {
   let sync;
   let full = !token;
   try {
@@ -306,7 +308,7 @@ async function pullCollection(sb: SupabaseClient, user: UserLite, auth: DavAuth,
   const oldest = addDays(logicalDay(user.timezone, user.day_start_hour), -PAST_DAYS);
   for (let i = 0; i < sync.changed.length; i += MULTIGET_BATCH) {
     const batch = await multiget(url, auth, sync.changed.slice(i, i + MULTIGET_BATCH).map((c) => c.href));
-    await applyBatch(sb, user, url, batch.map((item) => ({ href: item.href, etag: item.etag, events: parseEvents(item.data, user.timezone).filter((e) => e.rrule || e.day >= oldest) })), retime);
+    await applyBatch(sb, user, url, batch.map((item) => ({ href: item.href, etag: item.etag, events: parseEvents(item.data, user.timezone, selfEmail).filter((e) => e.rrule || e.day >= oldest) })), retime);
   }
   if (sync.removed.length) await removeHrefs(sb, user.id, sync.removed);
   // Полная перечитка не сообщает об удалённом — убираем всё из этого календаря, чего в нём больше нет.
@@ -353,6 +355,7 @@ const foreignRow = (userId: number, source: 'apple' | 'google', e: CalEvent, lin
   duration_min: e.durationMin,
   rrule: e.rrule,
   exdates: e.exdates,
+  details: e.details,
   ...link,
 });
 
@@ -362,7 +365,7 @@ const foreignRow = (userId: number, source: 'apple' | 'google', e: CalEvent, lin
  */
 async function updateOwn(sb: SupabaseClient, userId: number, todoId: number, e: CalEvent, link: Link, retime: boolean) {
   const uid = `lifecommit-${todoId}`;
-  const fields = retime ? { external_uid: uid, ...link } : { title: e.title, day: e.day, time: e.time, duration_min: e.durationMin, external_uid: uid, ...link };
+  const fields = retime ? { external_uid: uid, ...link } : { title: e.title, day: e.day, time: e.time, duration_min: e.durationMin, details: e.details, external_uid: uid, ...link };
   await sb.from('todos').update(fields).eq('id', todoId).eq('user_id', userId);
 }
 

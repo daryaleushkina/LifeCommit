@@ -1,6 +1,6 @@
 import { useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Todo } from '../../shared/types';
-import { api } from '../api';
+import { caches, load as fetchInto } from '../caches';
 import { LangContext, useT } from '../i18n';
 import type { TodoEdit } from '../useTodos';
 import { todoWhen } from '../todoDates';
@@ -41,7 +41,7 @@ export const Check = () => (
 );
 
 /** Время конца события: «10:00» + 60 минут → «11:00» (в пределах суток). */
-function endTime(start: string, minutes: number): string | null {
+export function endTime(start: string, minutes: number): string | null {
   const [h = 0, m = 0] = start.split(':').map(Number);
   const total = h * 60 + m + minutes;
   return total < 24 * 60 ? `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}` : null;
@@ -65,7 +65,8 @@ export function TodoList({ todos, later = 0, today, heading, addLabel, showCarry
 
   return (
     <>
-      <h2 className="section-label">{heading ?? t.todo.block}</h2>
+      {/* Только события из календаря — «События», вперемешку со своими — «События и дела» (как у Apple: событие — то, что будет). */}
+      <h2 className="section-label">{heading ?? (todos.length && todos.every((d) => d.source) ? t.todo.blockEvents : todos.some((d) => d.source) ? t.todo.blockMixed : t.todo.block)}</h2>
       <ul className="card todo-list">
         {todos.map((d) => {
           const when = showCarry && !d.recurring ? todoWhen(t, d.day, today, locale) : null;
@@ -140,6 +141,7 @@ export function TodoList({ todos, later = 0, today, heading, addLabel, showCarry
           time={editing.time}
           recurring={editing.recurring}
           source={editing.source}
+          details={editing.details}
           today={today}
           onSave={(edit) => void onUpdate(editing, edit)}
           onDelete={() => void onRemove(editing)}
@@ -156,9 +158,13 @@ function LaterSheet({ today, onUpdate, onRemove, onClose }: { today: string; onU
   const t = useT();
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
-  const [list, setList] = useState<Todo[] | null>(null);
+  // Список подтянут в фоне, когда на «Сегодня» появилось «Потом», — шторка открывается сразу во весь рост.
+  const [list, setList] = useState<Todo[] | null>(caches.later);
   const [editing, setEditing] = useState<Todo | null>(null);
-  const load = () => api.laterTodos().then(setList, () => setList([]));
+  const load = () => {
+    caches.later = null;
+    return fetchInto.later().then(setList, () => setList((cur) => cur ?? []));
+  };
   useEffect(() => {
     void load();
   }, []);
@@ -192,6 +198,7 @@ function LaterSheet({ today, onUpdate, onRemove, onClose }: { today: string; onU
           title={editing.title}
           day={editing.day}
           time={editing.time}
+          details={editing.details}
           today={today}
           onSave={(edit) => void onUpdate(editing, edit).then(load)}
           onDelete={() => void onRemove(editing).then(load)}

@@ -9,7 +9,7 @@ import { useBackButton } from '../telegram/hooks';
 import { canRecord, Recorder } from '../voice/recorder';
 import { KindTile } from './KindIcon';
 import { todoWhen } from '../todoDates';
-import { Check } from './TodoList';
+import { Check, endTime } from './TodoList';
 import { TodoSheet } from './TodoSheet';
 
 /** Что получилось из сказанного. Живёт в App: пока человек правит привычку в редакторе, шторка закрыта. */
@@ -62,7 +62,8 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
   const locale = useContext(LangContext) === 'ru' ? 'ru-RU' : 'en-US';
   // Дело из списка правится в маленькой шторке поверх этой; привычка — в полном редакторе.
   const [editingTodo, setEditingTodo] = useState<number | null>(null);
-  const [phase, setPhase] = useState<Phase>('recording');
+  // Записывать нечем — сразу так и показываем, без мелькания экрана записи.
+  const [phase, setPhase] = useState<Phase>(() => (canRecord() ? 'recording' : 'nomic'));
   const [heard, setHeard] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -180,7 +181,7 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
                     </span>
                     <span className="voice-text">
                       <b>{d.title}</b>
-                      <small>{[todoWhen(t, d.day || today, today, locale) ?? t.todo.today.toLowerCase(), d.time].filter(Boolean).join(' · ')}</small>
+                      <small>{[todoWhen(t, d.day || today, today, locale) ?? t.todo.today.toLowerCase(), d.time && d.duration_min ? [d.time, endTime(d.time, d.duration_min)].filter(Boolean).join('–') : d.time, d.location].filter(Boolean).join(' · ')}</small>
                     </span>
                   </button>
                   <button className="voice-x" aria-label={t.voice.remove(d.title)} onClick={() => drop({ ...preview, todos: preview.todos.filter((_, j) => j !== i) })}>
@@ -230,8 +231,9 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
             title={todoDraft.title}
             day={todoDraft.day || today}
             time={todoDraft.time ?? null}
+            details={todoDraft.location ? { location: todoDraft.location } : null}
             today={today}
-            onSave={(edit) => setPreview({ ...preview, todos: preview.todos.map((d, j) => (j === editingTodo ? edit : d)) })}
+            onSave={(edit) => setPreview({ ...preview, todos: preview.todos.map((d, j) => (j === editingTodo ? { ...d, ...edit } : d)) })}
             onClose={() => setEditingTodo(null)}
           />
         )}

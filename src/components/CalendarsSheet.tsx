@@ -1,6 +1,7 @@
 import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { openLink, popup } from '@tma.js/sdk-react';
 import { api, ApiError, type CalendarAccount } from '../api';
+import { caches, googleUrlFresh, load as fetchInto } from '../caches';
 import { useT } from '../i18n';
 import { SelectRow, Sheet } from './Picker';
 
@@ -27,15 +28,25 @@ interface Props {
  */
 export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
   const t = useT();
-  const [accounts, setAccounts] = useState<CalendarAccount[] | null>(null);
+  // Подключённые календари знаем с запуска — шторка сразу открывается такой, какая есть, без перескоков.
+  const [accounts, setAccountsState] = useState<CalendarAccount[] | null>(caches.accounts);
+  const setAccounts: SetAccounts = (next) =>
+    setAccountsState((cur) => {
+      const v = typeof next === 'function' ? next(cur) : next;
+      caches.accounts = v;
+      return v;
+    });
   const [form, setForm] = useState(false);
   // Адрес входа Google: null — ещё грузится, '' — Google на сервере не настроен.
-  const [googleUrl, setGoogleUrl] = useState<string | null>(null);
-  const load = () => api.calendars().then(setAccounts, () => setAccounts([]));
-  const loadUrl = () => api.googleUrl().then((r) => setGoogleUrl(r.url), () => setGoogleUrl(''));
+  const [googleUrl, setGoogleUrl] = useState<string | null>(googleUrlFresh());
+  const load = () => fetchInto.accounts().then(setAccounts, () => setAccounts((cur) => cur ?? []));
+  const loadUrl = () => {
+    caches.googleUrl = null;
+    return fetchInto.googleUrl().then(setGoogleUrl);
+  };
   useEffect(() => {
     void load();
-    void loadUrl();
+    if (googleUrl === null) void loadUrl();
     // Вернулись из браузера после входа Google — показать, что подключилось (и обновить ссылку: она живёт 15 минут).
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
@@ -80,16 +91,17 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
         <span className="provider-text">
           <b>{t.cal.google}</b>
           {accounts !== null && google && <small>{google.status === 'ok' ? `${t.cal.connected} · ${syncedLabel(t, google.last_sync_at)}` : google.status === 'setup' ? t.cal.googleSetup : google.login}</small>}
-          {accounts !== null && !google && googleUrl && <small>{t.cal.googleNeeds}</small>}
+          {accounts !== null && !google && googleUrl !== '' && <small>{t.cal.googleNeeds}</small>}
         </span>
-        {accounts !== null && !google && googleUrl && (
-          <button className="provider-go" onClick={signInGoogle}>
+        {/* Ссылка входа ещё не пришла — кнопка уже на месте, просто пока не нажимается. */}
+        {accounts !== null && !google && googleUrl !== '' && (
+          <button className="provider-go" disabled={!googleUrl} onClick={signInGoogle}>
             {t.cal.connect}
           </button>
         )}
         {accounts !== null && !google && googleUrl === '' && <span className="provider-soon">{t.cal.googleSoon}</span>}
       </div>
-      {accounts !== null && !google && googleUrl && <p className="sheet-note">{t.cal.googleUnverified}</p>}
+      {accounts !== null && !google && googleUrl !== '' && <p className="sheet-note">{t.cal.googleUnverified}</p>}
       {google && (google.status === 'auth_failed' || google.status === 'error') && (
         <div className="cal-warn">
           {t.cal.googleExpired}{' '}

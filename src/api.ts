@@ -51,7 +51,7 @@ export const api = {
   voice,
   createTodo: (input: TodoInput) => call<{ id: number }>('POST', '/todos', input),
   createTodos: (todos: TodoInput[]) => call<{ ids: number[] }>('POST', '/todos/batch', { todos }),
-  updateTodo: (id: number, patch: { title?: string; day?: string; time?: string | null; done?: boolean; on?: string }) =>
+  updateTodo: (id: number, patch: { title?: string; day?: string; time?: string | null; done?: boolean; on?: string; location?: string }) =>
     call<{ ok: true }>('PATCH', `/todos/${id}`, patch),
   calendar: (from: string, to: string) => call<{ today: string; todos: Todo[]; groups: GroupDayBlock[] }>('GET', `/calendar?from=${from}&to=${to}`),
   calendars: () => call<CalendarAccount[]>('GET', '/calendars'),

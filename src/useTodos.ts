@@ -7,11 +7,20 @@ import { bumpChange, type Cache } from './useTaskLog';
 /** Тот же раз дела: у повторяющегося дела один id на все дни, различает их день. */
 export const sameTodo = (a: Todo, b: Todo): boolean => a.id === b.id && (!a.recurring || a.day === b.day);
 
+/** Подробности с новым местом (пустое — без места). */
+function withLocation(details: Todo['details'], location: string): Todo['details'] {
+  const { location: _old, ...rest } = details ?? {};
+  const next = location.trim() ? { ...rest, location: location.trim() } : rest;
+  return Object.keys(next).length ? next : null;
+}
+
 /** Что меняют в шторке дела. */
 export interface TodoEdit {
   title: string;
   day: string;
   time: string | null;
+  /** Место — только у своих дел; '' — убрать. */
+  location?: string;
 }
 
 interface Options {
@@ -49,7 +58,7 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
   /** Новое дело: появляется сразу, id приходит с сервера. */
   const add = useCallback(
     async (title: string, day: string) => {
-      const temp: Todo = { id: -Date.now(), title, day, done: false, time: null, duration_min: null, recurring: false, source: null };
+      const temp: Todo = { id: -Date.now(), title, day, done: false, time: null, duration_min: null, recurring: false, source: null, details: null };
       bumpChange();
       patchList((list) => [...list, temp]);
       try {
@@ -69,10 +78,11 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
         ...(edit.title !== todo.title && { title: edit.title }),
         ...(edit.day !== todo.day && !todo.recurring && { day: edit.day }),
         ...(edit.time !== todo.time && { time: edit.time }),
+        ...(edit.location !== undefined && edit.location !== (todo.details?.location ?? '') && { location: edit.location }),
       };
       if (!Object.keys(patch).length) return;
       bumpChange();
-      patchList((list) => list.map((d) => (d.id === todo.id ? { ...d, title: edit.title, time: edit.time } : d)));
+      patchList((list) => list.map((d) => (d.id === todo.id ? { ...d, title: edit.title, time: edit.time, ...(edit.location !== undefined && { details: withLocation(d.details, edit.location) }) } : d)));
       try {
         await api.updateTodo(todo.id, patch);
       } catch {

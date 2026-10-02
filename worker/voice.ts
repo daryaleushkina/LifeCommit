@@ -70,8 +70,8 @@ const SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { title: { type: 'string' }, day: { type: 'string' }, time: { type: 'string' }, duration: { type: 'number' } },
-        required: ['title', 'day', 'time', 'duration'],
+        properties: { title: { type: 'string' }, day: { type: 'string' }, time: { type: 'string' }, duration: { type: 'number' }, location: { type: 'string' } },
+        required: ['title', 'day', 'time', 'duration', 'location'],
       },
     },
   },
@@ -85,6 +85,7 @@ Every to-do has ALL of these fields:
 - day: the date it is for as YYYY-MM-DD, counted from the "Today is" line at the start of the input ("завтра"/"tomorrow" = the next day, "в пятницу"/"on Friday" = the nearest coming Friday); "" when no day is said (it means today).
 - time: the time of day as 24-hour HH:MM when one is said ("в 15:00", "в три часа дня" = "15:00", "в 9 утра" = "09:00", "at 7pm" = "19:00"); "" when no time is said. The time words are not part of the title.
 - duration: how long it lasts in minutes when said ("на 3 часа", "продолжительностью три часа" = 180, "полчаса" = 30, "for an hour and a half" = 90, "с 14 до 16" = 120); 0 when not said. Not part of the title.
+- location: the place when one is named ("в кафе Снежинка" = "Кафе Снежинка", "у мамы дома" = "У мамы", "в офисе на Ленина 5" = "Офис, Ленина 5", "at Blue Bottle" = "Blue Bottle"), capitalised, in the input language; "" when no place is said. The place is not part of the title ("встреча с Лизой в кафе Снежинка" → title "Встреча с Лизой", location "Кафе Снежинка").
 Every habit has ALL of these fields:
 - title: short, 1-3 words, in the SAME language as the input, capitalised, naming the thing itself — no numbers and no schedule words ("Читать", "Вода", "Спортзал", "Не курить", "Меньше телефона").
 - kind: "count" when a daily amount is given (20 pages, 8 glasses, 30 minutes); "abstain" when the person wants to quit, stop or do less of something (smoking, alcohol, sweets, phone); otherwise "check".
@@ -105,11 +106,11 @@ const SHOTS: [string, object][] = [
         { title: 'Спортзал', kind: 'check', target: 0, unit: '', schedule: 'per_week', weekdays: [], per_week: 3 },
         { title: 'Не курить', kind: 'abstain', target: 0, unit: '', schedule: 'daily', weekdays: [], per_week: 0 },
       ],
-      todos: [{ title: 'Купить молоко', day: '2026-01-08', time: '', duration: 0 }],
+      todos: [{ title: 'Купить молоко', day: '2026-01-08', time: '', duration: 0, location: '' }],
     },
   ],
   [
-    'Today is 2026-03-02, Monday.\ncall the bank, run on mondays and thursdays, drink 8 glasses of water, less sugar, on friday send the report, tomorrow at 3:30 pm dentist and on wednesday at 6 pm a three-hour meeting with Liza, thanks!',
+    'Today is 2026-03-02, Monday.\ncall the bank, run on mondays and thursdays, drink 8 glasses of water, less sugar, on friday send the report, tomorrow at 3:30 pm dentist and on wednesday at 6 pm a three-hour meeting with Liza at the Snowflake cafe, thanks!',
     {
       habits: [
         { title: 'Run', kind: 'check', target: 0, unit: '', schedule: 'weekdays', weekdays: [1, 4], per_week: 0 },
@@ -117,10 +118,10 @@ const SHOTS: [string, object][] = [
         { title: 'Less sugar', kind: 'abstain', target: 0, unit: '', schedule: 'daily', weekdays: [], per_week: 0 },
       ],
       todos: [
-        { title: 'Call the bank', day: '', time: '', duration: 0 },
-        { title: 'Send the report', day: '2026-03-06', time: '', duration: 0 },
-        { title: 'Dentist', day: '2026-03-03', time: '15:30', duration: 0 },
-        { title: 'Meeting with Liza', day: '2026-03-04', time: '18:00', duration: 180 },
+        { title: 'Call the bank', day: '', time: '', duration: 0, location: '' },
+        { title: 'Send the report', day: '2026-03-06', time: '', duration: 0, location: '' },
+        { title: 'Dentist', day: '2026-03-03', time: '15:30', duration: 0, location: '' },
+        { title: 'Meeting with Liza', day: '2026-03-04', time: '18:00', duration: 180, location: 'Snowflake Cafe' },
       ],
     },
   ],
@@ -184,14 +185,15 @@ export function toTodoInputs(raw: unknown): TodoInput[] {
   const list = (raw as { todos?: unknown })?.todos;
   if (!Array.isArray(list)) return [];
   const out: TodoInput[] = [];
-  for (const d of list as { title?: unknown; day?: unknown; time?: unknown; duration?: unknown }[]) {
+  for (const d of list as { title?: unknown; day?: unknown; time?: unknown; duration?: unknown; location?: unknown }[]) {
     const title = typeof d?.title === 'string' ? d.title.trim().slice(0, 120) : '';
     if (!title) continue;
     const day = typeof d.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.day) ? d.day : null;
     const tm = typeof d.time === 'string' ? /^(\d{1,2}):(\d{2})$/.exec(d.time.trim()) : null;
     const time = tm && Number(tm[1]) < 24 && Number(tm[2]) < 60 ? `${tm[1]!.padStart(2, '0')}:${tm[2]}` : null;
     const duration = typeof d.duration === 'number' && d.duration > 0 && d.duration <= 20160 ? Math.round(d.duration) : null;
-    out.push({ title, day, time, ...(duration && { duration_min: duration }) });
+    const location = typeof d.location === 'string' ? d.location.trim().slice(0, 200) : '';
+    out.push({ title, day, time, ...(duration && { duration_min: duration }), ...(location && { location }) });
     if (out.length >= MAX_TODOS) break;
   }
   return out;

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { mainButton, miniApp, useSignal } from '@tma.js/sdk-react';
-import type { TaskKind, UserSettings } from '../shared/types';
+import type { TaskKind, TodayResponse, UserSettings } from '../shared/types';
 import { api } from './api';
+import { caches, load as fetchInto, logicalDayOf, warm } from './caches';
 import { Splash } from './components/Logo';
 import { LangContext, dictionaries, useT, type Lang } from './i18n';
 import { Archive } from './screens/Archive';
@@ -90,21 +91,42 @@ export function App(): ReactNode {
       // Всё нужное первому экрану грузим, пока видна заставка: после неё ждать уже нечего.
       const { user, start_param } = await api.session(timezone);
       const seq = currentChange();
-      const [today, heat] = await Promise.all([api.today(), api.heatmap(371)]);
+      // Куда ведёт ссылка запуска — её экран тоже грузим заранее, чтобы он открылся целиком.
+      const joinParam = new URLSearchParams(window.location.search).get('join');
+      const joinCode = start_param?.startsWith('g_') ? start_param.slice(2) : joinParam && /^[a-z0-9]{6,20}$/.test(joinParam) ? joinParam : null;
+      const groupId = start_param?.startsWith('grp_') ? Number(start_param.slice(4)) : null;
+      const day = logicalDayOf(user.timezone, user.day_start_hour);
+      const quiet = (p: Promise<unknown>) => p.catch(() => null);
+      const [today, heat] = await Promise.all([
+        api.today(),
+        api.heatmap(371),
+        // Вкладка «Календарь» и шторка календарей открываются сразу, уже с подключёнными календарями.
+        quiet(fetchInto.accounts()),
+        day ? quiet(fetchInto.range(day, day)) : null,
+        joinCode ? quiet(fetchInto.invitation(joinCode)) : null,
+        groupId ? quiet(fetchInto.group(groupId)) : null,
+        // Шрифт — до показа: иначе текст сначала системным шрифтом, потом перескакивает (но не дольше 1,5 с).
+        Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 1500))]),
+      ]);
       // Повторная загрузка не должна затереть то, что успели отметить, пока она шла.
       if (seq === currentChange()) setCache({ today, heat: heat.days, loadedAt: Date.now() });
-      // Календари телефона подтягиваем в фоне при каждом входе — не задерживая экран.
-      void api.syncCalendars().catch(() => {});
+      warmAfter(today);
+      // Календари телефона подтягиваем в фоне при каждом входе — не задерживая экран; что пришло — тихо дочитываем.
+      void api.syncCalendars().then(
+        async () => {
+          warm(fetchInto.accounts());
+          if (day) warm(fetchInto.range(day, day));
+          const fresh = await api.today().catch(() => null);
+          if (fresh && seq === currentChange()) setCache((c) => ({ ...c, today: fresh, loadedAt: Date.now() }));
+        },
+        () => {},
+      );
       const empty = today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 && today.groups.length === 0;
       setBoot({ state: 'ready', user, onboarding: empty && !onboardingSkipped() });
+      // Из бота кнопкой web_app start_param нет — приглашение тогда в адресе (?join=<код>).
       if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
-      else if (start_param?.startsWith('g_')) setRoute({ name: 'join', code: start_param.slice(2) });
-      else if (start_param?.startsWith('grp_')) setRoute({ name: 'group', id: Number(start_param.slice(4)), back: 'groups' });
-      else {
-        // Из бота кнопкой web_app: start_param нет, приглашение — в адресе (?join=<код>).
-        const join = new URLSearchParams(window.location.search).get('join');
-        if (join && /^[a-z0-9]{6,20}$/.test(join)) setRoute({ name: 'join', code: join });
-      }
+      else if (joinCode) setRoute({ name: 'join', code: joinCode });
+      else if (groupId) setRoute({ name: 'group', id: groupId, back: 'groups' });
     } catch {
       setBoot({ state: 'error' });
     }
@@ -140,7 +162,10 @@ export function App(): ReactNode {
     // Удалённая привычка забирает с карты и прошлые дни — карту перечитываем в фоне, не задерживая экран.
     if (deleted) api.heatmap(371).then((h) => setCache((c) => ({ ...c, heat: h.days })), () => {});
     const today = await api.today().catch(() => null);
-    if (today) setCache((c) => ({ ...c, today, loadedAt: Date.now() }));
+    if (today) {
+      setCache((c) => ({ ...c, today, loadedAt: Date.now() }));
+      warmAfter(today);
+    }
   };
   const home = () => setRoute({ name: 'today' });
 
@@ -192,6 +217,12 @@ export function App(): ReactNode {
         onBack={() => setRoute(tab(back))}
       />
     );
+  } else if (route.name === 'join') {
+    screen = <Join code={route.code} onJoined={(id) => {
+      void refresh();
+      setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
+      setRoute({ name: 'group', id, back: 'groups' });
+    }} onClose={home} />;
   } else if (boot.onboarding) {
     screen = (
       <Onboarding
@@ -207,12 +238,6 @@ export function App(): ReactNode {
     screen = <Onboarding onPick={(kind) => setRoute({ name: 'task', id: null, kind })} onBack={home} />;
   } else if (route.name === 'detail' && detailTask) {
     screen = <TaskDetail task={detailTask} today={cache.today.day} setCache={setCache} onEdit={() => setRoute({ name: 'task', id: detailTask.id })} onClose={home} />;
-  } else if (route.name === 'join') {
-    screen = <Join code={route.code} onJoined={(id) => {
-      void refresh();
-      setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
-      setRoute({ name: 'group', id, back: 'groups' });
-    }} onClose={home} />;
   } else if (route.name === 'archive') {
     screen = <Archive archived={cache.today.archived} onChanged={refresh} onClose={home} />;
   } else {
@@ -255,6 +280,18 @@ export function App(): ReactNode {
   }
 
   return <LangContext.Provider value={lang}>{screen}</LangContext.Provider>;
+}
+
+/**
+ * После запуска и после каждого обновления «Сегодня» — в фоне подтягиваем то, что откроют следующим:
+ * экраны групп, историю привычек, «Потом». Список групп берём прямо из «Сегодня» — он свежее старого.
+ */
+function warmAfter(today: TodayResponse) {
+  caches.groupList = today.groups;
+  for (const g of today.groups) warm(fetchInto.group(g.id));
+  for (const task of today.tasks.slice(0, 30)) if (!caches.history.has(task.id)) warm(fetchInto.history(task.id));
+  if (today.todos_later > 0) warm(fetchInto.later());
+  else caches.later = [];
 }
 
 /** «Пропустить» на первом экране — запоминаем на этом устройстве, чтобы не спрашивать при каждом входе. */

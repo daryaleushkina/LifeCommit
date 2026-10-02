@@ -1,6 +1,7 @@
 // Вступление по ссылке t.me/LifeCommit_bot?startapp=g_<код> (дизайн 16R): кто зовёт, что будет, что группа НЕ видит.
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError, type Invitation } from '../api';
+import { caches, load as fetchInto } from '../caches';
 import { Avatar, GroupBadge } from '../components/groupUi';
 import { useT } from '../i18n';
 import { useBackButton } from '../telegram/hooks';
@@ -14,13 +15,14 @@ interface Props {
 export function Join({ code, onJoined, onClose }: Props): ReactNode {
   const t = useT();
   const j = t.gr.join;
-  const [inv, setInv] = useState<Invitation | null>(null);
+  // Приглашение подтянуто ещё на заставке — экран открывается целиком.
+  const [inv, setInv] = useState<Invitation | null>(caches.invitations.get(code) ?? null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useBackButton(onClose);
 
   useEffect(() => {
-    api.invitation(code).then(setInv, (e) => setProblem(e instanceof ApiError && e.code === 'invite_expired' ? j.expired : j.notFound));
+    fetchInto.invitation(code).then(setInv, (e) => setProblem(e instanceof ApiError && e.code === 'invite_expired' ? j.expired : j.notFound));
   }, [code]);
 
   if (problem) {
@@ -38,7 +40,10 @@ export function Join({ code, onJoined, onClose }: Props): ReactNode {
   const join = async () => {
     setBusy(true);
     try {
-      onJoined((await api.join(code)).id);
+      const { id } = await api.join(code);
+      // Экран группы открывается сразу целиком, а не пустым.
+      await fetchInto.group(id).catch(() => null);
+      onJoined(id);
     } catch {
       setProblem(j.notFound);
     }
