@@ -1,13 +1,23 @@
 // Окно «Поделиться» (дизайн 20J): шаблоны листаются крупно, под ними — «В сторис Telegram», «Отправить в чат»,
 // «Сохранить». Переключателей нет: QR и название — на картинке всегда (решение владелицы 02.10.2026).
+//
+// Скорость (02.10.2026): картинка, на которой остановилась лента, готовится заранее — рисуется в полном размере,
+// сжимается в JPEG и уходит в Telegram, пока человек смотрит. К нажатию кнопки ссылка обычно уже есть.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { downloadFile, initData, openLink, requestWriteAccess, shareMessage, shareStory } from '@tma.js/sdk-react';
+import { downloadFile, initData, openLink, requestWriteAccess, shareMessage, shareStory, swipeBehavior } from '@tma.js/sdk-react';
 import { api, ApiError } from '../api';
 import { Sheet } from '../components/Picker';
 import { useT } from '../i18n';
-import { draw, fontsReady, H, toBlob, W, type Template } from './draw';
+import { draw, fontsReady, H, PREVIEW_SCALE, render, W, type Template } from './draw';
 
 const BOT_URL = 'https://t.me/LifeCommit_bot';
+/** Лента остановилась на картинке — через столько начинаем её готовить. */
+const PREPARE_AFTER_MS = 350;
+
+interface Uploaded {
+  url: string;
+  file_id: string;
+}
 
 interface Props {
   templates: Template[];
@@ -20,10 +30,11 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   const strip = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
+  const [drawn, setDrawn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  // Загруженная картинка — по номеру шаблона: второй раз не грузим.
-  const uploaded = useRef(new Map<number, { url: string; file_id: string }>());
+  // Загрузка по номеру шаблона: начатая заранее, нажатие её просто дожидается; второй раз не грузим.
+  const uploads = useRef(new Map<number, Promise<Uploaded>>());
 
   useEffect(() => {
     let alive = true;
@@ -31,41 +42,60 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
       if (!alive) return;
       templates.forEach((tpl, i) => {
         const c = canvases.current[i];
-        if (c) draw(c, tpl, { bot: s.bot });
+        if (c) draw(c, tpl, { bot: s.bot }, PREVIEW_SCALE);
       });
+      setDrawn(true);
     });
     return () => {
       alive = false;
     };
   }, [templates]);
 
-  // Какой шаблон сейчас в центре ленты.
+  /** Картинка шаблона в Telegram (через бота). Не вышло — забываем, чтобы следующая попытка пошла заново. */
+  const prepare = (i: number): Promise<Uploaded> => {
+    const ready = uploads.current.get(i);
+    if (ready) return ready;
+    const job = render(templates[i]!, { bot: s.bot }).then((blob) => api.share(blob));
+    uploads.current.set(i, job);
+    job.catch(() => uploads.current.delete(i));
+    return job;
+  };
+
+  // Готовим ту картинку, на которой лента остановилась (и первую — сразу, как нарисовались).
+  useEffect(() => {
+    if (!drawn) return;
+    const id = window.setTimeout(() => void prepare(index).catch(() => {}), PREPARE_AFTER_MS);
+    return () => window.clearTimeout(id);
+  }, [drawn, index]);
+
+  const step = () => {
+    const card = strip.current?.firstElementChild as HTMLElement | null;
+    return (card?.offsetWidth ?? 1) + 12;
+  };
+
+  // Какой шаблон сейчас в центре ленты: у ленты поля по половине свободного места, поэтому центр i-й — ровно i шагов.
   const onScroll = () => {
     const el = strip.current;
     if (!el) return;
-    const card = el.firstElementChild as HTMLElement | null;
-    const step = (card?.offsetWidth ?? 1) + 12;
-    setIndex(Math.max(0, Math.min(templates.length - 1, Math.round(el.scrollLeft / step))));
+    setIndex(Math.max(0, Math.min(templates.length - 1, Math.round(el.scrollLeft / step()))));
   };
 
-  /** Картинка выбранного шаблона в Telegram (через бота). Бот не может писать — просим разрешение и пробуем снова. */
-  const upload = async () => {
-    const done = uploaded.current.get(index);
-    if (done) return done;
-    const canvas = canvases.current[index];
-    if (!canvas) throw new Error('no canvas');
-    const blob = await toBlob(canvas);
+  /** Тап по соседней картинке — выбрать её: лента подъезжает, рамка переходит сразу. */
+  const pick = (i: number) => {
+    if (i === index) return;
+    setIndex(i);
+    strip.current?.scrollTo({ left: i * step(), behavior: 'smooth' });
+  };
+
+  /** Сама картинка; если бот не может писать — просим разрешение (только по нажатию) и пробуем снова. */
+  const upload = async (): Promise<Uploaded> => {
     try {
-      const res = await api.share(blob);
-      uploaded.current.set(index, res);
-      return res;
+      return await prepare(index);
     } catch (e) {
       if (!(e instanceof ApiError && e.status === 403) || !requestWriteAccess.isAvailable()) throw e;
       if ((await requestWriteAccess()) !== 'allowed') throw e;
       await api.writeAccess().catch(() => {});
-      const res = await api.share(blob);
-      uploaded.current.set(index, res);
-      return res;
+      return prepare(index);
     }
   };
 
@@ -95,9 +125,21 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
     }
   };
 
+  // Пока палец на ленте, Telegram не сворачивает мини-апп жестом вниз: косой свайп по картинкам не должен его тянуть.
+  // Касания, а не pointer-события: когда лента начинает прокручиваться сама, браузер шлёт pointercancel посреди жеста.
+  const hold = (on: boolean) => (on ? swipeBehavior.disableVertical.ifAvailable() : swipeBehavior.enableVertical.ifAvailable());
+  useEffect(() => () => void hold(false), []);
+
   return (
     <Sheet title={s.title} onClose={onClose}>
-      <div className="share-strip" ref={strip} onScroll={onScroll}>
+      <div
+        className="share-strip"
+        ref={strip}
+        onScroll={onScroll}
+        onTouchStart={() => hold(true)}
+        onTouchEnd={() => hold(false)}
+        onTouchCancel={() => hold(false)}
+      >
         {templates.map((tpl, i) => (
           <canvas
             key={`${tpl.kind}-${i}`}
@@ -109,6 +151,7 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
             height={H}
             role="img"
             aria-label={s.preview}
+            onClick={() => pick(i)}
           />
         ))}
       </div>

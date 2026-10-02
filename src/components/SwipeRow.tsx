@@ -42,13 +42,15 @@ interface Props {
   /** Кнопки слева направо; последняя — крайняя, она же срабатывает свайпом до конца. Пусто — строка не смахивается. */
   actions: SwipeAction[];
   className?: string;
+  /** card — отдельная карточка (привычка на «Сегодня»): обёртка — div, кнопка во всю высоту карточки с её скруглением. */
+  variant?: 'row' | 'card';
   children: ReactNode;
 }
 
-export function SwipeRow({ actions, className, children }: Props): ReactNode {
+export function SwipeRow({ actions, className, variant = 'row', children }: Props): ReactNode {
   const [x, setX] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const ref = useRef<HTMLLIElement>(null);
+  const ref = useRef<HTMLElement>(null);
   const g = useRef<{ x0: number; y0: number; base: number; dir: 'h' | 'v' | null; id: number; full: boolean } | null>(null);
   // Только что смахивали — следующий клик по строке не открывает её.
   const moved = useRef(false);
@@ -59,7 +61,8 @@ export function SwipeRow({ actions, className, children }: Props): ReactNode {
     if (closeOpen === close) closeOpen = null;
   }, []);
 
-  if (!actions.length) return <li className={className}>{children}</li>;
+  const Tag = variant === 'card' ? 'div' : 'li';
+  if (!actions.length) return variant === 'card' ? <>{children}</> : <li className={className}>{children}</li>;
 
   const width = () => ref.current?.offsetWidth ?? 360;
 
@@ -111,15 +114,21 @@ export function SwipeRow({ actions, className, children }: Props): ReactNode {
   };
 
   // Кнопки занимают ровно открытую часть строки; при длинном свайпе крайняя растягивается на всё.
+  // Сама кнопка — скруглённая «таблетка» с отступом от строки (02.10.2026: острый прямоугольник выбивался из круглого
+  // интерфейса и не доставал до края карточки).
   const shown = -x;
   const full = shown > width() * FULL;
   return (
-    <li ref={ref} className={`swipe${dragging ? ' dragging' : ''}${className ? ` ${className}` : ''}`}>
+    <Tag
+      ref={ref as React.Ref<HTMLLIElement & HTMLDivElement>}
+      className={`swipe${variant === 'card' ? ' swipe-card' : ''}${dragging ? ' dragging' : ''}${className ? ` ${className}` : ''}`}
+    >
       {/* Кнопки лежат под строкой и открываются вместе с её сдвигом (обрезкой, а не шириной — без перерасчёта раскладки). */}
       <div className="swipe-actions" style={{ clipPath: `inset(0 0 0 calc(100% - ${shown}px))` }} aria-hidden={shown === 0}>
         {actions.map((a, i) => {
           const last = i === actions.length - 1;
           const w = full ? (last ? shown : 0) : shown / actions.length;
+          if (w < 1) return null;
           return (
             <button
               key={a.label}
@@ -131,10 +140,12 @@ export function SwipeRow({ actions, className, children }: Props): ReactNode {
                 a.run();
               }}
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                {ICONS[a.icon]}
-              </svg>
-              {w > 56 && <span>{a.label}</span>}
+              <span className="swipe-pill">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  {ICONS[a.icon]}
+                </svg>
+                {w > 70 && <span>{a.label}</span>}
+              </span>
             </button>
           );
         })}
@@ -164,6 +175,6 @@ export function SwipeRow({ actions, className, children }: Props): ReactNode {
       >
         {children}
       </div>
-    </li>
+    </Tag>
   );
 }

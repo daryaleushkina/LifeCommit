@@ -1,5 +1,6 @@
-// QR-код на https://t.me/LifeCommit_bot (уровень коррекции M), посчитан заранее: ссылка не меняется,
-// библиотека для QR в приложении не нужна. Пересчитать: python3 -c "import segno; …" (segno).
+// QR-код на https://t.me/LifeCommit_bot — как у Telegram: версия 3 (29×29), коррекция Q (до четверти потерь),
+// поэтому в центре 5×5 клеток можно занять нашим знаком. Посчитан заранее: ссылка не меняется, библиотека не нужна.
+// Пересчитать: python3 -c "import segno; q = segno.make_qr('https://t.me/LifeCommit_bot', error='q', boost_error=False); print(*[''.join(str(int(v)) for v in r) for r in q.matrix], sep='\n')"
 export const BOT_QR: readonly string[] = [
   '11111110000111011110001111111',
   '10000010110111010110101000001',
@@ -31,3 +32,6 @@ export const BOT_QR: readonly string[] = [
   '10000010110011101010101011010',
   '11111110000010110011111100010',
 ];
+
+/** Сколько клеток в центре отдано под знак (нечётное — чтобы встать ровно посередине). */
+export const QR_LOGO = 5;

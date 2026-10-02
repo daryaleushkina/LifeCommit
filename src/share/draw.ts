@@ -2,11 +2,13 @@
 // так одинаково в любом WebView Telegram и без библиотек. Размер сторис — 1080×1920; координаты ниже —
 // как в макете (360×640), холст просто увеличен в 3 раза. На каждой картинке — знак, QR на бота и @LifeCommit_bot,
 // всегда (переключателей нет — решение владелицы). Никаких пояснительных фраз — только цифра и что она значит.
-import { BOT_QR } from './qr';
+import { BOT_QR, QR_LOGO } from './qr';
 
 export const W = 360;
 export const H = 640;
-const SCALE = 3;
+/** Картинка для Telegram — 1080×1920. Превью в окне рисуем мельче: на экране оно втрое меньше, а большие холсты тормозят ленту. */
+export const SCALE = 3;
+export const PREVIEW_SCALE = 2;
 
 const C = {
   text: '#1F2A1F',
@@ -45,6 +47,11 @@ export interface Labels {
 
 function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
+  rrPath(ctx, x, y, w, h, r);
+}
+
+/** Скруглённый прямоугольник в текущий контур (без beginPath) — чтобы собрать кольцо из двух. */
+function rrPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
   ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -118,29 +125,109 @@ function brand(ctx: CanvasRenderingContext2D, dark: boolean) {
   ctx.fillText('LifeCommit', 56, 46);
 }
 
-function qr(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, dark: string, light: string) {
-  const n = BOT_QR.length + 2; // поле в одну клетку
-  const cell = size / n;
-  rr(ctx, x, y, size, size, 8);
-  ctx.fillStyle = light;
+/**
+ * QR на бота в нашем стиле (02.10.2026, по образцу QR из Telegram): соседние клетки сливаются, свободные углы
+ * скруглены, внутренние — с плавной галтелью; «глаза» — скруглённые квадраты; в центре — наш знак 3×3.
+ * Зелёный градиент на светлой плашке: QR читается только тёмным по светлому, поэтому плашка светлая и на тёмных картинках.
+ */
+function qr(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  const n = BOT_QR.length;
+  const quiet = 1.5; // поле вокруг кода, в клетках
+  const cell = size / (n + quiet * 2);
+  const ox = x + quiet * cell;
+  const oy = y + quiet * cell;
+  const lo = (n - QR_LOGO) / 2;
+  const eye = (r: number, c: number) => (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
+  const logo = (r: number, c: number) => r >= lo && r < lo + QR_LOGO && c >= lo && c < lo + QR_LOGO;
+  const on = (r: number, c: number) => r >= 0 && c >= 0 && r < n && c < n && BOT_QR[r]![c] === '1' && !eye(r, c) && !logo(r, c);
+
+  rr(ctx, x, y, size, size, size * 0.2);
+  ctx.fillStyle = '#FFFFFF';
   ctx.fill();
-  ctx.fillStyle = dark;
-  BOT_QR.forEach((row, r) => {
-    for (let c = 0; c < row.length; c++) if (row[c] === '1') ctx.fillRect(x + (c + 1) * cell, y + (r + 1) * cell, cell + 0.05, cell + 0.05);
-  });
+  const ink = ctx.createLinearGradient(x, y, x + size, y + size);
+  ink.addColorStop(0, '#3FA968');
+  ink.addColorStop(1, '#1D6239');
+
+  // Все клетки — одним контуром: так между соседями нет швов сглаживания.
+  const k = cell / 2;
+  ctx.beginPath();
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const X = ox + c * cell;
+      const Y = oy + r * cell;
+      if (on(r, c)) {
+        const up = on(r - 1, c);
+        const dn = on(r + 1, c);
+        const lf = on(r, c - 1);
+        const rt = on(r, c + 1);
+        ctx.moveTo(X + k, Y);
+        ctx.arcTo(X + cell, Y, X + cell, Y + cell, up || rt ? 0 : k);
+        ctx.arcTo(X + cell, Y + cell, X, Y + cell, dn || rt ? 0 : k);
+        ctx.arcTo(X, Y + cell, X, Y, dn || lf ? 0 : k);
+        ctx.arcTo(X, Y, X + cell, Y, up || lf ? 0 : k);
+        ctx.closePath();
+      } else if (!eye(r, c) && !logo(r, c)) {
+        // Внутренний угол буквы «Г» из трёх клеток — плавная галтель вместо острого угла.
+        const fillet = (px: number, py: number, sx: number, sy: number) => {
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + sx * k, py);
+          ctx.arcTo(px, py, px, py + sy * k, k);
+          ctx.closePath();
+        };
+        if (on(r - 1, c) && on(r, c - 1) && on(r - 1, c - 1)) fillet(X, Y, 1, 1);
+        if (on(r - 1, c) && on(r, c + 1) && on(r - 1, c + 1)) fillet(X + cell, Y, -1, 1);
+        if (on(r + 1, c) && on(r, c + 1) && on(r + 1, c + 1)) fillet(X + cell, Y + cell, -1, -1);
+        if (on(r + 1, c) && on(r, c - 1) && on(r + 1, c - 1)) fillet(X, Y + cell, 1, -1);
+      }
+    }
+  }
+  ctx.fillStyle = ink;
+  ctx.fill();
+
+  // «Глаза»: кольцо 7×7 и квадрат 3×3, оба скруглённые.
+  for (const [r, c] of [
+    [0, 0],
+    [0, n - 7],
+    [n - 7, 0],
+  ] as const) {
+    const ex = ox + c * cell;
+    const ey = oy + r * cell;
+    ctx.beginPath();
+    rrPath(ctx, ex, ey, 7 * cell, 7 * cell, 2.2 * cell);
+    rrPath(ctx, ex + cell, ey + cell, 5 * cell, 5 * cell, 1.4 * cell);
+    ctx.fillStyle = ink;
+    ctx.fill('evenodd');
+    rr(ctx, ex + 2 * cell, ey + 2 * cell, 3 * cell, 3 * cell, 0.9 * cell);
+    ctx.fill();
+  }
+
+  // Знак LifeCommit в центре — на месте, которое код отдал под него (коррекция Q это переносит): зелёная плашка
+  // со светлыми клетками, как кружок с самолётиком в QR Telegram, — чтобы знак не сливался с клетками кода.
+  const tile = (QR_LOGO - 1) * cell;
+  const tx = ox + (n * cell - tile) / 2;
+  const ty = oy + (n * cell - tile) / 2;
+  rr(ctx, tx, ty, tile, tile, tile * 0.3);
+  ctx.fillStyle = ink;
+  ctx.fill();
+  const m = tile * 0.62;
+  mark(ctx, tx + (tile - m) / 2, ty + (tile - m) / 2, m, '#FFFFFF', 'rgba(255,255,255,0.4)');
 }
 
+/** Подвал: QR, знак, подпись и @бот. */
+const QR_SIZE = 64;
+
 function footer(ctx: CanvasRenderingContext2D, text: string, bot: string, dark: boolean) {
-  const y = H - 28 - 58;
-  qr(ctx, 26, y, 58, dark ? C.ink : C.text, dark ? C.light : '#FFFFFF');
-  mark(ctx, 96, y + 13, 14, dark ? C.neon : '#3FA968', dark ? 'rgba(63,210,122,0.25)' : 'rgba(63,169,104,0.35)');
+  const y = H - 28 - QR_SIZE;
+  const tx = 26 + QR_SIZE + 12;
+  qr(ctx, 26, y, QR_SIZE);
+  mark(ctx, tx, y + 16, 14, dark ? C.neon : '#3FA968', dark ? 'rgba(63,210,122,0.25)' : 'rgba(63,169,104,0.35)');
   ctx.textBaseline = 'middle';
   ctx.fillStyle = dark ? C.light : C.text;
-  font(ctx, 700, 14);
-  ctx.fillText(text, 116, y + 19);
+  fit(ctx, text, 700, 14, W - tx - 20 - 26);
+  ctx.fillText(text, tx + 20, y + 23);
   ctx.fillStyle = dark ? 'rgba(232,238,230,0.6)' : C.muted;
-  font(ctx, 400, 12);
-  ctx.fillText(bot, 96, y + 41);
+  fit(ctx, bot, 400, 12, W - tx - 26);
+  ctx.fillText(bot, tx, y + 45);
 }
 
 function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string, glow = false) {
@@ -308,11 +395,11 @@ export async function fontsReady() {
   }
 }
 
-export function draw(canvas: HTMLCanvasElement, t: Template, l: Labels) {
-  canvas.width = W * SCALE;
-  canvas.height = H * SCALE;
+export function draw(canvas: HTMLCanvasElement, t: Template, l: Labels, scale = SCALE) {
+  canvas.width = W * scale;
+  canvas.height = H * scale;
   const ctx = canvas.getContext('2d')!;
-  ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
   if (t.kind === 'number') drawNumber(ctx, t, l);
   else if (t.kind === 'month') drawMonth(ctx, t, l);
   else if (t.kind === 'sum') drawSum(ctx, t, l);
@@ -320,5 +407,12 @@ export function draw(canvas: HTMLCanvasElement, t: Template, l: Labels) {
   else drawYearDark(ctx, t, l);
 }
 
-export const toBlob = (canvas: HTMLCanvasElement) =>
-  new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob'))), 'image/png'));
+/**
+ * Картинка для Telegram — JPEG, а не PNG (02.10.2026): PNG со светлыми пятнами фона весил ~1,5 МБ и долго кодировался
+ * и грузился; JPEG того же шаблона — ~140 КБ, а Telegram всё равно хранит фото в JPEG.
+ */
+export function render(t: Template, l: Labels): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  draw(canvas, t, l, SCALE);
+  return new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob'))), 'image/jpeg', 0.92));
+}
