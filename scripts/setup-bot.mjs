@@ -39,14 +39,14 @@ for (const [lang, cmds, description, short] of [
   [
     'ru',
     [{ command: 'start', description: 'Открыть LifeCommit' }],
-    'LifeCommit — ежедневные дела и карта активности, как в GitHub.\n\n✅ Отмечай, что успел — даже чуть-чуть засчитывается\n🟩 Смотри, как зеленеет твоя карта\n🤝 Скоро — друзья, команды и челленджи',
-    'Ежедневные дела и карта активности, как в GitHub.',
+    'LifeCommit — привычки, дела на день и карта активности, как в GitHub.\n\n✅ Отмечай, что успел — даже чуть-чуть засчитывается\n🎤 Говори голосом — дела и привычки разберутся сами\n📅 Дела и встречи — вместе с Google и Apple Календарём\n🤝 Вместе с семьёй и друзьями: общие дела, цели и бот в чате группы\n🟩 Смотри, как зеленеет твоя карта',
+    'Привычки, дела и карта активности. Голосом, с календарём и вместе с близкими.',
   ],
   [
     '',
     [{ command: 'start', description: 'Open LifeCommit' }],
-    'LifeCommit — daily habits and a GitHub-style activity map.\n\n✅ Log what you did — even a little counts\n🟩 Watch your map turn green\n🤝 Coming soon: friends, teams and challenges',
-    'Daily habits and a GitHub-style activity map.',
+    'LifeCommit — habits, daily to-dos and a GitHub-style activity map.\n\n✅ Log what you did — even a little counts\n🎤 Just say it — to-dos and habits sort themselves out\n📅 To-dos and meetings in sync with Google and Apple Calendar\n🤝 Together with family and friends: shared to-dos, goals and a bot in your group chat\n🟩 Watch your map turn green',
+    'Habits, to-dos and an activity map. By voice, with your calendar and together.',
   ],
 ]) {
   const language_code = lang || undefined;
