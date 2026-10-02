@@ -82,10 +82,14 @@ input, select, textarea { font-size: 16px; /* без зума на iOS */ }
 input:not([type='checkbox']):not([type='radio']), textarea { -webkit-appearance: none; appearance: none; background-clip: padding-box; }
 h1, h2, p { margin: 0; }
 
-.app-shell { padding-inline: max(20px, var(--app-inset-left)) max(20px, var(--app-inset-right)); padding-bottom: calc(var(--app-inset-bottom) + 32px); display: flex; flex-direction: column; }
+.app-shell { padding-inline: max(20px, var(--app-inset-left)) max(20px, var(--app-inset-right)); padding-bottom: 0; display: flex; flex-direction: column; }
 .app-shell > * { flex-shrink: 0; }
-.app-shell.with-tabs { padding-bottom: calc(var(--app-inset-bottom) + 96px); }
-.app-shell.center { align-items: center; justify-content: center; text-align: center; gap: 20px; min-height: var(--app-height); }
+/* Место снизу — отдельным пустым элементом, а не padding-bottom контейнера прокрутки: WebKit на iPhone нижний padding
+   flex-контейнера в высоту прокрутки не считает. Календарь «не листался», а низ списка лежал под панелью
+   (03.10.2026, замер с телефона: scrollHeight = clientHeight = 824, низ списка ~790, панель с 730). */
+.app-shell:not(.center)::after { content: ''; flex: none; height: calc(var(--app-inset-bottom) + 32px); }
+.app-shell.with-tabs::after { height: calc(var(--app-inset-bottom) + 96px); }
+.app-shell.center { align-items: center; justify-content: center; text-align: center; gap: 20px; min-height: var(--app-height); padding-bottom: calc(var(--app-inset-bottom) + 32px); }
 .muted { color: var(--muted); }
 .error { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--warn-soft); color: var(--warn); font-size: 14px; }
 
