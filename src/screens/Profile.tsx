@@ -1,11 +1,13 @@
 import { useContext, useState, type ReactNode } from 'react';
 import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
-import type { HeatDay, UserSettings } from '../../shared/types';
+import { heatLevel, type HeatDay, type UserSettings } from '../../shared/types';
 import { api } from '../api';
 import type { Theme } from '../App';
 import { MonthCalendar, YearMap, monthOf, shiftMonth, yearStart } from '../components/Heatmap';
 import { SelectRow, TimeRow } from '../components/Picker';
 import { LangContext, useT } from '../i18n';
+import type { Template } from '../share/draw';
+import { ShareSheet } from '../share/ShareSheet';
 
 /** Страница донатов в Tribute (открывается внутри Telegram). */
 const SUPPORT_URL = 'https://t.me/tribute/app?startapp=dRk2';
@@ -47,6 +49,7 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   // Сдвиг от текущего месяца: 0 — этот, -1 — прошлый.
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const save = async (patch: Partial<UserSettings>) => {
     try {
@@ -85,14 +88,44 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   const from = monthOf(yearStart(heat.today));
   const yearLabel = `${monthName(from, 'short')} ${from.slice(0, 4)} — ${monthName(monthOf(heat.today), 'short')} ${heat.today.slice(0, 4)}`;
 
+  /** «214 дней работы над собой в 2026» (20H — двенадцать месяцев, 20I — тёмная, весь год сеткой). */
+  const yearTemplates = (): Template[] => {
+    const year = heat.today.slice(0, 4);
+    const score = new Map(heat.days.map((d) => [d.day, d.score]));
+    const level = (day: string) => (day > heat.today ? 0 : heatLevel(score.get(day) ?? 0));
+    const n = heat.days.filter((d) => d.day.startsWith(year) && d.score > 0).length;
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const m = `${year}-${String(i + 1).padStart(2, '0')}`;
+      const first = new Date(`${m}-01T00:00:00Z`);
+      const count = new Date(Date.UTC(Number(year), i + 1, 0)).getUTCDate();
+      return {
+        name: monthName(m, 'short'),
+        lead: (first.getUTCDay() + 6) % 7,
+        levels: Array.from({ length: count }, (_, d) => level(`${m}-${String(d + 1).padStart(2, '0')}`)),
+      };
+    });
+    const all = months.flatMap((m) => m.levels);
+    return [
+      { kind: 'year', big: `${t.num(n)} ${t.share.days(n)}`, caption: t.share.workYear(year), months, footer: t.share.footer },
+      { kind: 'year-dark', big: t.num(n), caption: t.share.workDays(n), levels: all, footer: t.share.footer },
+    ];
+  };
+
   return (
     <>
+      {sharing && <ShareSheet templates={yearTemplates()} onClose={() => setSharing(false)} />}
       <header className="profile-head">
         {user.photo_url ? <img className="avatar" src={user.photo_url} alt="" /> : <div className="avatar">{user.first_name[0]}</div>}
         <div>
           <h1>{user.first_name}</h1>
           {user.username && <p className="muted">@{user.username}</p>}
         </div>
+        {/* Поделиться годом: «N дней работы над собой». */}
+        <button className="icon-btn" aria-label={t.share.open} onClick={() => setSharing(true)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 3v12M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+          </svg>
+        </button>
       </header>
 
       <section className="card pad heat-card">

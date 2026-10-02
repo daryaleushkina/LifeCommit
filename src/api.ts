@@ -42,7 +42,18 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data;
 }
 
+/** Картинка «Поделиться» — в Telegram через бота; в ответ ссылка (для сторис и «Сохранить») и file_id. */
+async function share(image: Blob): Promise<{ url: string; file_id: string }> {
+  const res = await fetch('/api/share', { method: 'POST', headers: { Authorization: auth(), 'content-type': 'image/png' }, body: image });
+  const data = (await res.json().catch(() => ({}))) as { url: string; file_id: string; error?: string };
+  if (!res.ok) throw new ApiError(res.status, data.error ?? 'network');
+  return data;
+}
+
 export const api = {
+  share,
+  /** В чат: подготовленное сообщение для shareMessage; не вышло — картинка пришла в личку с ботом (sent). */
+  shareChat: (fileId: string, caption: string) => call<{ prepared_id?: string; sent?: boolean }>('POST', '/share/chat', { file_id: fileId, caption }),
   session: (timezone: string) =>
     call<{ user: UserSettings; start_param: string | null; is_new: boolean }>('POST', '/session', { timezone }),
   today: () => call<TodayResponse>('GET', '/today'),

@@ -1,0 +1,324 @@
+// Картинки «Поделиться» (дизайн 19B, 19C, 19D, 20H, 20I — выбор владелицы 02.10.2026). Рисуем сами на canvas:
+// так одинаково в любом WebView Telegram и без библиотек. Размер сторис — 1080×1920; координаты ниже —
+// как в макете (360×640), холст просто увеличен в 3 раза. На каждой картинке — знак, QR на бота и @LifeCommit_bot,
+// всегда (переключателей нет — решение владелицы). Никаких пояснительных фраз — только цифра и что она значит.
+import { BOT_QR } from './qr';
+
+export const W = 360;
+export const H = 640;
+const SCALE = 3;
+
+const C = {
+  text: '#1F2A1F',
+  muted: '#566055',
+  accent: '#237A46',
+  bg: '#F3F1EA',
+  ink: '#0F1511',
+  light: '#E8EEE6',
+  neon: '#3FD27A',
+  heat: ['rgba(31,42,31,0.07)', '#B8E0C4', '#7CCB96', '#3FA968', '#237A46'],
+  slip: '#F2C9BC',
+};
+const FONT = "'Onest', system-ui, -apple-system, sans-serif";
+
+/** Месяц в дне: «29 из 31». states: 'on' — сделано (чисто), 'slip' — сорвалось, 'none' — нет. */
+export interface MonthCell {
+  n: number;
+  state: 'on' | 'slip' | 'none';
+}
+
+export type Template =
+  /** 19B: крупная светящаяся цифра на тёмном. */
+  | { kind: 'number'; title: string; big: string; caption: string; footer: string }
+  /** 19C: календарь месяца целиком. */
+  | { kind: 'month'; title: string; big: string; caption: string; lead: number; cells: MonthCell[]; weekdays: string[]; footer: string }
+  /** 19D: сумма за месяц и столбики по дням. */
+  | { kind: 'sum'; title: string; big: string; caption: string; bars: number[]; goal: number; left: string; middle: string; right: string; footer: string }
+  /** 20H: год двенадцатью маленькими месяцами. */
+  | { kind: 'year'; big: string; caption: string; months: { name: string; lead: number; levels: number[] }[]; footer: string }
+  /** 20I: год одной сеткой на тёмном. */
+  | { kind: 'year-dark'; big: string; caption: string; levels: number[]; footer: string };
+
+export interface Labels {
+  bot: string;
+}
+
+function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function font(ctx: CanvasRenderingContext2D, weight: number, size: number) {
+  ctx.font = `${weight} ${size}px ${FONT}`;
+}
+
+/** Текст по ширине: не влез — уменьшаем шрифт. */
+function fit(ctx: CanvasRenderingContext2D, text: string, weight: number, size: number, maxW: number): number {
+  let s = size;
+  font(ctx, weight, s);
+  while (s > 10 && ctx.measureText(text).width > maxW) {
+    s -= 2;
+    font(ctx, weight, s);
+  }
+  return s;
+}
+
+/** Мягкие цветные пятна, как фон приложения (без filter: blur — его нет в WebView iOS). */
+function blobs(ctx: CanvasRenderingContext2D) {
+  const blob = (x: number, y: number, r: number, color: string) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, 'rgba(243,241,234,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  blob(50, 200, 230, 'rgba(191,232,204,0.9)');
+  blob(340, 380, 220, 'rgba(243,226,184,0.85)');
+  blob(60, 520, 220, 'rgba(246,211,194,0.8)');
+  blob(340, 620, 240, 'rgba(191,232,204,0.75)');
+}
+
+function glass(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.save();
+  ctx.shadowColor = 'rgba(31,42,31,0.08)';
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 8;
+  rr(ctx, x, y, w, h, r);
+  ctx.fillStyle = 'rgba(255,255,255,0.62)';
+  ctx.fill();
+  ctx.restore();
+  rr(ctx, x + 0.5, y + 0.5, w - 1, h - 1, r);
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+/** Знак LifeCommit: клетки 3×3. */
+function mark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, on: string, dim: string) {
+  const lv = [1, 0, 1, 1, 1, 0, 1, 1, 1];
+  const c = size / 3.4;
+  const gap = c * 0.2;
+  lv.forEach((l, i) => {
+    rr(ctx, x + (i % 3) * (c + gap), y + Math.floor(i / 3) * (c + gap), c, c, c * 0.28);
+    ctx.fillStyle = l ? on : dim;
+    ctx.fill();
+  });
+}
+
+function brand(ctx: CanvasRenderingContext2D, dark: boolean) {
+  mark(ctx, 28, 36, 20, dark ? C.neon : '#3FA968', dark ? 'rgba(63,210,122,0.25)' : 'rgba(63,169,104,0.35)');
+  font(ctx, 700, 16);
+  ctx.fillStyle = dark ? C.light : C.text;
+  ctx.textBaseline = 'middle';
+  ctx.fillText('LifeCommit', 56, 46);
+}
+
+function qr(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, dark: string, light: string) {
+  const n = BOT_QR.length + 2; // поле в одну клетку
+  const cell = size / n;
+  rr(ctx, x, y, size, size, 8);
+  ctx.fillStyle = light;
+  ctx.fill();
+  ctx.fillStyle = dark;
+  BOT_QR.forEach((row, r) => {
+    for (let c = 0; c < row.length; c++) if (row[c] === '1') ctx.fillRect(x + (c + 1) * cell, y + (r + 1) * cell, cell + 0.05, cell + 0.05);
+  });
+}
+
+function footer(ctx: CanvasRenderingContext2D, text: string, bot: string, dark: boolean) {
+  const y = H - 28 - 58;
+  qr(ctx, 26, y, 58, dark ? C.ink : C.text, dark ? C.light : '#FFFFFF');
+  mark(ctx, 96, y + 13, 14, dark ? C.neon : '#3FA968', dark ? 'rgba(63,210,122,0.25)' : 'rgba(63,169,104,0.35)');
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = dark ? C.light : C.text;
+  font(ctx, 700, 14);
+  ctx.fillText(text, 116, y + 19);
+  ctx.fillStyle = dark ? 'rgba(232,238,230,0.6)' : C.muted;
+  font(ctx, 400, 12);
+  ctx.fillText(bot, 96, y + 41);
+}
+
+function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string, glow = false) {
+  const s = fit(ctx, text, 700, size, W - x * 2);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = color;
+  if (glow) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(63,210,122,0.55)';
+    ctx.shadowBlur = 40;
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+  ctx.fillText(text, x, y);
+  return s;
+}
+
+function line(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, weight: number, size: number, color: string) {
+  fit(ctx, text, weight, size, W - x * 2);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+function drawNumber(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'number' }>, l: Labels) {
+  ctx.fillStyle = C.ink;
+  ctx.fillRect(0, 0, W, H);
+  brand(ctx, true);
+  line(ctx, t.title, 28, 300, 500, 17, 'rgba(232,238,230,0.7)');
+  bigText(ctx, t.big, 26, 430, 150, C.neon, true);
+  line(ctx, t.caption, 28, 470, 700, 28, C.light);
+  footer(ctx, t.footer, l.bot, true);
+}
+
+function drawMonth(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'month' }>, l: Labels) {
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+  blobs(ctx);
+  brand(ctx, false);
+  line(ctx, t.title, 26, 118, 500, 15, C.muted);
+  bigText(ctx, t.big, 24, 172, 54, C.text);
+  line(ctx, t.caption, 26, 200, 400, 17, C.muted);
+  // Календарь в стеклянной карточке.
+  const x0 = 26;
+  const top = 222;
+  const w = W - x0 * 2;
+  const pad = 14;
+  const gap = 6;
+  const cell = (w - pad * 2 - gap * 6) / 7;
+  const rows = Math.ceil((t.lead + t.cells.length) / 7);
+  const h = pad * 2 + 18 + rows * (cell + gap) - gap;
+  glass(ctx, x0, top, w, h, 22);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  font(ctx, 700, 11);
+  ctx.fillStyle = C.muted;
+  t.weekdays.forEach((d, i) => ctx.fillText(d, x0 + pad + i * (cell + gap) + cell / 2, top + pad + 6));
+  t.cells.forEach((c, i) => {
+    const k = t.lead + i;
+    const cx = x0 + pad + (k % 7) * (cell + gap);
+    const cy = top + pad + 18 + Math.floor(k / 7) * (cell + gap);
+    rr(ctx, cx, cy, cell, cell, 10);
+    ctx.fillStyle = c.state === 'on' ? C.heat[3]! : c.state === 'slip' ? C.slip : C.heat[0]!;
+    ctx.fill();
+    font(ctx, 700, 12);
+    ctx.fillStyle = c.state === 'on' ? '#FFFFFF' : c.state === 'slip' ? '#A2462A' : C.muted;
+    ctx.fillText(String(c.n), cx + cell / 2, cy + cell / 2 + 0.5);
+  });
+  ctx.textAlign = 'left';
+  footer(ctx, t.footer, l.bot, false);
+}
+
+function drawSum(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'sum' }>, l: Labels) {
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+  blobs(ctx);
+  brand(ctx, false);
+  line(ctx, t.title, 26, 122, 500, 15, C.muted);
+  bigText(ctx, t.big, 24, 200, 84, C.accent);
+  line(ctx, t.caption, 26, 236, 700, 26, C.text);
+  const x0 = 26;
+  const base = 420;
+  const hMax = 150;
+  const max = Math.max(1, ...t.bars, t.goal);
+  const gap = 3;
+  const bw = (W - x0 * 2 - gap * (t.bars.length - 1)) / t.bars.length;
+  t.bars.forEach((v, i) => {
+    const h = Math.max(v > 0 ? 4 : 2, (v / max) * hMax);
+    rr(ctx, x0 + i * (bw + gap), base - h, bw, h, Math.min(3, bw / 2));
+    ctx.fillStyle = v <= 0 ? C.heat[0]! : t.goal > 0 && v >= t.goal ? C.heat[4]! : C.heat[2]!;
+    ctx.fill();
+  });
+  font(ctx, 400, 12);
+  ctx.fillStyle = C.muted;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(t.left, x0, base + 20);
+  ctx.textAlign = 'center';
+  ctx.fillText(t.middle, W / 2, base + 20);
+  ctx.textAlign = 'right';
+  ctx.fillText(t.right, W - x0, base + 20);
+  ctx.textAlign = 'left';
+  footer(ctx, t.footer, l.bot, false);
+}
+
+function drawYear(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'year' }>, l: Labels) {
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+  blobs(ctx);
+  brand(ctx, false);
+  bigText(ctx, t.big, 24, 132, 64, C.accent);
+  line(ctx, t.caption, 26, 164, 700, 24, C.text);
+  const x0 = 24;
+  const top = 190;
+  const w = W - x0 * 2;
+  const pad = 14;
+  const colGap = 10;
+  const rowGap = 12;
+  const mw = (w - pad * 2 - colGap * 3) / 4;
+  const g = 2;
+  const cell = (mw - g * 6) / 7;
+  const mh = 14 + 6 * (cell + g);
+  const h = pad * 2 + 3 * mh + rowGap * 2;
+  glass(ctx, x0, top, w, h, 22);
+  t.months.forEach((m, i) => {
+    const mx = x0 + pad + (i % 4) * (mw + colGap);
+    const my = top + pad + Math.floor(i / 4) * (mh + rowGap);
+    font(ctx, 700, 10);
+    ctx.fillStyle = C.muted;
+    ctx.textBaseline = 'top';
+    ctx.fillText(m.name, mx, my);
+    m.levels.forEach((lv, d) => {
+      const k = m.lead + d;
+      rr(ctx, mx + (k % 7) * (cell + g), my + 14 + Math.floor(k / 7) * (cell + g), cell, cell, cell * 0.26);
+      ctx.fillStyle = C.heat[lv]!;
+      ctx.fill();
+    });
+  });
+  footer(ctx, t.footer, l.bot, false);
+}
+
+function drawYearDark(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'year-dark' }>, l: Labels) {
+  ctx.fillStyle = C.ink;
+  ctx.fillRect(0, 0, W, H);
+  brand(ctx, true);
+  bigText(ctx, t.big, 24, 180, 104, C.neon, true);
+  line(ctx, t.caption, 26, 218, 700, 28, C.light);
+  const x0 = 24;
+  const cols = 26;
+  const gap = 2;
+  const cell = (W - x0 * 2 - gap * (cols - 1)) / cols;
+  t.levels.forEach((lv, i) => {
+    rr(ctx, x0 + (i % cols) * (cell + gap), 246 + Math.floor(i / cols) * (cell + gap), cell, cell, cell * 0.26);
+    ctx.fillStyle = lv ? C.heat[lv]! : 'rgba(232,238,230,0.08)';
+    ctx.fill();
+  });
+  footer(ctx, t.footer, l.bot, true);
+}
+
+/** Шрифт Onest должен успеть загрузиться, иначе картинка выйдет системным шрифтом. */
+export async function fontsReady() {
+  try {
+    await Promise.race([Promise.all([document.fonts.load(`700 40px ${FONT}`), document.fonts.load(`500 16px ${FONT}`), document.fonts.load(`400 12px ${FONT}`)]), new Promise((r) => setTimeout(r, 1500))]);
+  } catch {
+    // нет — нарисуем тем, что есть
+  }
+}
+
+export function draw(canvas: HTMLCanvasElement, t: Template, l: Labels) {
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
+  const ctx = canvas.getContext('2d')!;
+  ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+  if (t.kind === 'number') drawNumber(ctx, t, l);
+  else if (t.kind === 'month') drawMonth(ctx, t, l);
+  else if (t.kind === 'sum') drawSum(ctx, t, l);
+  else if (t.kind === 'year') drawYear(ctx, t, l);
+  else drawYearDark(ctx, t, l);
+}
+
+export const toBlob = (canvas: HTMLCanvasElement) =>
+  new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob'))), 'image/png'));
