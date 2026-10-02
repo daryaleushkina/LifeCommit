@@ -61,3 +61,15 @@ test('пять тапов по заголовку показывают заме�
   await page.locator('.viewport-debug').click();
   await expect(page.locator('.viewport-debug')).toHaveCount(0);
 });
+
+// 03.10.2026, iPhone: WebKit не считал нижний padding контейнера прокрутки — короткий список упирался под панель и не
+// листался. Место под панель — отдельным элементом (::after), а не padding: проверяем, что так и осталось.
+test('место под нижней панелью — элементом, а не отступом контейнера', async ({ app: page }) => {
+  await goTab(page, 'Календарь');
+  const [padding, spacer, bar] = await page.evaluate(() => {
+    const m = document.querySelector('main.app-shell')!;
+    return [getComputedStyle(m).paddingBottom, parseFloat(getComputedStyle(m, '::after').height), document.querySelector('.tabbar')!.getBoundingClientRect().height];
+  });
+  expect(padding).toBe('0px');
+  expect(spacer).toBeGreaterThanOrEqual(bar);
+});
