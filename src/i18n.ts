@@ -142,6 +142,8 @@ const ru = {
         ? `Бесплатно — до ${limit} привычек, и все места заняты. Можно отложить какую-нибудь.`
         : `Бесплатно — до ${limit} привычек: добавятся первые ${ruNum.format(room)}, остальные можно убрать.`,
     again: 'Сказать ещё раз',
+    toGroup: (title: string) => `В группу «${title}»`,
+    mine: 'Себе',
     manual: 'Выбрать вручную',
     nothingTitle: 'Не понял, что добавить',
     heard: 'Расслышал',
@@ -425,6 +427,8 @@ const en: Dict = {
         ? `Free plan: up to ${limit} habits, and they are all taken. You can postpone one.`
         : `Free plan: up to ${limit} habits — only the first ${enNum.format(room)} will be added.`,
     again: 'Say it again',
+    toGroup: (title) => `To “${title}”`,
+    mine: 'For me',
     manual: 'Pick manually',
     nothingTitle: 'Not sure what to add',
     heard: 'I heard',

@@ -2,7 +2,7 @@
 // она знает участников и кто говорит, поэтому «Алёна моет посуду» — дело Алёне, «по очереди я и Петя» —
 // очередь, «семейный ужин в семь» — мероприятие, «копим 150 тысяч на отпуск» — общая цель.
 // Один запрос, как и у личного разбора (docs/groups-architecture.md, «Голос»).
-import type { GoalUnit, GroupMode } from '../shared/groups';
+import type { GroupItemDraft, GroupMode } from '../shared/groups';
 import type { Env } from './env';
 import { askModel, todayLine, type ModelSpec } from './voice';
 
@@ -39,7 +39,7 @@ const SCHEMA = {
 };
 
 const SYSTEM = `You turn a message from a group chat (family, sports team, friends, colleagues) into shared to-dos for a group task tracker. Reply with JSON only.
-The message starts with "Members:" (the group members' names), "Speaker:" (who is talking) and "Today is …".
+The message starts with "Members:" (the group members' names), "Speaker:" (who is talking) and "Today is …". It may start with an "Only for group:" line — then the speaker talks in the app, may also mention other groups or their own personal things: take only what that line allows. Words like «добавь в группу X» are not a to-do.
 For each thing to do, pick a mode:
 - "one": anyone in the group can do it, once is enough (wash the floor, buy cat food, give the cat its inhaler). Default when nobody is named.
 - "assign": specific people do it. people = their names exactly as in Members (convert inflected forms: «Алёне», «Алёной» → «Алёна»). «я», «мне», «сама», «сам» = the Speaker. «все», «каждый», «каждому», «everyone», «each» → people ["all"]. «по очереди», «take turns» → rotate true (people are the ones taking turns; nobody named → ["all"]).
@@ -84,19 +84,7 @@ const SHOTS: [string, object][] = [
 
 export const GROUP_SPEC: ModelSpec = { system: SYSTEM, shots: SHOTS, schema: SCHEMA };
 
-export interface GroupDraft {
-  title: string;
-  mode: GroupMode;
-  day: string;
-  time: string | null;
-  rrule: string | null;
-  assignees: number[];
-  all_members: boolean;
-  rotate: boolean;
-  target: number | null;
-  unit: GoalUnit | null;
-  duration_min: number | null;
-}
+export type GroupDraft = GroupItemDraft;
 
 /** Латиница → кириллица для сравнения имён: «Dasha» в Telegram и «Даше» в голосе — один человек. */
 const LAT: [string, string][] = [['shch', 'щ'], ['sch', 'щ'], ['sh', 'ш'], ['ch', 'ч'], ['zh', 'ж'], ['kh', 'х'], ['ts', 'ц'], ['ya', 'я'], ['yu', 'ю'], ['yo', 'е'], ['ye', 'е'], ['ia', 'я'], ['iu', 'ю'],
@@ -195,9 +183,20 @@ export function toGroupDrafts(raw: unknown, today: string, members: { id: number
   return out;
 }
 
-/** Разобрать фразу из чата группы: участники и говорящий — в подсказке. */
-export async function parseGroupItems(env: Env, text: string, today: string, members: { id: number; name: string }[], speakerId: number): Promise<GroupDraft[]> {
+/** Из мини-аппа: фраза может быть не только про эту группу — про другие группы и про личное говорящего. */
+export interface GroupFocus {
+  group: string;
+  otherGroups: string[];
+  /** Во фразе есть и личное — его не брать. */
+  personalToo: boolean;
+}
+
+/** Разобрать фразу для группы: участники и говорящий — в подсказке. */
+export async function parseGroupItems(env: Env, text: string, today: string, members: { id: number; name: string }[], speakerId: number, focus?: GroupFocus): Promise<GroupDraft[]> {
   const speaker = members.find((m) => m.id === speakerId)?.name ?? '';
-  const input = `Members: ${members.map((m) => m.name).join(', ')}\nSpeaker: ${speaker}\n${todayLine(today)}\n${text.slice(0, 2000)}`;
+  const only = focus
+    ? `Only for group: ${focus.group}. Take only what is meant for this group${focus.otherGroups.length ? ` — not for ${focus.otherGroups.join(', ')}` : ''}${focus.personalToo ? '; skip what the speaker keeps for themselves outside the group («себе», «лично», «в мои дела»)' : ''}.\n`
+    : '';
+  const input = `${only}Members: ${members.map((m) => m.name).join(', ')}\nSpeaker: ${speaker}\n${todayLine(today)}\n${text.slice(0, 2000)}`;
   return toGroupDrafts(await askModel(env, input, GROUP_SPEC), today, members, speakerId, text);
 }
