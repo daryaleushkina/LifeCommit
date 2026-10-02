@@ -611,3 +611,25 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .hcal .hcal-day { font-family: inherit; cursor: pointer; }
 .mark-choice { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .act.soft-bad { background: var(--warn-soft); color: var(--warn); }
+
+/* Смахнуть строку влево (круг 21): кнопки под строкой, строка едет, кнопки открываются обрезкой. */
+.todo-list li.swipe { display: block; position: relative; padding-left: 0; overflow: hidden; }
+.swipe-body { position: relative; z-index: 1; display: flex; align-items: center; min-height: 52px; padding-left: 8px; touch-action: pan-y; transition: transform 240ms var(--ease-out); }
+.swipe-actions { position: absolute; inset: 0; display: flex; justify-content: flex-end; transition: clip-path 240ms var(--ease-out); }
+.swipe.dragging .swipe-body, .swipe.dragging .swipe-actions { transition: none; }
+.swipe-btn { flex: none; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden; white-space: nowrap; color: #FFFFFF; font-size: 12px; font-weight: 600; }
+.swipe-btn.danger { background: #D9534A; }
+.swipe-btn.muted { background: #8C948A; }
+@media (prefers-reduced-motion: reduce) { .swipe-body, .swipe-actions { transition: none; } }
+
+/* «Удалено · Вернуть» — внизу над панелью, 5 секунд. */
+.undo-toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--app-inset-bottom) + 104px); z-index: 40; min-height: 52px; padding: 6px 8px 6px 16px; border-radius: 16px; background: color-mix(in srgb, var(--text) 92%, transparent); color: var(--bg); display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); font-size: 15px; animation: toast-up 200ms var(--ease-out); transition: opacity 200ms, transform 200ms; }
+.undo-toast span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.undo-toast button { flex: none; height: 40px; padding: 0 14px; border-radius: 12px; background: color-mix(in srgb, var(--bg) 16%, transparent); color: var(--bg); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.undo-toast.out { opacity: 0; transform: translateY(8px); }
+@keyframes toast-up { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .undo-toast { animation: none; transition: none; } }
+
+.act.soft { background: var(--bg); color: var(--text); }
+.act.danger { background: #D9534A; color: #FFFFFF; }
+.act.soft + .act.danger { margin-top: 8px; }

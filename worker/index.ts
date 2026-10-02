@@ -7,6 +7,7 @@ import { groupChatsTick } from './groupBot';
 import { sendReminders } from './cron';
 import { db } from './env';
 import { google } from './google';
+import { shareFiles } from './share';
 import type { Env } from './env';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -14,6 +15,8 @@ const app = new Hono<{ Bindings: Env }>();
 app.route('/api', api);
 app.route('/bot', bot);
 app.route('/google', google);
+// Картинки «Поделиться» по ссылке — для сторис Telegram и «Сохранить».
+app.route('/share', shareFiles);
 app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
 
 app.onError((err, c) => {

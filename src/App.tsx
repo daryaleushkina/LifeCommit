@@ -3,6 +3,7 @@ import { mainButton, miniApp, useSignal } from '@tma.js/sdk-react';
 import type { TaskKind, TodayResponse, UserSettings } from '../shared/types';
 import { api } from './api';
 import { caches, load as fetchInto, logicalDayOf, warm } from './caches';
+import { RemovalHost } from './removal';
 import { Splash } from './components/Logo';
 import { LangContext, dictionaries, useT, type Lang } from './i18n';
 import { Archive } from './screens/Archive';
@@ -293,7 +294,13 @@ export function App(): ReactNode {
     );
   }
 
-  return <LangContext.Provider value={lang}>{screen}</LangContext.Provider>;
+  return (
+    <LangContext.Provider value={lang}>
+      {screen}
+      {/* «Удалено · Вернуть» и вопрос про общее дело — поверх любого экрана. */}
+      <RemovalHost />
+    </LangContext.Provider>
+  );
 }
 
 /**

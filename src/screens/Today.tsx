@@ -78,6 +78,7 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup }: P
         onAdd={(title) => void todos.add(title, data.day)}
         onUpdate={todos.update}
         onRemove={todos.remove}
+        onHide={todos.hide}
       />
 
       <h2 className="section-label">{t.voiceHabits}</h2>
@@ -106,7 +107,7 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup }: P
       )}
 
       {/* Группы — под личным: мои дела каждой группы, «кто-то один», мероприятия и общие цели. */}
-      <GroupBlocks groups={data.groups ?? []} me={me} setCache={setCache} onOpen={onOpenGroup} />
+      <GroupBlocks groups={data.groups ?? []} me={me} setCache={setCache} onOpen={onOpenGroup} today={data.day} />
 
       {canAdd ? (
         <button className="link-btn" onClick={() => onEdit(null)}>

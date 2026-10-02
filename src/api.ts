@@ -51,7 +51,7 @@ export const api = {
   voice,
   createTodo: (input: TodoInput) => call<{ id: number }>('POST', '/todos', input),
   createTodos: (todos: TodoInput[]) => call<{ ids: number[] }>('POST', '/todos/batch', { todos }),
-  updateTodo: (id: number, patch: { title?: string; day?: string; time?: string | null; done?: boolean; on?: string; location?: string }) =>
+  updateTodo: (id: number, patch: { title?: string; day?: string; time?: string | null; done?: boolean; on?: string; location?: string; hidden?: boolean }) =>
     call<{ ok: true }>('PATCH', `/todos/${id}`, patch),
   calendar: (from: string, to: string) => call<{ today: string; todos: Todo[]; groups: GroupDayBlock[] }>('GET', `/calendar?from=${from}&to=${to}`),
   calendars: () => call<CalendarAccount[]>('GET', '/calendars'),
@@ -90,6 +90,8 @@ export const api = {
   createItem: (groupId: number, input: GroupItemInput) => call<{ id: number }>('POST', `/groups/${groupId}/items`, input),
   updateItem: (groupId: number, itemId: number, patch: Partial<GroupItemInput>) => call<{ ok: true }>('PATCH', `/groups/${groupId}/items/${itemId}`, patch),
   deleteItem: (groupId: number, itemId: number) => call<{ ok: true }>('DELETE', `/groups/${groupId}/items/${itemId}`),
+  /** Повторяющееся дело — убрать только в этот день. */
+  skipItem: (groupId: number, itemId: number, day: string) => call<{ ok: true }>('POST', `/groups/${groupId}/items/${itemId}/skip`, { day }),
   markItem: (groupId: number, itemId: number, done: boolean, day?: string) => call<{ ok: true; taken: boolean }>('PUT', `/groups/${groupId}/items/${itemId}/mark`, { done, day }),
   addEntry: (groupId: number, itemId: number, amount: number) => call<{ ok: true }>('POST', `/groups/${groupId}/items/${itemId}/entries`, { amount }),
 };
