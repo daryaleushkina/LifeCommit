@@ -1,4 +1,5 @@
-// Картинки «Поделиться» (дизайн 19B, 19C, 19D, 20H, 20I — выбор владелицы 02.10.2026). Рисуем сами на canvas:
+// Картинки «Поделиться» (дизайн 19B, 19C, 19D, 20H, 20I — выбор владелицы 02.10.2026; месяц профиля — тем же видом,
+// что год). Рисуем сами на canvas:
 // так одинаково в любом WebView Telegram и без библиотек. Размер сторис — 1080×1920; координаты ниже —
 // как в макете (360×640), холст просто увеличен в 3 раза. На каждой картинке — знак, QR на бота и @LifeCommit_bot,
 // всегда (переключателей нет — решение владелицы). Никаких пояснительных фраз — только цифра и что она значит.
@@ -9,6 +10,13 @@ export const H = 640;
 /** Картинка для Telegram — 1080×1920. Превью в окне рисуем мельче: на экране оно втрое меньше, а большие холсты тормозят ленту. */
 export const SCALE = 3;
 export const PREVIEW_SCALE = 2;
+
+/**
+ * Сторис: сверху Telegram кладёт шапку (аватар, имя, кнопки редактора), снизу — поле подписи или ответа.
+ * Там ничего важного: знак — ниже шапки, QR и подпись — выше поля (02.10.2026: в сторис их перекрывало).
+ */
+const SAFE_TOP = 64;
+const SAFE_BOTTOM = 96;
 
 const C = {
   text: '#1F2A1F',
@@ -39,7 +47,11 @@ export type Template =
   /** 20H: год двенадцатью маленькими месяцами. */
   | { kind: 'year'; big: string; caption: string; months: { name: string; lead: number; levels: number[] }[]; footer: string }
   /** 20I: год одной сеткой на тёмном. */
-  | { kind: 'year-dark'; big: string; caption: string; levels: number[]; footer: string };
+  | { kind: 'year-dark'; big: string; caption: string; levels: number[]; footer: string }
+  /** Месяц профиля как 20H: «12 дней · работы над собой в октябре» и календарь месяца по уровням карты. */
+  | { kind: 'month-heat'; big: string; caption: string; lead: number; levels: number[]; weekdays: string[]; footer: string }
+  /** Месяц профиля как 20I: на тёмном, крупная цифра и сетка месяца. */
+  | { kind: 'month-dark'; title: string; big: string; caption: string; lead: number; levels: number[]; footer: string };
 
 export interface Labels {
   bot: string;
@@ -118,11 +130,12 @@ function mark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number,
 }
 
 function brand(ctx: CanvasRenderingContext2D, dark: boolean) {
-  mark(ctx, 28, 36, 20, dark ? C.neon : '#3FA968', dark ? 'rgba(63,210,122,0.25)' : 'rgba(63,169,104,0.35)');
+  const y = SAFE_TOP + 8;
+  mark(ctx, 28, y, 20, dark ? C.neon : '#3FA968', dark ? 'rgba(63,210,122,0.25)' : 'rgba(63,169,104,0.35)');
   font(ctx, 700, 16);
   ctx.fillStyle = dark ? C.light : C.text;
   ctx.textBaseline = 'middle';
-  ctx.fillText('LifeCommit', 56, 46);
+  ctx.fillText('LifeCommit', 56, y + 10);
 }
 
 /**
@@ -216,8 +229,11 @@ function qr(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
 /** Подвал: QR, знак, подпись и @бот. */
 const QR_SIZE = 64;
 
+/** Нижняя граница содержимого: дальше — подвал. */
+const CONTENT_BOTTOM = H - SAFE_BOTTOM - QR_SIZE - 14;
+
 function footer(ctx: CanvasRenderingContext2D, text: string, bot: string, dark: boolean) {
-  const y = H - 28 - QR_SIZE;
+  const y = H - SAFE_BOTTOM - QR_SIZE;
   const tx = 26 + QR_SIZE + 12;
   qr(ctx, 26, y, QR_SIZE);
   mark(ctx, tx, y + 16, 14, dark ? C.neon : '#3FA968', dark ? 'rgba(63,210,122,0.25)' : 'rgba(63,169,104,0.35)');
@@ -256,10 +272,43 @@ function drawNumber(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 
   ctx.fillStyle = C.ink;
   ctx.fillRect(0, 0, W, H);
   brand(ctx, true);
-  line(ctx, t.title, 28, 300, 500, 17, 'rgba(232,238,230,0.7)');
-  bigText(ctx, t.big, 26, 430, 150, C.neon, true);
-  line(ctx, t.caption, 28, 470, 700, 28, C.light);
+  line(ctx, t.title, 28, 252, 500, 17, 'rgba(232,238,230,0.7)');
+  bigText(ctx, t.big, 26, 382, 150, C.neon, true);
+  line(ctx, t.caption, 28, 422, 700, 28, C.light);
   footer(ctx, t.footer, l.bot, true);
+}
+
+/**
+ * Календарь месяца в стеклянной карточке от top до CONTENT_BOTTOM: клетки во всю ширину, а если месяц
+ * в шесть недель не помещается по высоте — мельче и по центру.
+ */
+function calendar(ctx: CanvasRenderingContext2D, top: number, lead: number, cells: { n: number; fill: string; ink: string }[], weekdays: string[]) {
+  const x0 = 26;
+  const w = W - x0 * 2;
+  const pad = 14;
+  const gap = 6;
+  const rows = Math.ceil((lead + cells.length) / 7);
+  const cell = Math.min((w - pad * 2 - gap * 6) / 7, (CONTENT_BOTTOM - top - pad * 2 - 18 + gap) / rows - gap);
+  const gx = x0 + (w - (cell * 7 + gap * 6)) / 2;
+  const h = pad * 2 + 18 + rows * (cell + gap) - gap;
+  glass(ctx, x0, top, w, h, 22);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  font(ctx, 700, 11);
+  ctx.fillStyle = C.muted;
+  weekdays.forEach((d, i) => ctx.fillText(d, gx + i * (cell + gap) + cell / 2, top + pad + 6));
+  cells.forEach((c, i) => {
+    const k = lead + i;
+    const cx = gx + (k % 7) * (cell + gap);
+    const cy = top + pad + 18 + Math.floor(k / 7) * (cell + gap);
+    rr(ctx, cx, cy, cell, cell, Math.min(10, cell * 0.3));
+    ctx.fillStyle = c.fill;
+    ctx.fill();
+    font(ctx, 700, 12);
+    ctx.fillStyle = c.ink;
+    ctx.fillText(String(c.n), cx + cell / 2, cy + cell / 2 + 0.5);
+  });
+  ctx.textAlign = 'left';
 }
 
 function drawMonth(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'month' }>, l: Labels) {
@@ -267,37 +316,50 @@ function drawMonth(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: '
   ctx.fillRect(0, 0, W, H);
   blobs(ctx);
   brand(ctx, false);
-  line(ctx, t.title, 26, 118, 500, 15, C.muted);
-  bigText(ctx, t.big, 24, 172, 54, C.text);
-  line(ctx, t.caption, 26, 200, 400, 17, C.muted);
-  // Календарь в стеклянной карточке.
-  const x0 = 26;
-  const top = 222;
-  const w = W - x0 * 2;
-  const pad = 14;
-  const gap = 6;
-  const cell = (w - pad * 2 - gap * 6) / 7;
-  const rows = Math.ceil((t.lead + t.cells.length) / 7);
-  const h = pad * 2 + 18 + rows * (cell + gap) - gap;
-  glass(ctx, x0, top, w, h, 22);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  font(ctx, 700, 11);
-  ctx.fillStyle = C.muted;
-  t.weekdays.forEach((d, i) => ctx.fillText(d, x0 + pad + i * (cell + gap) + cell / 2, top + pad + 6));
-  t.cells.forEach((c, i) => {
-    const k = t.lead + i;
-    const cx = x0 + pad + (k % 7) * (cell + gap);
-    const cy = top + pad + 18 + Math.floor(k / 7) * (cell + gap);
-    rr(ctx, cx, cy, cell, cell, 10);
-    ctx.fillStyle = c.state === 'on' ? C.heat[3]! : c.state === 'slip' ? C.slip : C.heat[0]!;
-    ctx.fill();
-    font(ctx, 700, 12);
-    ctx.fillStyle = c.state === 'on' ? '#FFFFFF' : c.state === 'slip' ? '#A2462A' : C.muted;
-    ctx.fillText(String(c.n), cx + cell / 2, cy + cell / 2 + 0.5);
-  });
-  ctx.textAlign = 'left';
+  line(ctx, t.title, 26, 132, 500, 15, C.muted);
+  bigText(ctx, t.big, 24, 182, 54, C.text);
+  line(ctx, t.caption, 26, 207, 400, 17, C.muted);
+  const cells = t.cells.map((c) => ({
+    n: c.n,
+    fill: c.state === 'on' ? C.heat[3]! : c.state === 'slip' ? C.slip : C.heat[0]!,
+    ink: c.state === 'on' ? '#FFFFFF' : c.state === 'slip' ? '#A2462A' : C.muted,
+  }));
+  calendar(ctx, 222, t.lead, cells, t.weekdays);
   footer(ctx, t.footer, l.bot, false);
+}
+
+/** Месяц профиля: уровни карты, числа белые на тёмно-зелёных клетках. */
+function drawMonthHeat(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'month-heat' }>, l: Labels) {
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+  blobs(ctx);
+  brand(ctx, false);
+  bigText(ctx, t.big, 24, 154, 64, C.accent);
+  line(ctx, t.caption, 26, 184, 700, 24, C.text);
+  const cells = t.levels.map((lv, i) => ({ n: i + 1, fill: C.heat[lv]!, ink: lv >= 3 ? '#FFFFFF' : lv ? C.text : C.muted }));
+  calendar(ctx, 204, t.lead, cells, t.weekdays);
+  footer(ctx, t.footer, l.bot, false);
+}
+
+/** Месяц профиля на тёмном: «Октябрь 2026», крупная цифра, сетка месяца без чисел. */
+function drawMonthDark(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'month-dark' }>, l: Labels) {
+  ctx.fillStyle = C.ink;
+  ctx.fillRect(0, 0, W, H);
+  brand(ctx, true);
+  line(ctx, t.title, 28, 136, 500, 17, 'rgba(232,238,230,0.7)');
+  bigText(ctx, t.big, 24, 226, 104, C.neon, true);
+  line(ctx, t.caption, 26, 262, 700, 28, C.light);
+  const top = 284;
+  const gap = 4;
+  const rows = Math.ceil((t.lead + t.levels.length) / 7);
+  const cell = Math.min(40, (CONTENT_BOTTOM - top + gap) / rows - gap);
+  t.levels.forEach((lv, i) => {
+    const k = t.lead + i;
+    rr(ctx, 24 + (k % 7) * (cell + gap), top + Math.floor(k / 7) * (cell + gap), cell, cell, cell * 0.26);
+    ctx.fillStyle = lv ? C.heat[lv]! : 'rgba(232,238,230,0.08)';
+    ctx.fill();
+  });
+  footer(ctx, t.footer, l.bot, true);
 }
 
 function drawSum(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'sum' }>, l: Labels) {
@@ -305,12 +367,12 @@ function drawSum(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'su
   ctx.fillRect(0, 0, W, H);
   blobs(ctx);
   brand(ctx, false);
-  line(ctx, t.title, 26, 122, 500, 15, C.muted);
-  bigText(ctx, t.big, 24, 200, 84, C.accent);
-  line(ctx, t.caption, 26, 236, 700, 26, C.text);
+  line(ctx, t.title, 26, 132, 500, 15, C.muted);
+  bigText(ctx, t.big, 24, 208, 84, C.accent);
+  line(ctx, t.caption, 26, 242, 700, 26, C.text);
   const x0 = 26;
-  const base = 420;
-  const hMax = 150;
+  const base = CONTENT_BOTTOM - 24;
+  const hMax = 140;
   const max = Math.max(1, ...t.bars, t.goal);
   const gap = 3;
   const bw = (W - x0 * 2 - gap * (t.bars.length - 1)) / t.bars.length;
@@ -337,10 +399,10 @@ function drawYear(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'y
   ctx.fillRect(0, 0, W, H);
   blobs(ctx);
   brand(ctx, false);
-  bigText(ctx, t.big, 24, 132, 64, C.accent);
-  line(ctx, t.caption, 26, 164, 700, 24, C.text);
+  bigText(ctx, t.big, 24, 154, 64, C.accent);
+  line(ctx, t.caption, 26, 184, 700, 24, C.text);
   const x0 = 24;
-  const top = 190;
+  const top = 204;
   const w = W - x0 * 2;
   const pad = 14;
   const colGap = 10;
@@ -372,14 +434,14 @@ function drawYearDark(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind
   ctx.fillStyle = C.ink;
   ctx.fillRect(0, 0, W, H);
   brand(ctx, true);
-  bigText(ctx, t.big, 24, 180, 104, C.neon, true);
-  line(ctx, t.caption, 26, 218, 700, 28, C.light);
+  bigText(ctx, t.big, 24, 186, 104, C.neon, true);
+  line(ctx, t.caption, 26, 224, 700, 28, C.light);
   const x0 = 24;
   const cols = 26;
   const gap = 2;
   const cell = (W - x0 * 2 - gap * (cols - 1)) / cols;
   t.levels.forEach((lv, i) => {
-    rr(ctx, x0 + (i % cols) * (cell + gap), 246 + Math.floor(i / cols) * (cell + gap), cell, cell, cell * 0.26);
+    rr(ctx, x0 + (i % cols) * (cell + gap), 250 + Math.floor(i / cols) * (cell + gap), cell, cell, cell * 0.26);
     ctx.fillStyle = lv ? C.heat[lv]! : 'rgba(232,238,230,0.08)';
     ctx.fill();
   });
@@ -404,6 +466,8 @@ export function draw(canvas: HTMLCanvasElement, t: Template, l: Labels, scale = 
   else if (t.kind === 'month') drawMonth(ctx, t, l);
   else if (t.kind === 'sum') drawSum(ctx, t, l);
   else if (t.kind === 'year') drawYear(ctx, t, l);
+  else if (t.kind === 'month-heat') drawMonthHeat(ctx, t, l);
+  else if (t.kind === 'month-dark') drawMonthDark(ctx, t, l);
   else drawYearDark(ctx, t, l);
 }
 

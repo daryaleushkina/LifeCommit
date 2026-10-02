@@ -94,21 +94,32 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
     const score = new Map(heat.days.map((d) => [d.day, d.score]));
     const level = (day: string) => (day > heat.today ? 0 : heatLevel(score.get(day) ?? 0));
     const n = heat.days.filter((d) => d.day.startsWith(year) && d.score > 0).length;
-    const months = Array.from({ length: 12 }, (_, i) => {
-      const m = `${year}-${String(i + 1).padStart(2, '0')}`;
+    /** Месяц «YYYY-MM»: сдвиг первого дня от понедельника и уровни карты по дням. */
+    const monthData = (m: string) => {
       const first = new Date(`${m}-01T00:00:00Z`);
-      const count = new Date(Date.UTC(Number(year), i + 1, 0)).getUTCDate();
+      const count = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 0)).getUTCDate();
       return {
         name: monthName(m, 'short'),
         lead: (first.getUTCDay() + 6) % 7,
         levels: Array.from({ length: count }, (_, d) => level(`${m}-${String(d + 1).padStart(2, '0')}`)),
       };
-    });
+    };
+    const months = Array.from({ length: 12 }, (_, i) => monthData(`${year}-${String(i + 1).padStart(2, '0')}`));
     const all = months.flatMap((m) => m.levels);
-    return [
+    // Месяц — тот, что открыт в профиле (02.10.2026, просьба владелицы: «и по месяцам — 4 варианта»).
+    const mi = Number(month.slice(5)) - 1;
+    const shownMonth = monthData(month);
+    const inMonth = heat.days.filter((d) => d.day.startsWith(month) && d.day <= heat.today && d.score > 0).length;
+    const monthDays: Template[] = [
+      { kind: 'month-heat', big: `${t.num(inMonth)} ${t.share.days(inMonth)}`, caption: t.share.workMonth(mi), lead: shownMonth.lead, levels: shownMonth.levels, weekdays: t.weekdaysShort, footer: t.share.footer },
+      { kind: 'month-dark', title: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1), big: t.num(inMonth), caption: t.share.workDays(inMonth), lead: shownMonth.lead, levels: shownMonth.levels, footer: t.share.footer },
+    ];
+    const yearDays: Template[] = [
       { kind: 'year', big: `${t.num(n)} ${t.share.days(n)}`, caption: t.share.workYear(year), months, footer: t.share.footer },
       { kind: 'year-dark', big: t.num(n), caption: t.share.workDays(n), levels: all, footer: t.share.footer },
     ];
+    // Первыми — то, что сейчас открыто: «Месяц» или «Год».
+    return view === 'month' ? [...monthDays, ...yearDays] : [...yearDays, ...monthDays];
   };
 
   return (

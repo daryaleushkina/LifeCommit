@@ -132,6 +132,8 @@ const ru = {
     timesAll: 'раз за всё время',
     perDay: (n: string) => `в среднем ${n} в день`,
     workYear: (y: string) => `работы над собой в ${y}`,
+    /** «работы над собой в октябре» */
+    workMonth: (m: number) => `работы над собой ${['в январе', 'в феврале', 'в марте', 'в апреле', 'в мае', 'в июне', 'в июле', 'в августе', 'в сентябре', 'в октябре', 'в ноябре', 'в декабре'][m]}`,
     days: (n: number) => plural(n, 'день', 'дня', 'дней'),
     workDays: (n: number) => `${plural(n, 'день', 'дня', 'дней')} работы над собой`,
   },
@@ -612,6 +614,7 @@ const en: Dict = {
     timesAll: 'times in total',
     perDay: (n) => `${n} a day on average`,
     workYear: (y) => `of working on myself in ${y}`,
+    workMonth: (m) => `of working on myself in ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m]}`,
     days: (n) => (n === 1 ? 'day' : 'days'),
     workDays: (n) => `${n === 1 ? 'day' : 'days'} of working on myself`,
   },
