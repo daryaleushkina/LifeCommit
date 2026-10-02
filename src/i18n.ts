@@ -136,6 +136,12 @@ const ru = {
     workMonth: (m: number) => `работы над собой ${['в январе', 'в феврале', 'в марте', 'в апреле', 'в мае', 'в июне', 'в июле', 'в августе', 'в сентябре', 'в октябре', 'в ноябре', 'в декабре'][m]}`,
     days: (n: number) => plural(n, 'день', 'дня', 'дней'),
     workDays: (n: number) => `${plural(n, 'день', 'дня', 'дней')} работы над собой`,
+    // Итог по всем целям (круг 23).
+    myMonth: (m: number) => `Мой ${['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'][m]}`,
+    monthName: (m: number) => ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'][m]!,
+    sumTimes: (n: number) => plural(n, 'раз', 'раза', 'раз'),
+    sumDaysWithout: (n: number) => `${plural(n, 'день', 'дня', 'дней')} без`,
+    workWord: 'работы над собой',
   },
   swipe: {
     remove: 'Удалить',
@@ -624,6 +630,11 @@ const en: Dict = {
     workMonth: (m) => `of working on myself in ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m]}`,
     days: (n) => (n === 1 ? 'day' : 'days'),
     workDays: (n) => `${n === 1 ? 'day' : 'days'} of working on myself`,
+    myMonth: (m) => `My ${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m]}`,
+    monthName: (m) => ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m]!,
+    sumTimes: (n) => (n === 1 ? 'time' : 'times'),
+    sumDaysWithout: (n) => `${n === 1 ? 'day' : 'days'} without`,
+    workWord: 'of working on myself',
   },
   swipe: {
     remove: 'Delete',

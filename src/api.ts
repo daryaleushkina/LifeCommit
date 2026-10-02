@@ -1,6 +1,7 @@
 import { retrieveRawInitData } from '@tma.js/sdk-react';
 import type { GroupDayBlock, GroupKind, GroupMode, GroupToday } from '../shared/groups';
 import type { TaskHistory } from '../shared/stats';
+import type { SummaryItem } from '../shared/summary';
 import type { HeatDay, TaskInput, Todo, TodoInput, TodayResponse, UserSettings, VoiceAction, VoiceEvent } from '../shared/types';
 
 /** Подключённый календарь. */
@@ -84,6 +85,8 @@ export const api = {
   log: (task_id: number, value: number | null, status?: 'clean' | 'slip' | null, day?: string) =>
     call<{ ok: true }>('PUT', '/logs', { task_id, value, status, day }),
   history: (id: number) => call<TaskHistory>('GET', `/tasks/${id}/history`),
+  /** Итог по всем привычкам за период — для картинок «Поделиться». */
+  summary: (from: string, to: string) => call<SummaryItem[]>('GET', `/summary?from=${from}&to=${to}`),
   heatmap: (days = 365) => call<{ today: string; days: HeatDay[] }>('GET', `/heatmap?days=${days}`),
   settings: (patch: Partial<UserSettings>) => call<UserSettings>('PATCH', '/settings', patch),
   writeAccess: () => call<{ ok: true }>('POST', '/write-access'),

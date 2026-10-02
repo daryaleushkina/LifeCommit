@@ -23,6 +23,7 @@ import {
   type VoiceEvent,
 } from '../shared/types';
 import type { TaskHistory } from '../shared/stats';
+import { summarize, type SummaryLog, type SummaryTask } from '../shared/summary';
 import { requireTelegram, type AuthVars } from './auth';
 import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from './day';
 import { byTelegram, db, type Env } from './env';
@@ -824,6 +825,27 @@ api.get('/heatmap', async (c) => {
   }[];
   const heat: HeatDay[] = rows.map((r) => ({ day: r.day, score: Number(r.score) }));
   return c.json({ today: to, days: heat });
+});
+
+// Итог по всем привычкам за период (картинки «Поделиться», круг 23). Отметки берём порциями: больше 1000 строк
+// за раз база не отдаёт, а за год у человека с десятком привычек их несколько тысяч.
+api.get('/summary', async (c) => {
+  const user = c.get('user');
+  const sb = c.get('sb');
+  const from = c.req.query('from') ?? '';
+  const to = c.req.query('to') ?? '';
+  const isDay = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+  if (!isDay(from) || !isDay(to) || from > to || Date.parse(to) - Date.parse(from) > 366 * 86_400_000) throw new HTTPException(400, { message: 'bad_range' });
+  const tasks = must(await sb.from('tasks').select('id, title, kind, unit').eq('user_id', user.id).order('position').order('id')) as SummaryTask[];
+  const logs: SummaryLog[] = [];
+  for (let page = 0; page < 20; page++) {
+    const rows = must(
+      await sb.from('task_logs').select('task_id, day, value, status').eq('user_id', user.id).gte('day', from).lte('day', to).order('day').order('task_id').range(page * 1000, page * 1000 + 999),
+    ) as { task_id: number; day: string; value: string | number; status: SummaryLog['status'] }[];
+    logs.push(...rows.map((r) => ({ ...r, value: Number(r.value) })));
+    if (rows.length < 1000) break;
+  }
+  return c.json(summarize(tasks, logs));
 });
 
 api.get('/me', (c) => c.json(toSettings(c.get('user'))));

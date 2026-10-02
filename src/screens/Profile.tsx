@@ -1,4 +1,4 @@
-import { useContext, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useState, type ReactNode } from 'react';
 import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
 import { heatLevel, type HeatDay, type UserSettings } from '../../shared/types';
 import { api } from '../api';
@@ -6,7 +6,8 @@ import type { Theme } from '../App';
 import { MonthCalendar, YearMap, monthOf, shiftMonth, yearStart } from '../components/Heatmap';
 import { SelectRow, TimeRow } from '../components/Picker';
 import { LangContext, useT } from '../i18n';
-import type { Template } from '../share/draw';
+import type { SumRow, Template } from '../share/draw';
+import type { SummaryItem } from '../../shared/summary';
 import { ShareSheet } from '../share/ShareSheet';
 
 /** Страница донатов в Tribute (открывается внутри Telegram). */
@@ -85,12 +86,34 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   // Месяц и год собираем сами: в русской локали «long + numeric» даёт «сентябрь 2026 г.».
   const monthName = (m: string, width: 'long' | 'short') => new Date(`${m}-15T12:00:00`).toLocaleDateString(locale, { month: width }).replace('.', '');
   const monthLabel = `${monthName(month, 'long')} ${month.slice(0, 4)}`;
+  // Итог по всем целям за открытый месяц и за год (круг 23) — подгружаем заранее, «Поделиться» открывается сразу.
+  const year = heat.today.slice(0, 4);
+  const [monthSum, setMonthSum] = useState<{ month: string; items: SummaryItem[] } | null>(null);
+  const [yearSum, setYearSum] = useState<SummaryItem[] | null>(null);
+  useEffect(() => {
+    const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).toISOString().slice(0, 10);
+    let alive = true;
+    api.summary(`${month}-01`, last < heat.today ? last : heat.today).then((items) => alive && setMonthSum({ month, items }), () => {});
+    return () => {
+      alive = false;
+    };
+  }, [month, heat.today]);
+  useEffect(() => {
+    api.summary(`${year}-01-01`, heat.today).then(setYearSum, () => {});
+  }, [year, heat.today]);
+  const sumRows = (items: SummaryItem[]): SumRow[] =>
+    items.slice(0, 8).map((i) => ({
+      n: t.num(i.total),
+      u: i.kind === 'count' ? (i.unit ?? '') : i.kind === 'check' ? t.share.sumTimes(i.total) : t.share.sumDaysWithout(i.total),
+      t: i.title,
+      months: i.months,
+    }));
+
   const from = monthOf(yearStart(heat.today));
   const yearLabel = `${monthName(from, 'short')} ${from.slice(0, 4)} — ${monthName(monthOf(heat.today), 'short')} ${heat.today.slice(0, 4)}`;
 
   /** «214 дней работы над собой в 2026» (20H — двенадцать месяцев, 20I — тёмная, весь год сеткой). */
   const yearTemplates = (): Template[] => {
-    const year = heat.today.slice(0, 4);
     const score = new Map(heat.days.map((d) => [d.day, d.score]));
     const level = (day: string) => (day > heat.today ? 0 : heatLevel(score.get(day) ?? 0));
     const n = heat.days.filter((d) => d.day.startsWith(year) && d.score > 0).length;
@@ -114,10 +137,23 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
       { kind: 'month-heat', big: `${t.num(inMonth)} ${t.share.days(inMonth)}`, caption: t.share.workMonth(mi), lead: shownMonth.lead, levels: shownMonth.levels, weekdays: t.weekdaysShort, footer: t.share.footer },
       { kind: 'month-dark', title: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1), big: t.num(inMonth), caption: t.share.workDays(inMonth), lead: shownMonth.lead, levels: shownMonth.levels, footer: t.share.footer },
     ];
+    // Итог по всем целям: месяц — 23A–D, год — 23F; без отметок за период картинок итога нет.
+    const mRows = monthSum?.month === month ? sumRows(monthSum.items) : [];
+    const monthTitle = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+    if (mRows.length) {
+      monthDays.push(
+        { kind: 'sum-list', title: t.share.myMonth(mi), rows: mRows, footer: t.share.footer },
+        { kind: 'sum-poster', title: t.share.monthName(mi), rows: mRows, footer: t.share.footer },
+        { kind: 'sum-bento', title: monthTitle, big: `${t.num(inMonth)} ${t.share.days(inMonth)}`, caption: t.share.workWord, levels: shownMonth.levels, rows: mRows, footer: t.share.footer },
+        { kind: 'sum-neon', title: monthTitle, big: t.num(inMonth), caption: t.share.workDays(inMonth), rows: mRows, footer: t.share.footer },
+      );
+    }
     const yearDays: Template[] = [
       { kind: 'year', big: `${t.num(n)} ${t.share.days(n)}`, caption: t.share.workYear(year), months, footer: t.share.footer },
       { kind: 'year-dark', big: t.num(n), caption: t.share.workDays(n), levels: all, footer: t.share.footer },
     ];
+    const yRows = sumRows(yearSum ?? []);
+    if (yRows.length) yearDays.push({ kind: 'sum-year', big: `${t.num(n)} ${t.share.days(n)}`, caption: t.share.workYear(year), rows: yRows, footer: t.share.footer });
     // Первыми — то, что сейчас открыто: «Месяц» или «Год».
     return view === 'month' ? [...monthDays, ...yearDays] : [...yearDays, ...monthDays];
   };
