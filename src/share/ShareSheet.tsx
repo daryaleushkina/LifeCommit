@@ -36,8 +36,12 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
   // Загрузка по номеру шаблона: начатая заранее, нажатие её просто дожидается; второй раз не грузим.
   const uploads = useRef(new Map<number, Promise<Uploaded>>());
 
+  // Перерисовываем, только когда картинки правда поменялись (например, догрузился итог по целям), а не на каждую
+  // перерисовку экрана под шторкой; подготовленные заранее загрузки тогда устарели.
+  const signature = JSON.stringify(templates);
   useEffect(() => {
     let alive = true;
+    uploads.current.clear();
     void fontsReady().then(() => {
       if (!alive) return;
       templates.forEach((tpl, i) => {
@@ -49,7 +53,7 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
     return () => {
       alive = false;
     };
-  }, [templates]);
+  }, [signature]);
 
   /** Картинка шаблона в Telegram (через бота). Не вышло — забываем, чтобы следующая попытка пошла заново. */
   const prepare = (i: number): Promise<Uploaded> => {
