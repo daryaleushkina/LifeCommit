@@ -96,6 +96,9 @@ export const api = {
   deleteGroup: (id: number) => call<{ ok: true }>('DELETE', `/groups/${id}`),
   leaveGroup: (id: number) => call<{ ok: true }>('POST', `/groups/${id}/leave`),
   invite: (id: number) => call<{ code: string; link: string; expires_at: string }>('POST', `/groups/${id}/invite`),
+  /** Чат группы ещё жив (удалённый сервер сразу отвязывает) — название или null. */
+  checkGroupChat: (id: number) => call<{ tg_chat_title: string | null }>('POST', `/groups/${id}/chat/check`),
+  disconnectGroupChat: (id: number) => call<{ ok: true }>('DELETE', `/groups/${id}/chat`),
   invitation: (code: string) => call<Invitation>('GET', `/invites/${code}`),
   join: (code: string) => call<{ id: number }>('POST', `/invites/${code}/join`),
   createItem: (groupId: number, input: GroupItemInput) => call<{ id: number }>('POST', `/groups/${groupId}/items`, input),

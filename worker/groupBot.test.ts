@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dayItem, type GroupItemRow } from '../shared/groups';
-import { renderToday, type ChatGroup } from './groupBot';
+import { TgError } from './env';
+import { chatFate, renderToday, type ChatGroup } from './groupBot';
 
 const g: ChatGroup = { id: 7, title: 'Семья', owner_id: 1, tg_chat_id: -100, tg_today_msg_id: null, tg_today_day: null, tg_morning_day: null, tg_digest_day: null, chat_digest: true, owner: { timezone: 'Asia/Ho_Chi_Minh', day_start_hour: 4, language_code: 'ru' } };
 const base: GroupItemRow = { id: 1, title: 'Ингаляция Тесле', mode: 'one', day: '2026-10-01', time: '21:00', duration_min: null, rrule: 'FREQ=DAILY', exdates: [], due_day: null, assignees: [], all_members: false, rotate: false, target: null, unit: null, goal_until: null, total: null, marks: [] };
@@ -26,5 +27,26 @@ describe('сообщение «Сегодня в группе»', () => {
     expect(buttons.map((b) => b.text)).toEqual(['✓ Зарядка', 'Открыть ↗']);
     expect(buttons[0]).toMatchObject({ callback_data: `gm:2:${day}` });
     expect(m.left.map((x) => x.title)).toEqual(['Зарядка']);
+  });
+});
+
+// Отвязать чат можно только когда Telegram прямо сказал, что его нет: временная беда не должна снимать привязку.
+describe('чат пропал: chatFate', () => {
+  it('чат удалён или бота убрали — gone', () => {
+    expect(chatFate(new TgError('sendMessage', 400, 'Bad Request: chat not found'))).toBe('gone');
+    expect(chatFate(new TgError('sendMessage', 403, 'Forbidden: bot was kicked from the group chat'))).toBe('gone');
+    expect(chatFate(new TgError('sendMessage', 403, 'Forbidden: the group chat was deleted'))).toBe('gone');
+    expect(chatFate(new TgError('getChatMember', 400, 'Bad Request: group chat was deactivated'))).toBe('gone');
+  });
+
+  it('стал супергруппой — новый id', () => {
+    expect(chatFate(new TgError('sendMessage', 400, 'Bad Request: group chat was upgraded to a supergroup chat', { migrate_to_chat_id: -1009876 }))).toBe(-1009876);
+  });
+
+  it('лимит, сеть и прочее — привязку не трогаем', () => {
+    expect(chatFate(new TgError('sendMessage', 429, 'Too Many Requests: retry after 5', { retry_after: 5 }))).toBeNull();
+    expect(chatFate(new TgError('editMessageText', 400, 'Bad Request: message is not modified'))).toBeNull();
+    expect(chatFate(new TgError('sendMessage', 502, 'Bad Gateway'))).toBeNull();
+    expect(chatFate(new Error('network connection lost'))).toBeNull();
   });
 });

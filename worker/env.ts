@@ -36,14 +36,26 @@ export function db(env: Env): SupabaseClient {
   });
 }
 
-/** Вызов Bot API. Бросает, если Telegram ответил ok: false. */
+/** Отказ Bot API: код и подробности — по ним видно, что чат удалён, бота выгнали или чат стал супергруппой. */
+export class TgError extends Error {
+  constructor(
+    method: string,
+    readonly code: number,
+    readonly description: string,
+    readonly parameters: { migrate_to_chat_id?: number; retry_after?: number } = {},
+  ) {
+    super(`Telegram ${method}: ${description}`);
+  }
+}
+
+/** Вызов Bot API. Бросает TgError, если Telegram ответил ok: false. */
 export async function tg<T = unknown>(env: Env, method: string, payload: object): Promise<T> {
   const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const body = (await res.json()) as { ok: boolean; result: T; description?: string };
-  if (!body.ok) throw new Error(`Telegram ${method}: ${body.description ?? res.status}`);
+  const body = (await res.json()) as { ok: boolean; result: T; error_code?: number; description?: string; parameters?: TgError['parameters'] };
+  if (!body.ok) throw new TgError(method, body.error_code ?? res.status, body.description ?? String(res.status), body.parameters);
   return body.result;
 }

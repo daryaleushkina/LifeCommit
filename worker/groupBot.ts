@@ -5,7 +5,7 @@ import { dayCount, dayItem, type GroupDayItem, type GroupItemRow, type GroupMemb
 import { MAX_VOICE_SECONDS } from '../shared/types';
 import { takeVoiceQuota, USER_COLS, type UserRow } from './api';
 import { logicalDay, localTime } from './day';
-import { byTelegram, db, tg, type Env } from './env';
+import { byTelegram, db, tg, TgError, type Env } from './env';
 import { markItem } from './groups';
 import { parseGroupItems, type GroupDraft } from './groupVoice';
 import { transcribe } from './voice';
@@ -31,6 +31,10 @@ export interface GroupUpdate {
     text?: string;
     voice?: { file_id: string; duration: number };
     reply_to_message?: { from?: TgUser };
+    /** Служебные: чат переименовали; обычная группа стала супергруппой (у неё новый id). */
+    new_chat_title?: string;
+    migrate_to_chat_id?: number;
+    migrate_from_chat_id?: number;
   };
   my_chat_member?: { chat: TgChat; from: TgUser; new_chat_member: { status: string; user: TgUser } };
   callback_query?: { id: string; from: TgUser; data?: string; message?: { message_id: number; chat: TgChat } };
@@ -44,6 +48,8 @@ const T = {
   ru: {
     hello: (title: string) => `Привет! Этот чат теперь — группа «${title}» в LifeCommit.\n\nОтвечайте на мои сообщения текстом или голосом — добавлю общие дела. Отмечать можно кнопками прямо здесь.`,
     needApp: 'Чтобы подключить этот чат, откройте LifeCommit — это пара секунд.',
+    bye: (title: string) => `Этот чат отключили от группы «${title}» в LifeCommit. Пока!`,
+    adminsOnly: (title: string) => `Подключить чат к группе «${title}» может только её создатель или админ.`,
     open: 'Открыть LifeCommit',
     openGroup: 'Открыть ↗',
     today: (title: string) => `Сегодня в «${title}»`,
@@ -87,6 +93,8 @@ const T = {
   en: {
     hello: (title: string) => `Hi! This chat is now the “${title}” group in LifeCommit.\n\nReply to my messages with text or voice and I'll add shared to-dos. Check them off with the buttons right here.`,
     needApp: 'To connect this chat, open LifeCommit — it takes a couple of seconds.',
+    bye: (title: string) => `This chat was disconnected from the “${title}” group in LifeCommit. Bye!`,
+    adminsOnly: (title: string) => `Only the owner or an admin of “${title}” can connect a chat to it.`,
     open: 'Open LifeCommit',
     openGroup: 'Open ↗',
     today: (title: string) => `Today in “${title}”`,
@@ -213,6 +221,91 @@ export function renderToday(g: ChatGroup, view: { members: GroupMember[]; items:
   return { text, reply_markup: { inline_keyboard: keyboard }, planned, done, left: sorted.filter((it) => { const c = dayCount(it); return c.planned > c.done; }) };
 }
 
+// ── Чат пропал: удалили, выгнали бота, стал супергруппой (решения владелицы 02.10.2026) ──
+
+const NO_CHAT = { tg_chat_id: null, tg_chat_title: null, tg_today_msg_id: null, tg_today_day: null };
+
+/** Отвязать чат от группы — вместе с названием (раньше название оставалось, и экран показывал «чат подключён»). */
+async function unbind(sb: SupabaseClient, chatId: number) {
+  await sb.from('groups').update(NO_CHAT).eq('tg_chat_id', chatId);
+}
+
+/**
+ * Что значит отказ Telegram для привязки: 'gone' — чата для бота больше нет (удалён, выгнали, бот не участник);
+ * число — чат стал супергруппой с этим id; null — временная беда (сеть, лимит), привязку не трогаем.
+ */
+export function chatFate(e: unknown): 'gone' | number | null {
+  if (!(e instanceof TgError)) return null;
+  if (e.parameters.migrate_to_chat_id) return e.parameters.migrate_to_chat_id;
+  if (e.code === 403) return 'gone';
+  if (e.code === 400 && /chat not found|deactivated|was deleted|not a member|kicked/i.test(e.description)) return 'gone';
+  return null;
+}
+
+/** Ошибка при работе с чатом группы: чата нет — отвязываем молча, переехал — переносим привязку. true — разобрались. */
+async function onChatError(sb: SupabaseClient, chatId: number, e: unknown): Promise<boolean> {
+  const fate = chatFate(e);
+  if (fate === 'gone') await unbind(sb, chatId);
+  else if (typeof fate === 'number') await sb.from('groups').update({ tg_chat_id: fate, tg_today_msg_id: null, tg_today_day: null }).eq('tg_chat_id', chatId);
+  return fate !== null;
+}
+
+const botId = (env: Env) => Number(env.TELEGRAM_BOT_TOKEN.split(':')[0]);
+
+/** Бот ещё в чате? Ошибка сети — считаем, что да. */
+async function botInChat(env: Env, chatId: number): Promise<boolean> {
+  try {
+    const m = await tg<{ status: string }>(env, 'getChatMember', { chat_id: chatId, user_id: botId(env) });
+    return m.status !== 'left' && m.status !== 'kicked';
+  } catch (e) {
+    return chatFate(e) !== 'gone';
+  }
+}
+
+/** Попрощаться и выйти из чата (отключили из приложения или подключили другой). Ошибки не важны — чата может уже не быть. */
+async function leaveChat(env: Env, chatId: number, groupTitle: string, t: Texts) {
+  await tg(env, 'sendMessage', { chat_id: chatId, text: t.bye(groupTitle), disable_notification: true }).catch(() => {});
+  await tg(env, 'leaveChat', { chat_id: chatId }).catch(() => {});
+}
+
+/**
+ * Проверка при открытии экрана группы: чат ещё есть и бот в нём? Нет — отвязываем. Заодно освежаем название.
+ * Ответ — название подключённого чата или null.
+ */
+export async function checkChat(env: Env, groupId: number): Promise<string | null> {
+  const sb = db(env);
+  const { data } = await sb.from('groups').select('tg_chat_id, tg_chat_title').eq('id', groupId).maybeSingle<{ tg_chat_id: number | null; tg_chat_title: string | null }>();
+  if (!data?.tg_chat_id) return null;
+  const chatId = data.tg_chat_id;
+  try {
+    const [chat, inside] = await Promise.all([tg<{ id: number; title?: string }>(env, 'getChat', { chat_id: chatId }), botInChat(env, chatId)]);
+    if (!inside) {
+      await unbind(sb, chatId);
+      return null;
+    }
+    if (chat.title && chat.title !== data.tg_chat_title) await sb.from('groups').update({ tg_chat_title: chat.title }).eq('id', groupId);
+    return chat.title ?? data.tg_chat_title;
+  } catch (e) {
+    if (chatFate(e) === 'gone') {
+      await unbind(sb, chatId);
+      return null;
+    }
+    // Стал супергруппой — переносим и показываем то же название; прочие ошибки — оставляем как было.
+    await onChatError(sb, chatId, e);
+    return data.tg_chat_title;
+  }
+}
+
+/** «Отключить» в настройках группы: бот прощается, выходит из чата, привязка снимается. */
+export async function disconnectChat(env: Env, groupId: number): Promise<void> {
+  const sb = db(env);
+  const { data } = await sb.from('groups').select(GROUP_COLS).eq('id', groupId).maybeSingle();
+  const g = data as unknown as ChatGroup | null;
+  if (!g?.tg_chat_id) return;
+  await unbind(sb, g.tg_chat_id);
+  await leaveChat(env, g.tg_chat_id, g.title, textsOf(g));
+}
+
 /** Показать «Сегодня в группе»: сегодняшнее сообщение правим, на новый день — новое (и пробуем закрепить). */
 export async function postToday(env: Env, sb: SupabaseClient, g: ChatGroup, forceNew = false): Promise<void> {
   if (!g.tg_chat_id) return;
@@ -227,7 +320,16 @@ export async function postToday(env: Env, sb: SupabaseClient, g: ChatGroup, forc
       if (/not modified/i.test(String(e))) return;
     }
   }
-  const sent = await tg<{ message_id: number }>(env, 'sendMessage', { chat_id: g.tg_chat_id, text: msg.text, parse_mode: 'HTML', reply_markup: msg.reply_markup, disable_notification: true });
+  let sent: { message_id: number };
+  try {
+    sent = await tg<{ message_id: number }>(env, 'sendMessage', { chat_id: g.tg_chat_id, text: msg.text, parse_mode: 'HTML', reply_markup: msg.reply_markup, disable_notification: true });
+  } catch (e) {
+    // Чата больше нет — тихо отвязываем; стал супергруппой — переносим и шлём уже туда.
+    if (!(await onChatError(sb, g.tg_chat_id, e))) throw e;
+    const moved = chatFate(e);
+    if (typeof moved === 'number') return postToday(env, sb, { ...g, tg_chat_id: moved, tg_today_msg_id: null, tg_today_day: null }, true);
+    return;
+  }
   await sb.from('groups').update({ tg_today_msg_id: sent.message_id, tg_today_day: day }).eq('id', g.id);
   await tg(env, 'pinChatMessage', { chat_id: g.tg_chat_id, message_id: sent.message_id, disable_notification: true }).catch(() => {});
 }
@@ -241,8 +343,12 @@ export async function refreshChat(env: Env, groupId: number): Promise<void> {
 
 async function bindChat(env: Env, sb: SupabaseClient, groupId: number, chat: TgChat) {
   // Чат мог быть привязан к другой группе — отвязываем (один чат — одна группа).
-  await sb.from('groups').update({ tg_chat_id: null, tg_today_msg_id: null, tg_today_day: null }).eq('tg_chat_id', chat.id).neq('id', groupId);
+  await sb.from('groups').update(NO_CHAT).eq('tg_chat_id', chat.id).neq('id', groupId);
+  const { data: before } = await sb.from('groups').select(GROUP_COLS).eq('id', groupId).single();
+  const old = before as unknown as ChatGroup;
   await sb.from('groups').update({ tg_chat_id: chat.id, tg_chat_title: chat.title ?? null, tg_today_msg_id: null, tg_today_day: null }).eq('id', groupId);
+  // «Другой чат»: из прежнего бот прощается и выходит — как при «Отключить».
+  if (old.tg_chat_id && old.tg_chat_id !== chat.id) await leaveChat(env, old.tg_chat_id, old.title, textsOf(old));
   const { data } = await sb.from('groups').select(GROUP_COLS).eq('id', groupId).single();
   const g = data as unknown as ChatGroup;
   await tg(env, 'sendMessage', { chat_id: chat.id, text: textsOf(g).hello(g.title) });
@@ -260,13 +366,15 @@ export async function handleGroupUpdate(env: Env, u: GroupUpdate): Promise<boole
     const { chat, from, new_chat_member } = u.my_chat_member;
     const status = new_chat_member.status;
     if (status === 'left' || status === 'kicked') {
-      await sb.from('groups').update({ tg_chat_id: null, tg_today_msg_id: null, tg_today_day: null }).eq('tg_chat_id', chat.id);
+      await unbind(sb, chat.id);
       return true;
     }
     if (status !== 'member' && status !== 'administrator') return true;
     // Добавили по ссылке «в группу» — следом придёт /start g_<код>, он и привяжет. Ждём его чуть-чуть.
     await sleep(2500);
     if (await groupByChat(sb, chat.id)) return true;
+    // По ссылке, но не админ группы — бот уже отказал и вышел: новую группу не заводим.
+    if (!(await botInChat(env, chat.id))) return true;
     const user = await appUser(sb, from.id);
     if (!user) {
       await tg(env, 'sendMessage', { chat_id: chat.id, text: (from.language_code?.startsWith('ru') ? T.ru : T.en).needApp, reply_markup: { inline_keyboard: [[{ text: T.ru.open, url: `https://t.me/${env.BOT_USERNAME}?start=app` }]] } });
@@ -287,6 +395,20 @@ export async function handleGroupUpdate(env: Env, u: GroupUpdate): Promise<boole
   }
 
   const msg = u.message;
+  if (msg && isGroupChat(msg.chat)) {
+    if (msg.migrate_to_chat_id) {
+      await sb.from('groups').update({ tg_chat_id: msg.migrate_to_chat_id, tg_today_msg_id: null, tg_today_day: null }).eq('tg_chat_id', msg.chat.id);
+      return true;
+    }
+    if (msg.migrate_from_chat_id) {
+      await sb.from('groups').update({ tg_chat_id: msg.chat.id, tg_today_msg_id: null, tg_today_day: null }).eq('tg_chat_id', msg.migrate_from_chat_id);
+      return true;
+    }
+    if (msg.new_chat_title) {
+      await sb.from('groups').update({ tg_chat_title: msg.new_chat_title }).eq('tg_chat_id', msg.chat.id);
+      return true;
+    }
+  }
   if (!msg || !isGroupChat(msg.chat) || !msg.from || msg.from.is_bot) return false;
   const text = msg.text ?? '';
   const command = /^\/(start|today)(@\w+)?(?:\s+(\S+))?/i.exec(text);
@@ -299,7 +421,17 @@ export async function handleGroupUpdate(env: Env, u: GroupUpdate): Promise<boole
       if (inv?.group_id) {
         const user = await appUser(sb, msg.from.id);
         if (user) await ensureMember(sb, inv.group_id, user.id);
-        await bindChat(env, sb, inv.group_id, msg.chat);
+        // Подключают чат только создатель и админы группы (решение владелицы 02.10.2026).
+        const { data: m } = user ? await sb.from('group_members').select('role').eq('group_id', inv.group_id).eq('user_id', user.id).maybeSingle<{ role: string }>() : { data: null };
+        if (m?.role === 'owner' || m?.role === 'admin') {
+          await bindChat(env, sb, inv.group_id, msg.chat);
+        } else {
+          const { data: target } = await sb.from('groups').select('title').eq('id', inv.group_id).maybeSingle<{ title: string }>();
+          const t = msg.from.language_code?.startsWith('en') ? T.en : T.ru;
+          await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: t.adminsOnly(target?.title ?? '…') }).catch(() => {});
+          // Чат ни к чему не привязан — бот здесь не нужен.
+          if (!(await groupByChat(sb, msg.chat.id))) await tg(env, 'leaveChat', { chat_id: msg.chat.id }).catch(() => {});
+        }
       }
       return true;
     }
@@ -462,5 +594,7 @@ async function sendDigest(env: Env, sb: SupabaseClient, g: ChatGroup, day: strin
   if (!msg.planned) return;
   const lines = [`<b>${esc(t.digest(g.title))}</b>`, msg.done >= msg.planned ? t.allDone : t.madeOf(msg.done, msg.planned)];
   if (msg.left.length && msg.done < msg.planned) lines.push(t.left(msg.left.map((it) => esc(it.title)).join(', ')));
-  await tg(env, 'sendMessage', { chat_id: g.tg_chat_id, text: lines.join('\n'), parse_mode: 'HTML', disable_notification: true });
+  await tg(env, 'sendMessage', { chat_id: g.tg_chat_id, text: lines.join('\n'), parse_mode: 'HTML', disable_notification: true }).catch(async (e) => {
+    if (!g.tg_chat_id || !(await onChatError(sb, g.tg_chat_id, e))) throw e;
+  });
 }
