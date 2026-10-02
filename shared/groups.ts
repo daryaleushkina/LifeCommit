@@ -22,6 +22,21 @@ export interface GoalUnit {
   icon?: string;
 }
 
+/** Групповое дело из голосового разбора — ещё не сохранено (POST /groups/:id/items принимает его как есть). */
+export interface GroupItemDraft {
+  title: string;
+  mode: GroupMode;
+  day: string;
+  time: string | null;
+  rrule: string | null;
+  assignees: number[];
+  all_members: boolean;
+  rotate: boolean;
+  target: number | null;
+  unit: GoalUnit | null;
+  duration_min: number | null;
+}
+
 /** Строка группового дела, как её отдаёт `groups_today`. */
 export interface GroupItemRow {
   id: number;

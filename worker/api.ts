@@ -26,7 +26,8 @@ import type { TaskHistory } from '../shared/stats';
 import { requireTelegram, type AuthVars } from './auth';
 import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from './day';
 import { byTelegram, db, type Env } from './env';
-import { MAX_HABITS, MAX_TODOS, parseHabits, transcribe } from './voice';
+import { MAX_HABITS, MAX_TODOS, transcribe } from './voice';
+import { routeVoice, voiceGroups } from './voiceRoute';
 import { occurrences, parseRRule } from '../shared/rrule';
 import { confirmGoogle, connectApple, deleteRemote, disconnect, moveOwnEvents, pullAccount, pushTodo, retimeCalendars, type AccountRow } from './calsync';
 import { DavError, isAuthError } from './caldav';
@@ -341,17 +342,21 @@ api.post('/voice', async (c) => {
   if (!(await takeVoiceQuota(c.get('sb'), user.id))) throw new HTTPException(429, { message: 'voice_limit' });
 
   const lang = user.language_code === 'en' ? 'en' : 'ru';
+  // Микрофон нажали на экране группы — сказанное без названия группы скорее всего для неё.
+  const screenGroup = Number(c.req.query('group')) || null;
   c.header('content-type', 'application/x-ndjson; charset=utf-8');
   return stream(c, async (out) => {
     const send = (event: VoiceEvent) => out.write(`${JSON.stringify(event)}\n`);
     try {
       const text = await transcribe(c.env, audio, lang);
       await send({ text });
-      const parsed = text ? await parseHabits(c.env, text, today(user)) : { habits: [], todos: [], by: 'none' };
+      // Себе или в группу (и кому в ней) — решает worker/voiceRoute.ts.
+      const parsed = text ? await routeVoice(c.env, text, today(user), user.id, await voiceGroups(c.get('sb'), user.id), screenGroup) : { habits: [], todos: [], groups: [], by: 'none' };
       // Ничего не нашли — в лог фразу, чтобы потом разобрать почему (02.10.2026: голосовое «не распозналось»).
-      if (!parsed.habits.length && !parsed.todos.length) console.warn('voice: nothing parsed', { bytes: audio.byteLength, chars: text.length, by: parsed.by, text: text.slice(0, 400) });
+      if (!parsed.habits.length && !parsed.todos.length && !parsed.groups.length) console.warn('voice: nothing parsed', { bytes: audio.byteLength, chars: text.length, by: parsed.by, text: text.slice(0, 400) });
       await send({
         actions: [
+          ...parsed.groups.flatMap((g) => g.items.map(({ names, ...item }): VoiceAction => ({ type: 'create_group_item', group: g.group, item, names }))),
           ...parsed.todos.map((todo): VoiceAction => ({ type: 'create_todo', todo })),
           ...parsed.habits.map((habit): VoiceAction => ({ type: 'create_habit', habit })),
         ],

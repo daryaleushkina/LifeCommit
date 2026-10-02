@@ -94,6 +94,7 @@ Every habit has ALL of these fields:
 - schedule: "weekdays" when specific days of the week are named; "per_week" when it is N times a week on any days; otherwise "daily". "abstain" is always "daily".
 - weekdays: for "weekdays" the day numbers, 1 = Monday … 7 = Sunday; otherwise [].
 - per_week: for "per_week" the number N (1-6); otherwise 0.
+If the input starts with a "Groups:" line, the person also gives tasks to those groups: anything said for a group («в группу Семья», «в семью», «нам всем») or for one of its listed people («Алёне погулять с собакой») is NOT personal — leave it out. Keep only what the person takes for themselves («себе», «мне», «лично»).
 Each separate wish becomes its own habit or to-do. Ignore greetings and small talk. If there is nothing to add, return {"habits": [], "todos": []}. Never invent anything that was not mentioned.`;
 
 // Два разобранных примера: без них модель теряет числа и расписание.
@@ -280,8 +281,13 @@ export interface Parsed {
  * today — логический день человека: от него модель считает «завтра» и «в пятницу».
  * Сначала Gemini (если есть ключ); не ответил вовремя или упал — та же задача уходит в Workers AI.
  */
-export async function parseHabits(env: Env, text: string, today: string): Promise<Parsed> {
-  const input = `${todayLine(today)}\n${text.slice(0, 2000)}`;
+/**
+ * groups — группы, о которых шла речь: сказанное для них (и их участникам) — не личное, разбор его не берёт
+ * (это забирает групповой разбор, worker/voiceRoute.ts).
+ */
+export async function parseHabits(env: Env, text: string, today: string, groups: { title: string; members: string[] }[] = []): Promise<Parsed> {
+  const groupLine = groups.length ? `Groups: ${groups.map((g) => `${g.title} (${g.members.join(', ') || '—'})`).join('; ')}\n` : '';
+  const input = `${groupLine}${todayLine(today)}\n${text.slice(0, 2000)}`;
   const read = (raw: unknown, by: Parsed['by']): Parsed => ({ habits: toTaskInputs(raw), todos: toTodoInputs(raw), by });
   if (env.GEMINI_API_KEY) {
     try {

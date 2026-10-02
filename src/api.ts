@@ -128,8 +128,9 @@ export interface GroupItemInput {
  * Голос → действия. Ответ сервера построчный: сначала расслышанная фраза (onText — показать её,
  * пока модель ещё думает), потом список действий. Ошибки — ApiError с кодом (`voice_limit`, `failed`…).
  */
-async function voice(audio: Blob, onText: (text: string) => void): Promise<VoiceAction[]> {
-  const res = await fetch('/api/voice', {
+async function voice(audio: Blob, onText: (text: string) => void, group: number | null = null): Promise<VoiceAction[]> {
+  // group — микрофон нажали на экране этой группы.
+  const res = await fetch(group ? `/api/voice?group=${group}` : '/api/voice', {
     method: 'POST',
     headers: { Authorization: auth(), 'content-type': audio.type || 'application/octet-stream' },
     body: audio,

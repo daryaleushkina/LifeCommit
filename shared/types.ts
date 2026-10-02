@@ -1,5 +1,5 @@
 // Типы, общие для Worker'а и мини-аппа.
-import type { GroupToday } from './groups';
+import type { GroupItemDraft, GroupToday } from './groups';
 
 export type TaskKind = 'count' | 'check' | 'abstain';
 export type Schedule = 'daily' | 'weekdays' | 'per_week';
@@ -173,7 +173,11 @@ export const MAX_VOICE_SECONDS = 90;
  * Что сказанное просит сделать: завести привычку или дело на день.
  * Позже сюда добавится «отметить» — клиент готов к списку разных действий.
  */
-export type VoiceAction = { type: 'create_habit'; habit: TaskInput } | { type: 'create_todo'; todo: TodoInput };
+export type VoiceAction =
+  | { type: 'create_habit'; habit: TaskInput }
+  | { type: 'create_todo'; todo: TodoInput }
+  /** Дело в группу; names — кому назначено, по порядку assignees ('' — сам говорящий). */
+  | { type: 'create_group_item'; group: { id: number; title: string }; item: GroupItemDraft; names: string[] };
 
 /**
  * Ответ POST /api/voice приходит построчно (NDJSON), чтобы расслышанная фраза

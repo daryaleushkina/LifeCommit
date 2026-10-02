@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { hapticFeedback, openTelegramLink } from '@tma.js/sdk-react';
-import { MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT, FREE_TASK_LIMIT, type TaskInput, type TodoInput } from '../../shared/types';
+import { MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT, FREE_TASK_LIMIT, type TaskInput, type TodoInput, type VoiceAction } from '../../shared/types';
 import { api, ApiError } from '../api';
 import { LangContext, useT } from '../i18n';
 import { repeatLabel } from '../repeat';
@@ -17,7 +17,11 @@ export interface VoicePreview {
   text: string;
   habits: TaskInput[];
   todos: TodoInput[];
+  /** Дела в группы — как их понял разбор: себе или в группу и кому в ней. */
+  groupItems: GroupVoiceItem[];
 }
+
+export type GroupVoiceItem = Extract<VoiceAction, { type: 'create_group_item' }>;
 
 type Phase = 'recording' | 'parsing' | 'nothing' | 'nomic' | 'failed' | 'limit';
 
@@ -33,7 +37,9 @@ interface Props {
   /** Сегодняшний логический день: от него подписи «сегодня», «завтра». */
   today: string;
   onEdit: (index: number) => void;
-  onAdd: (todos: TodoInput[], habits: TaskInput[]) => Promise<void>;
+  onAdd: (todos: TodoInput[], habits: TaskInput[], groupItems: GroupVoiceItem[]) => Promise<void>;
+  /** Микрофон нажали на экране группы — сказанное без названия группы пойдёт в неё. */
+  groupId?: number | null;
   onManual: () => void;
   onClose: () => void;
 }
@@ -57,7 +63,7 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60))
  * Голос в мини-аппе: запись → «Разбираю…» с расслышанной фразой → список дел и привычек → «Добавить».
  * В базу до нажатия «Добавить» ничего не пишется. Нет записи в WebView — ведём в чат с ботом.
  */
-export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, onManual, onClose }: Props): ReactNode {
+export function VoiceSheet({ preview, setPreview, room, today, groupId = null, onEdit, onAdd, onManual, onClose }: Props): ReactNode {
   const t = useT();
   const locale = useContext(LangContext) === 'ru' ? 'ru-RU' : 'en-US';
   // Дело из списка правится в маленькой шторке поверх этой; привычка — в полном редакторе.
@@ -108,21 +114,26 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
     setPhase('parsing');
     try {
       let said = '';
-      const actions = await api.voice(audio, (text) => {
-        said = text;
-        if (alive.current) setHeard(text);
-      });
+      const actions = await api.voice(
+        audio,
+        (text) => {
+          said = text;
+          if (alive.current) setHeard(text);
+        },
+        groupId,
+      );
       if (!alive.current) return;
       const habits = actions.flatMap((a) => (a.type === 'create_habit' ? [a.habit] : []));
       const todos = actions.flatMap((a) => (a.type === 'create_todo' ? [a.todo] : []));
-      if (habits.length === 0 && todos.length === 0) return setPhase('nothing');
+      const groupItems = actions.filter((a): a is GroupVoiceItem => a.type === 'create_group_item');
+      if (habits.length === 0 && todos.length === 0 && groupItems.length === 0) return setPhase('nothing');
       hapticFeedback.notificationOccurred.ifAvailable('success');
-      setPreview({ text: said, habits, todos });
+      setPreview({ text: said, habits, todos, groupItems });
     } catch (e) {
       if (!alive.current) return;
       setPhase(e instanceof ApiError && e.code === 'voice_limit' ? 'limit' : 'failed');
     }
-  }, [setPreview]);
+  }, [setPreview, groupId]);
 
   // Открыли шторку без готового списка — сразу слушаем.
   useEffect(() => {
@@ -147,11 +158,11 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
     return () => window.clearInterval(id);
   }, [phase, preview, stop]);
 
-  const add = async (todos: TodoInput[], habits: TaskInput[]) => {
+  const add = async (todos: TodoInput[], habits: TaskInput[], groupItems: GroupVoiceItem[]) => {
     setBusy(true);
     setMessage(null);
     try {
-      await onAdd(todos, habits);
+      await onAdd(todos, habits, groupItems);
     } catch (e) {
       setMessage(e instanceof ApiError && e.code === 'task_limit' ? t.limitReached(FREE_TASK_LIMIT ?? 0) : t.error);
       setBusy(false);
@@ -162,16 +173,43 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
   if (preview) {
     const fit = room === null ? preview.habits.length : Math.min(room, preview.habits.length);
     // Убрали последнюю строку — список пуст, слушаем заново.
-    const drop = (next: VoicePreview) => (next.habits.length || next.todos.length ? setPreview(next) : void record());
+    const drop = (next: VoicePreview) => (next.habits.length || next.todos.length || next.groupItems.length ? setPreview(next) : void record());
     const both = preview.todos.length > 0 && preview.habits.length > 0;
+    // Есть дела в группы — личное подписываем «Себе», чтобы было видно, что куда.
+    const groupsShown = [...new Map(preview.groupItems.map((a) => [a.group.id, a.group])).values()];
     const todoDraft = editingTodo !== null ? preview.todos[editingTodo] : undefined;
     body = (
       <>
         <h2>{t.voice.previewTitle}</h2>
         <p className="voice-hint">{t.voice.previewHint}</p>
+        {groupsShown.map((g) => (
+          <section key={g.id}>
+            <h3 className="voice-section">{t.voice.toGroup(g.title)}</h3>
+            <ul className="voice-list">
+              {preview.groupItems.map((a, i) =>
+                a.group.id !== g.id ? null : (
+                  <li key={`g${i}-${a.item.title}`}>
+                    <span className="voice-row">
+                      <span className="todo-tile group" aria-hidden>
+                        <Check />
+                      </span>
+                      <span className="voice-text">
+                        <b>{a.item.title}</b>
+                        <small>{groupItemLine(t, a, today, locale)}</small>
+                      </span>
+                    </span>
+                    <button className="voice-x" aria-label={t.voice.remove(a.item.title)} onClick={() => drop({ ...preview, groupItems: preview.groupItems.filter((_, j) => j !== i) })}>
+                      <Cross />
+                    </button>
+                  </li>
+                ),
+              )}
+            </ul>
+          </section>
+        ))}
         {preview.todos.length > 0 && (
           <>
-            {both && <h3 className="voice-section">{t.voiceTodos}</h3>}
+            {(both || groupsShown.length > 0) && <h3 className="voice-section">{groupsShown.length > 0 && !both ? t.voice.mine : t.voiceTodos}</h3>}
             <ul className="voice-list">
               {preview.todos.map((d, i) => (
                 <li key={`t${i}-${d.title}`}>
@@ -217,10 +255,10 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
         {message && <p className="error">{message}</p>}
         <button
           className="act primary wide"
-          disabled={busy || fit + preview.todos.length === 0}
-          onClick={() => void add(preview.todos, preview.habits.slice(0, fit))}
+          disabled={busy || fit + preview.todos.length + preview.groupItems.length === 0}
+          onClick={() => void add(preview.todos, preview.habits.slice(0, fit), preview.groupItems)}
         >
-          {t.voice.addN(preview.todos.length, fit)}
+          {t.voice.addN(preview.todos.length + preview.groupItems.length, fit)}
         </button>
         <button className="voice-link" onClick={() => void record()}>
           <MicIcon size={18} />
@@ -326,6 +364,36 @@ export function VoiceSheet({ preview, setPreview, room, today, onEdit, onAdd, on
 const BOT = 'LifeCommit_bot';
 
 /** Строка под названием: «20 страниц в день · каждый день», «3 раза в неделю», «бросить». */
+/** «Алёне · завтра 18:00», «каждому · будни», «кто-то один · сегодня». */
+function groupItemLine(t: ReturnType<typeof useT>, a: GroupVoiceItem, today: string, locale: string): string {
+  const g = t.gr;
+  const it = a.item;
+  const turns = it.rotate ? g.rotate.toLowerCase() : '';
+  const who =
+    it.mode === 'goal'
+      ? `${g.modes.goal} · ${t.num(it.target ?? 0)}`
+      : it.mode === 'event'
+        ? g.event
+        : it.mode === 'one'
+          ? g.anyone
+          : it.all_members
+            ? turns || g.toAll
+            : [a.names.map((n) => n || g.toYou).join(', '), turns].filter(Boolean).join(' · ');
+  const rule = it.rrule ?? '';
+  const when = !rule
+    ? it.mode === 'goal'
+      ? ''
+      : (todoWhen(t, it.day, today, locale) ?? t.todo.today.toLowerCase())
+    : /DAILY/.test(rule)
+      ? g.repeats.daily
+      : /BYDAY=MO,TU,WE,TH,FR$/.test(rule)
+        ? g.repeats.weekdays
+        : /BYDAY=SA,SU$/.test(rule)
+          ? g.repeats.weekends
+          : g.repeats.weekly;
+  return [who, when, it.time].filter(Boolean).join(' · ');
+}
+
 function describe(t: ReturnType<typeof useT>, h: TaskInput): string {
   if (h.kind === 'abstain') return t.voice.quit;
   const when = repeatLabel(t, h.schedule ?? 'daily', h.weekdays ?? 127, h.per_week ?? null);

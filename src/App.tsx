@@ -83,6 +83,8 @@ export function App(): ReactNode {
   // Шторка голоса и её список — здесь, а не в шторке: пока привычку из списка правят в редакторе, шторки нет.
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voicePreview, setVoicePreview] = useState<VoicePreview | null>(null);
+  // Голосом добавили в группу, на экране которой стоим, — экран пересоздаётся из свежего кэша (без мигания).
+  const [groupRev, setGroupRev] = useState(0);
 
   const load = useCallback(async () => {
     setBoot({ state: 'loading' });
@@ -244,7 +246,7 @@ export function App(): ReactNode {
     screen = (
       <main className="app-shell with-tabs">
         {route.name === 'group' ? (
-          <Group key={route.id} id={route.id} me={boot.user.id} today={cache.today.day} onBack={() => setRoute(tab(currentTab))} onChanged={() => void refresh()} />
+          <Group key={`${route.id}:${groupRev}`} id={route.id} me={boot.user.id} today={cache.today.day} onBack={() => setRoute(tab(currentTab))} onChanged={() => void refresh()} />
         ) : currentTab === 'me' ? (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         ) : currentTab === 'groups' ? (
@@ -262,11 +264,23 @@ export function App(): ReactNode {
             room={limits.max_tasks === null ? null : Math.max(0, limits.max_tasks - limits.active)}
             onEdit={(index) => setRoute({ name: 'draft', index, back: currentTab })}
             today={cache.today.day}
-            onAdd={async (todos, habits) => {
-              await Promise.all([todos.length ? api.createTodos(todos) : null, habits.length ? api.createTasks(habits) : null]);
+            groupId={route.name === 'group' ? route.id : null}
+            onAdd={async (todos, habits, groupItems) => {
+              await Promise.all([
+                todos.length ? api.createTodos(todos) : null,
+                habits.length ? api.createTasks(habits) : null,
+                ...groupItems.map((a) => api.createItem(a.group.id, a.item)),
+              ]);
               await refresh();
               closeVoice();
-              setRoute({ name: 'today' });
+              // Всё ушло в одну группу — туда и ведём (там это и видно); иначе — на «Сегодня».
+              const only = new Set(groupItems.map((a) => a.group.id));
+              if (!todos.length && !habits.length && only.size === 1) {
+                const id = [...only][0]!;
+                await fetchInto.group(id).catch(() => null);
+                setGroupRev((n) => n + 1);
+                setRoute({ name: 'group', id, back: currentTab });
+              } else setRoute({ name: 'today' });
             }}
             onManual={() => {
               closeVoice();
