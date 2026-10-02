@@ -58,9 +58,8 @@ export function TodoSheet({ title: initialTitle, day: initialDay, time: initialT
     <Sheet title={source ? t.todo.event : t.todo.edit} onClose={onClose}>
       <input className="sheet-input" value={title} maxLength={120} aria-label={t.todo.edit} onChange={(e) => setTitle(e.target.value)} />
       {source && details && <EventDetails details={details} />}
-      {recurring ? (
-        <p className="sheet-note">{t.todo.repeats}</p>
-      ) : (
+      {/* Повторяющееся: день не выбирают (он задан повтором), подсказку об этом не пишем — лишний шум (02.10.2026). */}
+      {recurring ? null : (
         <div className="segmented two todo-days" role="radiogroup" aria-label={t.todo.when}>
           {[
             [today, t.todo.today],

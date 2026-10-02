@@ -83,17 +83,22 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
       return share >= 1 ? 'full' : share >= 0.5 ? 'half' : 'some';
     };
   } else {
+    const slip = task.last_slip_on;
     // Считаем с дня после «последнего раза», а если его не указывали — с первого дня привычки.
     sub = t.since(date(task.last_slip_on ? addDays(task.last_slip_on, 1) : start));
     const runs = cleanRuns(logs, start, task.last_slip_on, today);
     stats = [
       [runs.current, t.statRunNow],
       [runs.longest, t.statRunBest],
-      [inMonth.filter((l) => l.status === 'slip').length, t.statSlipsIn(monthName)],
+      [inMonth.filter((l) => l.status === 'slip').length + (slip?.startsWith(month) && !byDay.has(slip) ? 1 : 0), t.statSlipsIn(monthName)],
     ];
+    // Дни до приложения тоже настоящие: после «последнего раза» и до первого дня привычки — чистые,
+    // сам «последний раз» — красный (решение владелицы 02.10.2026: «я 148 дней без этого, а зелёных три»).
     cellClass = (day) => {
       const s = byDay.get(day)?.status;
-      return s === 'clean' ? 'clean' : s === 'slip' ? 'slip' : 'off';
+      if (s) return s === 'clean' ? 'clean' : 'slip';
+      if (day === slip) return 'slip';
+      return slip && day > slip && day < start ? 'clean' : 'off';
     };
   }
 
@@ -139,7 +144,7 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
 
       <section className="card pad">
         <div className="month-nav flat">
-          <button aria-label={t.prevMonth} disabled={month <= monthOf(start)} onClick={() => setMonth(shiftMonth(month, -1))}>
+          <button aria-label={t.prevMonth} disabled={month <= monthOf(task.kind === 'abstain' && task.last_slip_on && task.last_slip_on < start ? task.last_slip_on : start)} onClick={() => setMonth(shiftMonth(month, -1))}>
             ‹
           </button>
           <span>{monthLabel}</span>
