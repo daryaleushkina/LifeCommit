@@ -1,7 +1,9 @@
 import { useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { cleanRuns, lastDays, targetOn, type TaskHistory } from '../../shared/stats';
 import type { TodayTask } from '../../shared/types';
+import { api } from '../api';
 import { caches, load as fetchInto } from '../caches';
+import { Sheet } from '../components/Picker';
 import { addDays, monthCells, monthOf, shiftMonth } from '../components/Heatmap';
 import { KindTile } from '../components/KindIcon';
 import { cleanDaysOf, DoneButton, Progress, QuitButtons, RoundBtn, useCountValue, type LogChange } from '../components/TaskCard';
@@ -29,6 +31,8 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
   // История подтянута в фоне после запуска — числа и календарь сразу настоящие.
   const [history, setHistory] = useState<TaskHistory | null>(caches.history.get(task.id) ?? null);
   const [month, setMonth] = useState(monthOf(today));
+  // День, который отмечают задним числом («вспомнила, что месяц назад было»).
+  const [marking, setMarking] = useState<string | null>(null);
 
   useBackButton(onClose);
 
@@ -51,6 +55,39 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
   const cells = monthCells(month);
   // Дни месяца, когда привычка уже существовала и которые уже наступили.
   const lived = cells.days.filter((d) => d >= start && d <= today);
+  // Листать назад можно всегда на год (и дальше — до «последнего раза» у отказа): там тоже можно отметить.
+  const oldest = [monthOf(start), shiftMonth(monthOf(today), -11), ...(task.kind === 'abstain' && task.last_slip_on ? [monthOf(task.last_slip_on)] : [])].sort()[0]!;
+  // Отмечать задним числом — да/нет у галочки и отказа; у счётчика нужно число, его отмечают только сегодня.
+  const markable = task.kind !== 'count';
+
+  /** Отметка за прошлый день: на экране сразу, потом свежие «Сегодня» (числа) и карта. */
+  const markDay = async (day: string, yes: boolean | null) => {
+    setMarking(null);
+    if (day === today) {
+      onLog(task.kind === 'abstain' ? { value: null, status: yes === null ? null : yes ? 'clean' : 'slip' } : { value: yes ? task.target : null });
+      return;
+    }
+    const status: 'clean' | 'slip' | null = task.kind === 'abstain' && yes !== null ? (yes ? 'clean' : 'slip') : null;
+    const value = yes === null ? null : task.kind === 'abstain' ? (yes ? 1 : 0) : yes ? task.target : null;
+    // До приложения после «последнего раза» день и так чистый — «получилось» там просто убирает отметку.
+    const implicit = task.kind === 'abstain' && task.last_slip_on && day > task.last_slip_on && day < start;
+    const keep = yes !== null && !(implicit && yes) && (task.kind === 'abstain' || yes);
+    setHistory((h) => {
+      const base = h ?? { start, goals, logs: [] };
+      const rest = base.logs.filter((l) => l.day !== day);
+      const next = { ...base, logs: keep ? [...rest, { day, value: value ?? 0, status }].sort((a, b) => a.day.localeCompare(b.day)) : rest };
+      caches.history.set(task.id, next);
+      return next;
+    });
+    try {
+      await api.log(task.id, task.kind === 'abstain' ? null : value, status, day);
+    } catch {
+      setHistory(await fetchInto.history(task.id).catch(() => history));
+      return;
+    }
+    const [fresh, heat] = await Promise.all([api.today().catch(() => null), api.heatmap(371).catch(() => null)]);
+    setCache((c) => ({ ...c, ...(fresh && { today: fresh, loadedAt: Date.now() }), ...(heat && { heat: heat.days }) }));
+  };
 
   let sub: string;
   let stats: [string | number, string][];
@@ -144,7 +181,7 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
 
       <section className="card pad">
         <div className="month-nav flat">
-          <button aria-label={t.prevMonth} disabled={month <= monthOf(task.kind === 'abstain' && task.last_slip_on && task.last_slip_on < start ? task.last_slip_on : start)} onClick={() => setMonth(shiftMonth(month, -1))}>
+          <button aria-label={t.prevMonth} disabled={month <= oldest} onClick={() => setMonth(shiftMonth(month, -1))}>
             ‹
           </button>
           <span>{monthLabel}</span>
@@ -152,20 +189,48 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
             ›
           </button>
         </div>
-        <div className="hcal" aria-hidden>
+        <div className="hcal">
           {t.weekdaysShort.map((d) => (
-            <span key={d}>{d}</span>
+            <span key={d} aria-hidden>
+              {d}
+            </span>
           ))}
           {Array.from({ length: cells.lead }, (_, i) => (
             <i key={`b${i}`} className="blank" />
           ))}
-          {cells.days.map((day, i) => (
-            <i key={day} className={`${cellClass(day)}${day === today ? ' today' : ''}`}>
-              {i + 1}
-            </i>
-          ))}
+          {/* Прошедший день можно нажать и отметить задним числом. */}
+          {cells.days.map((day, i) =>
+            markable && day <= today ? (
+              <button key={day} className={`hcal-day ${cellClass(day)}${day === today ? ' today' : ''}`} aria-label={date(day)} onClick={() => setMarking(day)}>
+                {i + 1}
+              </button>
+            ) : (
+              <i key={day} className={`${cellClass(day)}${day === today ? ' today' : ''}`} aria-hidden>
+                {i + 1}
+              </i>
+            ),
+          )}
         </div>
       </section>
+
+      {marking && (
+        <Sheet title={new Date(`${marking}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} onClose={() => setMarking(null)}>
+          <p className="sheet-note first">{task.title}</p>
+          <div className="mark-choice">
+            <button className="act primary" onClick={() => void markDay(marking, true)}>
+              {task.kind === 'abstain' ? t.markClean : t.markDone}
+            </button>
+            <button className="act soft-bad" onClick={() => void markDay(marking, false)}>
+              {task.kind === 'abstain' ? t.markSlip : t.markNotDone}
+            </button>
+          </div>
+          {byDay.has(marking) && !(task.kind === 'abstain' && marking < start) && (
+            <button className="quiet-link" onClick={() => void markDay(marking, null)}>
+              {t.markClear}
+            </button>
+          )}
+        </Sheet>
+      )}
 
       {task.kind === 'count' && <TwoWeeks days={lastDays(logs, today, 14)} goal={task.target} title={t.twoWeeks} goalWord={t.goalShort} />}
     </main>

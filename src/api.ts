@@ -69,8 +69,9 @@ export const api = {
   archiveTask: (id: number) => call<{ ok: true }>('POST', `/tasks/${id}/archive`),
   restoreTask: (id: number) => call<{ ok: true }>('POST', `/tasks/${id}/restore`),
   deleteTask: (id: number) => call<{ ok: true }>('DELETE', `/tasks/${id}`),
-  log: (task_id: number, value: number | null, status?: 'clean' | 'slip' | null) =>
-    call<{ ok: true }>('PUT', '/logs', { task_id, value, status }),
+  /** day — отметка задним числом (с экрана привычки); нет — за сегодня. */
+  log: (task_id: number, value: number | null, status?: 'clean' | 'slip' | null, day?: string) =>
+    call<{ ok: true }>('PUT', '/logs', { task_id, value, status, day }),
   history: (id: number) => call<TaskHistory>('GET', `/tasks/${id}/history`),
   heatmap: (days = 365) => call<{ today: string; days: HeatDay[] }>('GET', `/heatmap?days=${days}`),
   settings: (patch: Partial<UserSettings>) => call<UserSettings>('PATCH', '/settings', patch),

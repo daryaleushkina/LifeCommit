@@ -170,6 +170,7 @@ interface TodayRow extends TaskRow {
   target: number | null;
   start: string | null;
   clean_count: number;
+  pre_slips: number;
   subtasks: { id: number; title: string }[];
 }
 
@@ -216,7 +217,7 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
       due,
       subtasks: t.subtasks,
       // «N дней без…»: чистые дни в приложении плюс дни до его появления, если указан «последний раз».
-      clean_before: t.kind === 'abstain' ? Number(t.clean_count) + cleanDaysBeforeStart(t.start ?? day, t.last_slip_on) : 0,
+      clean_before: t.kind === 'abstain' ? Number(t.clean_count) + cleanDaysBeforeStart(t.start ?? day, t.last_slip_on) - Number(t.pre_slips ?? 0) : 0,
       last_slip_on: t.last_slip_on,
     };
   });
@@ -755,19 +756,30 @@ api.delete('/tasks/:id', async (c) => {
   return c.json({ ok: true });
 });
 
-// Отметка за сегодняшний логический день. value — абсолютное значение.
+/** Задним числом отмечаем не дальше двух лет назад. */
+const PAST_LOG_DAYS = 731;
+
+// Отметка за сегодняшний логический день или задним числом (day — с экрана привычки). value — абсолютное значение.
 api.put('/logs', async (c) => {
-  const { task_id, value, status } = await c.req.json<{ task_id: number; value?: number | null; status?: 'clean' | 'slip' | null }>();
+  const { task_id, value, status, day: dayIn } = await c.req.json<{ task_id: number; value?: number | null; status?: 'clean' | 'slip' | null; day?: string }>();
   const user = c.get('user');
   const sb = c.get('sb');
   const task = must(
-    await sb.from('tasks').select('id, kind').eq('id', task_id).eq('user_id', user.id).maybeSingle<{ id: number; kind: TaskKind }>(),
+    await sb.from('tasks').select('id, kind, last_slip_on').eq('id', task_id).eq('user_id', user.id).maybeSingle<{ id: number; kind: TaskKind; last_slip_on: string | null }>(),
   );
   if (!task) throw new HTTPException(404, { message: 'not_found' });
-  const day = today(user);
+  const now = today(user);
+  if (dayIn !== undefined && (!isDay(dayIn) || dayIn > now || dayIn < addDays(now, -PAST_LOG_DAYS))) throw new HTTPException(400, { message: 'bad_day' });
+  const day = dayIn ?? now;
 
-  const clearing =
+  let clearing =
     task.kind === 'abstain' ? status == null : !(Number(value) > 0);
+  // Отказ, день между «последним разом» и первым днём привычки: он и так чистый (его считает «последний раз»),
+  // поэтому «чисто» там — убрать отметку, а не записать вторую.
+  if (task.kind === 'abstain' && status === 'clean' && task.last_slip_on && day > task.last_slip_on) {
+    const first = (must(await sb.from('task_goals').select('effective_from').eq('task_id', task_id).order('effective_from').limit(1).maybeSingle()) as { effective_from: string } | null)?.effective_from;
+    if (first && day < first) clearing = true;
+  }
   if (clearing) {
     must(await sb.from('task_logs').delete().eq('task_id', task_id).eq('day', day));
     return c.json({ ok: true });
