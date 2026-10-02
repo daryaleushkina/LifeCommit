@@ -9,6 +9,7 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "load": "k6 run scripts/load.js",
+    "e2e": "node scripts/e2e.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler deploy",

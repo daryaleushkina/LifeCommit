@@ -20,8 +20,9 @@ let closeOpen: (() => void) | null = null;
 
 /**
  * Свайп строки спорит с жестом Telegram «потянуть вниз — свернуть»: палец чуть уходит вниз, и весь мини-апп
- * съезжает (02.10.2026). Пока палец на смахиваемой строке — вертикальный жест Telegram выключаем, отпустили — включаем.
- * Свернуть за шапку можно всегда (документация Telegram).
+ * съезжает (02.10.2026). Вертикальный жест Telegram выключаем, только когда строку уже повели вбок, отпустили —
+ * включаем. Не на каждое касание: на iPhone переключение посреди касания глушило прокрутку — в «Календаре», где
+ * экран почти целиком из таких строк, не листалось ничего (02.10.2026). Свернуть за шапку можно всегда.
  */
 const holdTelegramSwipe = (hold: boolean) => {
   if (hold) swipeBehavior.disableVertical.ifAvailable();
@@ -70,7 +71,6 @@ export function SwipeRow({ actions, className, variant = 'row', children }: Prop
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     g.current = { x0: e.clientX, y0: e.clientY, base: x, dir: null, id: e.pointerId, full: false };
     moved.current = false;
-    holdTelegramSwipe(true);
   };
   const onMove = (e: React.PointerEvent) => {
     const s = g.current;
@@ -80,6 +80,7 @@ export function SwipeRow({ actions, className, variant = 'row', children }: Prop
     if (!s.dir) {
       if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) {
         s.dir = 'h';
+        holdTelegramSwipe(true);
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         if (closeOpen && closeOpen !== close) closeOpen();
         closeOpen = close;
@@ -102,9 +103,9 @@ export function SwipeRow({ actions, className, variant = 'row', children }: Prop
   const onUp = () => {
     const s = g.current;
     g.current = null;
-    holdTelegramSwipe(false);
     setDragging(false);
     if (!s || s.dir !== 'h') return;
+    holdTelegramSwipe(false);
     if (s.full) {
       setX(-width());
       actions[actions.length - 1]!.run();
