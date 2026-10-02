@@ -276,6 +276,7 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
           onAdd={(title) => void actions.add(title, selected)}
           onUpdate={actions.update}
           onRemove={actions.remove}
+          onHide={actions.hide}
         />
       )}
 
@@ -305,6 +306,15 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
                     onChanged();
                   }}
                   onOpen={() => onOpenGroup(b.group.id)}
+                  swipe={{
+                    groupId: b.group.id,
+                    day: selected,
+                    after: async () => {
+                      caches.groups.delete(b.group.id);
+                      await load();
+                      onChanged();
+                    },
+                  }}
                 />
               ))}
             </ul>

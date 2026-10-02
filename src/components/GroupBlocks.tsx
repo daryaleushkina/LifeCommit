@@ -3,6 +3,7 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { hapticFeedback } from '@tma.js/sdk-react';
 import type { GroupDayItem, GroupToday } from '../../shared/groups';
 import { api } from '../api';
+import { caches } from '../caches';
 import { useT } from '../i18n';
 import { bumpChange, type Cache } from '../useTaskLog';
 import { AvatarStack, GroupItemRow } from './groupUi';
@@ -12,14 +13,22 @@ interface Props {
   me: number;
   setCache: Dispatch<SetStateAction<Cache>>;
   onOpen: (id: number) => void;
+  /** Сегодняшний логический день: «убрать только сегодня» у повторяющегося. */
+  today: string;
 }
 
 /** Что из группы показывать на «Сегодня»: моё, «кто-то один», мероприятия и цели. */
 const mine = (it: GroupDayItem) => it.for_me;
 const rank = (it: GroupDayItem) => (it.mode === 'goal' ? -1 : it.done ? 3 : it.mode === 'event' ? 2 : it.time ? 0 : 1);
 
-export function GroupBlocks({ groups, me, setCache, onOpen }: Props): ReactNode {
+export function GroupBlocks({ groups, me, setCache, onOpen, today }: Props): ReactNode {
   const t = useT();
+  /** После удаления свайпом — свежие «Сегодня» и экран группы. */
+  const reload = async (groupId: number) => {
+    caches.groups.delete(groupId);
+    const fresh = await api.today().catch(() => null);
+    if (fresh) setCache((c) => ({ ...c, today: fresh, loadedAt: Date.now() }));
+  };
 
   const toggle = async (group: GroupToday, it: GroupDayItem) => {
     const done = !it.done;
@@ -56,7 +65,7 @@ export function GroupBlocks({ groups, me, setCache, onOpen }: Props): ReactNode 
             </button>
             <ul className="card todo-list">
               {items.map((it) => (
-                <GroupItemRow key={it.id} item={it} members={group.members} me={me} onToggle={() => void toggle(group, it)} onOpen={() => onOpen(group.id)} onPut={() => onOpen(group.id)} />
+                <GroupItemRow key={it.id} item={it} members={group.members} me={me} onToggle={() => void toggle(group, it)} onOpen={() => onOpen(group.id)} onPut={() => onOpen(group.id)} swipe={{ groupId: group.id, day: today, after: () => reload(group.id) }} />
               ))}
             </ul>
           </section>

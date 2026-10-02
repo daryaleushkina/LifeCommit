@@ -108,7 +108,21 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
     [patchList, reload, errorText],
   );
 
-  return { toggle, add, update, remove, error, clearError: () => setError(null) };
+  /** Скрыть событие из календаря (свайп): у нас пропадает, в календаре остаётся. */
+  const hide = useCallback(
+    async (todo: Todo) => {
+      bumpChange();
+      try {
+        await api.updateTodo(todo.id, { hidden: true });
+      } catch {
+        setError(errorText);
+      }
+      await reload();
+    },
+    [reload, errorText],
+  );
+
+  return { toggle, add, update, remove, hide, error, clearError: () => setError(null) };
 }
 
 /** Дела на «Сегодня»: список живёт в кэше приложения. */

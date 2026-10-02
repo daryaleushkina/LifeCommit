@@ -61,9 +61,10 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   }
   if (!group) return null;
 
-  const changed = () => {
-    void load();
+  // Ждём перечитку: после удаления свайпом строка не должна мелькнуть обратно.
+  const changed = async () => {
     onChanged();
+    await load();
   };
 
   const toggle = async (it: GroupDayItem) => {
@@ -154,7 +155,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
           {goals.length > 0 && (
             <ul className="card todo-list">
               {goals.map((it) => (
-                <GroupItemRow key={it.id} item={it} members={group.members} me={me} onOpen={() => setEditing(it)} onPut={() => setPutting(it)} />
+                <GroupItemRow key={it.id} item={it} members={group.members} me={me} onOpen={() => setEditing(it)} onPut={() => setPutting(it)} swipe={{ groupId: group.id, day: today, after: changed }} />
               ))}
             </ul>
           )}
@@ -162,7 +163,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
           <ul className="card todo-list">
             {items.length === 0 && <li className="todo-empty">{g.nothingToday}</li>}
             {items.map((it) => (
-              <GroupItemRow key={it.id} item={it} members={group.members} me={me} onToggle={() => void toggle(it)} onOpen={() => setEditing(it)} />
+              <GroupItemRow key={it.id} item={it} members={group.members} me={me} onToggle={() => void toggle(it)} onOpen={() => setEditing(it)} swipe={{ groupId: group.id, day: today, after: changed }} />
             ))}
           </ul>
           {soon.length > 0 && (
@@ -173,7 +174,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
                   <h3>{new Date(`${b.day}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
                   <ul className="card todo-list flat">
                     {b.items.map((it) => (
-                      <GroupItemRow key={it.id} item={{ ...it, can_mark: false }} members={group.members} me={me} onOpen={() => setEditing(it)} />
+                      <GroupItemRow key={it.id} item={{ ...it, can_mark: false }} members={group.members} me={me} onOpen={() => setEditing(it)} swipe={{ groupId: group.id, day: b.day, after: changed }} />
                     ))}
                   </ul>
                 </section>

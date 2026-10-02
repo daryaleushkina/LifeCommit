@@ -4,7 +4,9 @@ import { caches, load as fetchInto } from '../caches';
 import { LangContext, useT } from '../i18n';
 import type { TodoEdit } from '../useTodos';
 import { todoWhen } from '../todoDates';
+import { removeWithUndo, useRemoved } from '../removal';
 import { Sheet } from './Picker';
+import { SwipeRow, type SwipeAction } from './SwipeRow';
 import { TodoSheet } from './TodoSheet';
 
 interface Props {
@@ -24,6 +26,20 @@ interface Props {
   onAdd: (title: string) => void;
   onUpdate: (todo: Todo, edit: TodoEdit) => Promise<void>;
   onRemove: (todo: Todo) => Promise<void>;
+  /** Скрыть событие из календаря у нас (в самом календаре оно остаётся). */
+  onHide?: (todo: Todo) => Promise<void>;
+}
+
+/** Что под свайпом: своё дело — «Удалить»; событие из календаря — «Удалить» (и в календаре) и «Скрыть» (крайняя, она же — до конца). */
+export function useTodoSwipe(onRemove: Props['onRemove'], onHide?: Props['onHide']) {
+  const t = useT();
+  const isRemoved = useRemoved();
+  const actions = (d: Todo): SwipeAction[] => {
+    const remove: SwipeAction = { label: t.swipe.remove, tone: 'danger', icon: 'trash', run: () => removeWithUndo(`todo:${d.id}`, t.swipe.removed(d.title), () => onRemove(d)) };
+    if (!d.source || !onHide) return [remove];
+    return [remove, { label: t.swipe.hide, tone: 'muted', icon: 'hide', run: () => removeWithUndo(`todo:${d.id}`, t.swipe.hidden(d.title), () => onHide(d)) }];
+  };
+  return { actions, visible: (d: Todo) => !isRemoved(`todo:${d.id}`) };
 }
 
 /** Метка «откуда пришло»: G — Google, A — Apple. */
@@ -48,8 +64,10 @@ export function endTime(start: string, minutes: number): string | null {
 }
 
 /** Блок «Дела» на «Сегодня»: свои дела с кружком-галочкой, события из календаря без него, строка для нового дела, «Потом · N». */
-export function TodoList({ todos, later = 0, today, heading, addLabel, showCarry = true, canAdd = true, onToggle, onAdd, onUpdate, onRemove }: Props): ReactNode {
+export function TodoList({ todos: all, later = 0, today, heading, addLabel, showCarry = true, canAdd = true, onToggle, onAdd, onUpdate, onRemove, onHide }: Props): ReactNode {
   const t = useT();
+  const swipe = useTodoSwipe(onRemove, onHide);
+  const todos = all.filter(swipe.visible);
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   const [adding, setAdding] = useState(false);
@@ -73,7 +91,7 @@ export function TodoList({ todos, later = 0, today, heading, addLabel, showCarry
           const end = d.time && d.duration_min ? endTime(d.time, d.duration_min) : null;
           const note = [when, end && t.todo.until(end)].filter(Boolean).join(' · ');
           return (
-            <li key={`${d.id}:${d.day}`} className={d.done ? 'done' : undefined}>
+            <SwipeRow key={`${d.id}:${d.day}`} className={d.done ? 'done' : undefined} actions={swipe.actions(d)}>
               {/* Событие из календаря — «что сегодня будет»: отмечать нечего, на карту не влияет. */}
               {d.source ? (
                 <span className="todo-event" aria-hidden />
@@ -90,7 +108,7 @@ export function TodoList({ todos, later = 0, today, heading, addLabel, showCarry
                 </span>
                 <SourceMark source={d.source} />
               </button>
-            </li>
+            </SwipeRow>
           );
         })}
         {!canAdd && todos.length === 0 && <li className="todo-empty">{t.calEmpty}</li>}
@@ -169,8 +187,9 @@ function LaterSheet({ today, onUpdate, onRemove, onClose }: { today: string; onU
     void load();
   }, []);
 
+  const swipe = useTodoSwipe((d) => onRemove(d).then(load));
   const groups = new Map<string, Todo[]>();
-  for (const d of list ?? []) groups.set(d.day, [...(groups.get(d.day) ?? []), d]);
+  for (const d of (list ?? []).filter(swipe.visible)) groups.set(d.day, [...(groups.get(d.day) ?? []), d]);
 
   return (
     <>
@@ -180,14 +199,14 @@ function LaterSheet({ today, onUpdate, onRemove, onClose }: { today: string; onU
             <h3>{todoWhen(t, day, today, locale)}</h3>
             <ul className="card todo-list flat">
               {items.map((d) => (
-                <li key={d.id}>
+                <SwipeRow key={d.id} actions={swipe.actions(d)}>
                   <button className="todo-main" onClick={() => setEditing(d)}>
                     {d.time && <time className="todo-time">{d.time}</time>}
                     <span className="todo-text">
                       <span>{d.title}</span>
                     </span>
                   </button>
-                </li>
+                </SwipeRow>
               ))}
             </ul>
           </section>

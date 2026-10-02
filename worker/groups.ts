@@ -299,12 +299,31 @@ groups.patch('/groups/:id/items/:item', async (c) => {
   return c.json({ ok: true });
 });
 
+// «Убрать только сегодня» у повторяющегося дела (свайп, 02.10.2026): день уходит в исключения, остальные дни как были.
+groups.post('/groups/:id/items/:item/skip', async (c) => {
+  const id = groupId(c.req.param('id'));
+  const itemId = groupId(c.req.param('item'));
+  const sb = c.get('sb');
+  const { canEdit } = await membership(sb, id, c.get('user').id);
+  if (!canEdit) throw new HTTPException(403, { message: 'admins_only' });
+  const { day } = await c.req.json<{ day?: string }>();
+  if (!isDay(day)) throw new HTTPException(400, { message: 'bad_day' });
+  const item = must(await sb.from('group_items').select('exdates').eq('id', itemId).eq('group_id', id).maybeSingle()) as { exdates: string[] | null } | null;
+  if (!item) throw new HTTPException(404, { message: 'not_found' });
+  const exdates = [...new Set([...(item.exdates ?? []), day])].sort();
+  must(await sb.from('group_items').update({ exdates }).eq('id', itemId).eq('group_id', id));
+  c.executionCtx.waitUntil(refreshChat(c.env, id));
+  return c.json({ ok: true });
+});
+
 groups.delete('/groups/:id/items/:item', async (c) => {
   const id = groupId(c.req.param('id'));
   const sb = c.get('sb');
   const { canEdit } = await membership(sb, id, c.get('user').id);
   if (!canEdit) throw new HTTPException(403, { message: 'admins_only' });
   must(await sb.from('group_items').update({ archived_at: new Date().toISOString() }).eq('id', groupId(c.req.param('item'))).eq('group_id', id));
+  // «Сегодня в группе» в чате — без удалённого.
+  c.executionCtx.waitUntil(refreshChat(c.env, id));
   return c.json({ ok: true });
 });
 

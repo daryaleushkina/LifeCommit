@@ -34,6 +34,7 @@ import { DavError, isAuthError } from './caldav';
 import { authUrl } from './gcal';
 import { signState } from './secret';
 import { groups, groupsRange, groupsToday } from './groups';
+import { shareApi } from './share';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -476,7 +477,7 @@ api.patch('/todos/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const user = c.get('user');
   const sb = c.get('sb');
-  const body = await c.req.json<{ title?: string; day?: string; time?: string | null; done?: boolean; on?: string; location?: string | null }>();
+  const body = await c.req.json<{ title?: string; day?: string; time?: string | null; done?: boolean; on?: string; location?: string | null; hidden?: boolean }>();
   const day = today(user);
   const todo = must(await sb.from('todos').select('id, rrule, source, details').eq('id', id).eq('user_id', user.id).maybeSingle<{ id: number; rrule: string | null; source: Todo['source']; details: TodoDetails | null }>());
   if (!todo) throw new HTTPException(404, { message: 'not_found' });
@@ -497,6 +498,8 @@ api.patch('/todos/:id', async (c) => {
   if (body.day !== undefined && !todo.rrule) fields.day = todoDay(body.day, day);
   if (body.time !== undefined) fields.time = todoTime(body.time);
   if (body.done !== undefined && !todo.rrule) fields.done_on = body.done ? day : null;
+  // «Скрыть» свайпом — только у событий из календаря (своё дело удаляют, а не прячут).
+  if (body.hidden !== undefined && todo.source) fields.hidden = body.hidden === true;
   // Место правится только у своих дел: у событий из календаря его меняют в самом календаре.
   if (body.location !== undefined && !todo.source) {
     const { location: _old, ...rest } = todo.details ?? {};
@@ -628,7 +631,7 @@ api.post('/calendars/sync', async (c) => {
 api.get('/todos/later', async (c) => {
   const user = c.get('user');
   const rows = must(
-    await c.get('sb').from('todos').select(TODO_COLS).eq('user_id', user.id).is('done_on', null).is('rrule', null).gt('day', today(user)).order('day').order('position').order('id'),
+    await c.get('sb').from('todos').select(TODO_COLS).eq('user_id', user.id).eq('hidden', false).is('done_on', null).is('rrule', null).gt('day', today(user)).order('day').order('position').order('id'),
   ) as TodoRow[];
   return c.json(rows.map((r) => asTodo(r, r.day, false, false)));
 });
@@ -644,8 +647,8 @@ api.get('/calendar', async (c) => {
     throw new HTTPException(400, { message: 'bad_range' });
   }
   const [oneOff, recurring, done, groupDays] = await Promise.all([
-    sb.from('todos').select(TODO_COLS).eq('user_id', user.id).is('rrule', null).gte('day', from).lte('day', to).order('position').order('id'),
-    sb.from('todos').select(TODO_COLS).eq('user_id', user.id).not('rrule', 'is', null).lte('day', to),
+    sb.from('todos').select(TODO_COLS).eq('user_id', user.id).eq('hidden', false).is('rrule', null).gte('day', from).lte('day', to).order('position').order('id'),
+    sb.from('todos').select(TODO_COLS).eq('user_id', user.id).eq('hidden', false).not('rrule', 'is', null).lte('day', to),
     sb.from('todo_done').select('todo_id, day').eq('user_id', user.id).gte('day', from).lte('day', to),
     // Дела групп, которые касаются меня, — в те же дни.
     groupsRange(sb, user, from, to, { mine: true }),
@@ -855,3 +858,4 @@ api.delete('/account', async (c) => {
 
 // Группы: участники, приглашения, групповые дела (worker/groups.ts).
 api.route('/', groups);
+api.route('/', shareApi);

@@ -1,5 +1,9 @@
 // Общие кусочки экранов групп: аватарки, значок группы, строка группового дела.
 import type { ReactNode } from 'react';
+import { popup } from '@tma.js/sdk-react';
+import { api, ApiError } from '../api';
+import { askGroupRemoval, removeWithUndo, useRemoved } from '../removal';
+import { SwipeRow, type SwipeAction } from './SwipeRow';
 import type { GroupDayItem, GroupKind, GroupMember } from '../../shared/groups';
 import { plural } from '../../shared/groups';
 import { useT } from '../i18n';
@@ -74,12 +78,47 @@ interface RowProps {
   onToggle?: () => void;
   onOpen?: () => void;
   onPut?: () => void;
+  /** Смахнуть, чтобы удалить: группа, день строки и что сделать после (перечитать экран). */
+  swipe?: { groupId: number; day: string; after: () => unknown };
+}
+
+/**
+ * Удаление группового дела свайпом (круг 21): разовое — сразу с «Вернуть»; повторяющееся — спросить,
+ * убрать только в этот день или для всех. Удалять могут те, кому в группе можно править (иначе сервер скажет 403).
+ */
+function groupSwipe(t: ReturnType<typeof useT>, it: GroupDayItem, s: NonNullable<RowProps['swipe']>): SwipeAction[] {
+  const key = `gi:${s.groupId}:${it.id}`;
+  const run = (text: string, call: () => Promise<unknown>) =>
+    removeWithUndo(key, text, async () => {
+      try {
+        await call();
+      } catch (e) {
+        const message = e instanceof ApiError && e.code === 'admins_only' ? t.swipe.notAllowed : t.error;
+        if (popup.show.isAvailable()) void popup.show({ message });
+      }
+      await s.after();
+    });
+  const removeAll = () => run(t.swipe.removed(it.title), () => api.deleteItem(s.groupId, it.id));
+  return [
+    {
+      label: t.swipe.remove,
+      tone: 'danger',
+      icon: 'trash',
+      run: () =>
+        it.recurring && it.mode !== 'goal'
+          ? askGroupRemoval({ title: it.title, onToday: () => run(t.swipe.skipped(it.title), () => api.skipItem(s.groupId, it.id, s.day)), onAll: removeAll })
+          : removeAll(),
+    },
+  ];
 }
 
 /** Строка группового дела: галочка (если моё), название, кто делает / кто сделал. */
-export function GroupItemRow({ item: it, members, me, onToggle, onOpen, onPut }: RowProps): ReactNode {
+export function GroupItemRow({ item: it, members, me, onToggle, onOpen, onPut, swipe }: RowProps): ReactNode {
   const t = useT();
   const g = t.gr;
+  const isRemoved = useRemoved();
+  if (swipe && isRemoved(`gi:${swipe.groupId}:${it.id}`)) return null;
+  const actions = swipe ? groupSwipe(t, it, swipe) : [];
   const name = (id: number) => nameOf(members, id, me, g.me);
   const meta: ReactNode[] = [];
   if (it.time) meta.push(<b key="time" className="group-time">{it.time}</b>);
@@ -97,7 +136,7 @@ export function GroupItemRow({ item: it, members, me, onToggle, onOpen, onPut }:
     const total = it.total ?? 0;
     const target = it.target ?? 1;
     return (
-      <li className="group-goal">
+      <SwipeRow className="group-goal" actions={actions}>
         <button className="todo-main" onClick={onOpen}>
           <span className="todo-text">
             <span>{it.title}</span>
@@ -112,12 +151,12 @@ export function GroupItemRow({ item: it, members, me, onToggle, onOpen, onPut }:
             + {g.put}
           </button>
         )}
-      </li>
+      </SwipeRow>
     );
   }
 
   return (
-    <li className={it.done ? 'done' : undefined}>
+    <SwipeRow className={it.done ? 'done' : undefined} actions={actions}>
       {it.mode === 'event' ? (
         <span className="todo-event" aria-hidden />
       ) : it.can_mark ? (
@@ -135,6 +174,6 @@ export function GroupItemRow({ item: it, members, me, onToggle, onOpen, onPut }:
           {meta.length > 0 && <small className="group-meta">{meta}</small>}
         </span>
       </button>
-    </li>
+    </SwipeRow>
   );
 }
