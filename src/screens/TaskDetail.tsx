@@ -4,6 +4,8 @@ import type { TodayTask } from '../../shared/types';
 import { api } from '../api';
 import { caches, load as fetchInto } from '../caches';
 import { Sheet } from '../components/Picker';
+import type { MonthCell, Template } from '../share/draw';
+import { ShareSheet } from '../share/ShareSheet';
 import { addDays, monthCells, monthOf, shiftMonth } from '../components/Heatmap';
 import { KindTile } from '../components/KindIcon';
 import { cleanDaysOf, DoneButton, Progress, QuitButtons, RoundBtn, useCountValue, type LogChange } from '../components/TaskCard';
@@ -33,6 +35,7 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
   const [month, setMonth] = useState(monthOf(today));
   // День, который отмечают задним числом («вспомнила, что месяц назад было»).
   const [marking, setMarking] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
 
   useBackButton(onClose);
 
@@ -139,6 +142,45 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
     };
   }
 
+  /** Картинки «Поделиться» для этой привычки (19B, 19C, 19D) — по месяцу, который сейчас на экране. */
+  const shareTemplates = (): Template[] => {
+    const m = Number(month.slice(5)) - 1;
+    const sh = t.share;
+    const fmt = (n: number) => t.num(n);
+    const monthTitle = `${task.title} · ${monthName}`;
+    const elapsed = cells.days.filter((d) => d <= today);
+    const monthCells: MonthCell[] = cells.days.map((d, i) => {
+      const c = d <= today ? cellClass(d) : 'off';
+      return { n: i + 1, state: c === 'slip' ? 'slip' : c === 'off' || c === 'plan' ? 'none' : 'on' };
+    });
+    const month_ = (big: string, total: number): Template => ({ kind: 'month', title: monthTitle, big, caption: `${sh.daysOf(total)} ${sh.inMonth(m)}`, lead: cells.lead, cells: monthCells, weekdays: t.weekdaysShort, footer: sh.footer });
+    if (task.kind === 'abstain') {
+      const n = cleanDaysOf(task);
+      const clean = monthCells.filter((c) => c.state === 'on').length;
+      return [
+        { kind: 'number', title: task.title, big: fmt(n), caption: t.cleanDaysWord(n), footer: sh.footerDays },
+        { ...month_(t.statOf(clean, elapsed.length), elapsed.length), footer: sh.footerDays },
+      ];
+    }
+    if (task.kind === 'check') {
+      const done = monthCells.filter((c) => c.state === 'on').length;
+      const plan = task.schedule === 'per_week' ? elapsed.length : lived.filter((d) => (task.weekdays & (1 << ((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7))) !== 0).length;
+      const total = logs.filter((l) => l.value >= 1).length;
+      return [
+        month_(t.statOf(done, Math.max(plan, done)), Math.max(plan, done)),
+        { kind: 'number', title: task.title, big: fmt(total), caption: sh.timesAll, footer: sh.footer },
+      ];
+    }
+    const bars = cells.days.map((d) => byDay.get(d)?.value ?? 0);
+    const sum = bars.reduce((a, b) => a + b, 0);
+    const caption = [task.unit, sh.inMonth(m)].filter(Boolean).join(' ');
+    const short = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short' }).replace('.', '');
+    return [
+      { kind: 'sum', title: monthTitle, big: fmt(sum), caption, bars, goal: task.target, left: short(cells.days[0]!), middle: sh.perDay(fmt(Math.round(sum / Math.max(1, elapsed.length)))), right: short(cells.days.at(-1)!), footer: sh.footer },
+      { kind: 'number', title: task.title, big: fmt(sum), caption, footer: sh.footer },
+    ];
+  };
+
   return (
     <main className="app-shell">
       <header className="detail-head">
@@ -147,6 +189,11 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
           <h1>{task.title}</h1>
           <p>{sub}</p>
         </div>
+        <button className="icon-btn" aria-label={t.share.open} onClick={() => setSharing(true)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 3v12M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+          </svg>
+        </button>
         <button className="icon-btn" aria-label={t.editTask} onClick={onEdit}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
@@ -212,6 +259,8 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
           )}
         </div>
       </section>
+
+      {sharing && <ShareSheet templates={shareTemplates()} onClose={() => setSharing(false)} />}
 
       {marking && (
         <Sheet title={new Date(`${marking}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })} onClose={() => setMarking(null)}>
