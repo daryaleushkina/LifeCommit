@@ -52,16 +52,6 @@ test.describe('Telegram сообщает высоту больше видимо�
   });
 });
 
-// Временная панель замеров высоты (убрать вместе с ViewportDebug): пять тапов по заголовку.
-test('пять тапов по заголовку показывают замеры высоты', async ({ app: page }) => {
-  await goTab(page, 'Календарь');
-  const title = page.locator('.page-head h1');
-  for (let i = 0; i < 5; i++) await title.click();
-  await expect(page.locator('.viewport-debug')).toContainText('tg height');
-  await page.locator('.viewport-debug').click();
-  await expect(page.locator('.viewport-debug')).toHaveCount(0);
-});
-
 // 03.10.2026, iPhone: WebKit не считал нижний padding контейнера прокрутки — короткий список упирался под панель и не
 // листался. Место под панель — отдельным элементом (::after), а не padding: проверяем, что так и осталось.
 test('место под нижней панелью — элементом, а не отступом контейнера', async ({ app: page }) => {
