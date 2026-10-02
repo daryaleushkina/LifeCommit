@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.workertest.tsbuildinfo",
     "target": "ES2022",
     "lib": [
       "ES2023"
@@ -8,7 +8,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "types": [
-      "@cloudflare/workers-types"
+      "@cloudflare/workers-types",
+      "node"
     ],
     "strict": true,
     "noEmit": true,
@@ -16,13 +17,9 @@
     "skipLibCheck": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": false
   },
   "include": [
-    "worker",
-    "shared"
-  ],
-  "exclude": [
     "worker/test",
     "worker/**/*.int.test.ts"
   ]

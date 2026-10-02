@@ -37,7 +37,13 @@ export const requireTelegram = createMiddleware<{ Bindings: Env; Variables: Auth
     }
   }
 
-  const data = parse(raw);
+  // Подпись проверена (или это подмена разработки), но сами данные могут не разобраться — это 401, а не 500.
+  let data: ReturnType<typeof parse>;
+  try {
+    data = parse(raw);
+  } catch {
+    throw new HTTPException(401, { message: 'bad_init_data' });
+  }
   if (!data.user) throw new HTTPException(401, { message: 'no_user' });
   c.set('tgUser', data.user as TgUser);
   c.set('startParam', data.start_param);
