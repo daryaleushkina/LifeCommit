@@ -44,7 +44,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 /** Картинка «Поделиться» — в Telegram через бота; в ответ ссылка (для сторис и «Сохранить») и file_id. */
 async function share(image: Blob): Promise<{ url: string; file_id: string }> {
-  const res = await fetch('/api/share', { method: 'POST', headers: { Authorization: auth(), 'content-type': 'image/png' }, body: image });
+  const res = await fetch('/api/share', { method: 'POST', headers: { Authorization: auth(), 'content-type': image.type || 'image/jpeg' }, body: image });
   const data = (await res.json().catch(() => ({}))) as { url: string; file_id: string; error?: string };
   if (!res.ok) throw new ApiError(res.status, data.error ?? 'network');
   return data;

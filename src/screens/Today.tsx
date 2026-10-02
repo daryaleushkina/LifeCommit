@@ -2,8 +2,11 @@ import { useContext, useEffect, type Dispatch, type ReactNode, type SetStateActi
 import { api } from '../api';
 import { isDone, TaskCard } from '../components/TaskCard';
 import { GroupBlocks } from '../components/GroupBlocks';
+import { SwipeRow, type SwipeAction } from '../components/SwipeRow';
 import { TodoList } from '../components/TodoList';
 import { LangContext, useT } from '../i18n';
+import { removeWithUndo, useRemoved } from '../removal';
+import type { TodayTask } from '../../shared/types';
 import { currentChange, useTaskLog, type Cache } from '../useTaskLog';
 import { useTodos } from '../useTodos';
 
@@ -18,14 +21,27 @@ interface Props {
   /** Мой id — кому групповые дела и чья очередь. */
   me: number;
   onOpenGroup: (id: number) => void;
+  /** Привычку удалили свайпом — перечитать «Сегодня» и карту (удаление стирает и её прошлые дни). */
+  onDeleted: () => Promise<void>;
 }
 
-export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup }: Props): ReactNode {
+export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onDeleted }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const data = cache.today;
   const { log, error, clearError } = useTaskLog(setCache, t.error);
   const todos = useTodos(setCache, t.error);
+  const isRemoved = useRemoved();
+  // Удалить привычку свайпом (02.10.2026: раньше — только из редактора, «слишком глубоко»). Как у дел: 5 секунд «Вернуть»,
+  // на сервер удаление уходит, когда плашка закрылась.
+  const swipe = (task: TodayTask): SwipeAction[] => [
+    {
+      label: t.swipe.remove,
+      tone: 'danger',
+      icon: 'trash',
+      run: () => removeWithUndo(`task:${task.id}`, t.swipe.removed(task.title), () => api.deleteTask(task.id).catch(() => {}).then(onDeleted)),
+    },
+  ];
 
   // Тихое обновление в фоне, если данные уже не свежие (например, день сменился).
   // Сразу после заставки или редактора они только что пришли — повторный запрос не нужен.
@@ -39,8 +55,9 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup }: P
   }, [setCache]);
 
   // Несделанные сверху, сделанные тихо опускаются вниз.
-  const due = data.tasks.filter((x) => x.due);
-  const notDue = data.tasks.filter((x) => !x.due);
+  const shown = data.tasks.filter((x) => !isRemoved(`task:${x.id}`));
+  const due = shown.filter((x) => x.due);
+  const notDue = shown.filter((x) => !x.due);
   const ordered = [...due.filter((x) => !isDone(x)), ...due.filter(isDone)];
   const canAdd = data.limits.max_tasks === null || data.limits.active < data.limits.max_tasks;
   const dateLabel = new Date(`${data.day}T12:00:00`).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US', {
@@ -87,7 +104,9 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup }: P
       ) : (
         <section className="tasks">
           {ordered.map((task) => (
-            <TaskCard key={task.id} task={task} onLog={(c) => void log(task, c)} onOpen={() => onEdit(task.id)} />
+            <SwipeRow key={task.id} variant="card" actions={swipe(task)}>
+              <TaskCard task={task} onLog={(c) => void log(task, c)} onOpen={() => onEdit(task.id)} />
+            </SwipeRow>
           ))}
         </section>
       )}
@@ -96,12 +115,14 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup }: P
       {notDue.length > 0 && (
         <section className="tasks">
           {notDue.map((task) => (
-            <article key={task.id} className="task done">
-              <button className="task-main" onClick={() => onEdit(task.id)}>
-                <h2>{task.title}</h2>
-                <span className="task-value">{task.schedule === 'per_week' ? t.perWeek(task.per_week ?? 0) : t.schedules[task.schedule]}</span>
-              </button>
-            </article>
+            <SwipeRow key={task.id} variant="card" actions={swipe(task)}>
+              <article className="task done">
+                <button className="task-main" onClick={() => onEdit(task.id)}>
+                  <h2>{task.title}</h2>
+                  <span className="task-value">{task.schedule === 'per_week' ? t.perWeek(task.per_week ?? 0) : t.schedules[task.schedule]}</span>
+                </button>
+              </article>
+            </SwipeRow>
           ))}
         </section>
       )}

@@ -255,7 +255,7 @@ export function App(): ReactNode {
         ) : currentTab === 'calendar' ? (
           <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} onChanged={() => void refresh()} me={boot.user.id} onOpenGroup={openGroup} />
         ) : (
-          <Today cache={cache} setCache={setCache} me={boot.user.id} onOpenGroup={openGroup} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} />
+          <Today cache={cache} setCache={setCache} me={boot.user.id} onOpenGroup={openGroup} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} onDeleted={() => refresh(true)} />
         )}
         <TabBar route={currentTab} onRoute={(name) => setRoute(tab(name))} onMic={() => setVoiceOpen(true)} />
         {voiceOpen && (

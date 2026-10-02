@@ -152,7 +152,7 @@ const ru = {
   calEmpty: 'В этот день ничего',
   // онбординг
   onboardingTitle: 'Чего я хочу?',
-  onboardingSkip: 'Пропустить пока',
+  onboardingSkip: 'Пропустить',
   onboardingHint: 'Выбери одно — остальное можно добавить потом',
   intents: {
     check: { title: 'Делать регулярно', examples: 'каждый день или пару раз в неделю: спортзал, уборка' },
@@ -628,7 +628,7 @@ const en: Dict = {
   markClear: 'Clear the mark',
   calEmpty: 'Nothing on this day',
   onboardingTitle: 'What do I want?',
-  onboardingSkip: 'Skip for now',
+  onboardingSkip: 'Skip',
   onboardingHint: 'Pick one — you can add the rest later',
   intents: {
     check: { title: 'Do it regularly', examples: 'every day or a few times a week: gym, tidying up' },

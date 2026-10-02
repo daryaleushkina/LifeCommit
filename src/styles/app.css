@@ -352,7 +352,9 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 /* ── Дела на день ── */
 .section-label { margin: 24px 4px 8px; font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .section-label + .tasks, .section-label + .empty, .section-label + .card { margin-top: 0; }
-.todo-list { margin: 0; padding: 4px 0; list-style: none; }
+/* Без отступа сверху и снизу: кнопка свайпа первой и последней строки стоит на том же расстоянии от края карточки,
+   что и от соседних строк. */
+.todo-list { margin: 0; padding: 0; list-style: none; }
 .todo-list li { display: flex; align-items: center; min-height: 52px; padding-left: 8px; }
 .todo-list li + li { border-top: 1px solid var(--line); }
 .todo-check { flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center; }
@@ -617,9 +619,20 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .swipe-body { position: relative; z-index: 1; display: flex; align-items: center; min-height: 52px; padding-left: 8px; touch-action: pan-y; transition: transform 240ms var(--ease-out); }
 .swipe-actions { position: absolute; inset: 0; display: flex; justify-content: flex-end; transition: clip-path 240ms var(--ease-out); }
 .swipe.dragging .swipe-body, .swipe.dragging .swipe-actions { transition: none; }
-.swipe-btn { flex: none; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden; white-space: nowrap; color: #FFFFFF; font-size: 12px; font-weight: 600; }
-.swipe-btn.danger { background: #D9534A; }
-.swipe-btn.muted { background: #8C948A; }
+/* Кнопка — прозрачная полоса во всю высоту строки, внутри — скруглённая «таблетка» с отступами:
+   в списке она концентрична углу карточки (радиус карточки минус отступ 4px). */
+.swipe-btn { flex: none; height: 100%; display: flex; padding: 4px 0 4px 6px; color: #FFFFFF; font-size: 12px; font-weight: 600; }
+.swipe-btn:last-child { padding-right: 4px; }
+.swipe-pill { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden; white-space: nowrap; border-radius: calc(var(--radius) - 4px); }
+.swipe-btn.danger .swipe-pill { background: #D9534A; }
+.swipe-btn.muted .swipe-pill { background: #8C948A; }
+.swipe-btn:active .swipe-pill { filter: brightness(0.92); }
+/* Привычка — отдельная карточка: кнопка во всю её высоту и с тем же скруглением. Обрезки нет — карточка уезжает
+   за край экрана, а её тень не срезается. */
+.swipe-card { position: relative; }
+.swipe-card > .swipe-body { display: block; min-height: 0; padding-left: 0; }
+.swipe-card .swipe-btn { padding: 0 0 0 8px; }
+.swipe-card .swipe-pill { border-radius: var(--radius); }
 @media (prefers-reduced-motion: reduce) { .swipe-body, .swipe-actions { transition: none; } }
 
 /* «Удалено · Вернуть» — внизу над панелью, 5 секунд. */
@@ -637,9 +650,11 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .profile-head > div:not(.avatar) { flex: 1; min-width: 0; }
 
 /* «Поделиться» (20J): картинки листаются крупно, по центру — выбранная. */
-.share-strip { margin: 4px -16px 0; padding: 4px 16px 6px; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+/* Лента во всю ширину шторки, поля — по половине свободного места: любую картинку, и первую, и последнюю, можно
+   поставить ровно в центр (раньше вторая упиралась в край и не выбиралась). Один свайп — одна картинка. */
+.share-strip { --share-w: min(58vw, 280px); margin: 4px -16px 0; padding: 4px calc((100vw - var(--share-w)) / 2) 6px; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
 .share-strip::-webkit-scrollbar { display: none; }
-.share-card { flex: none; width: 58%; height: auto; aspect-ratio: 9 / 16; border-radius: 16px; scroll-snap-align: center; box-shadow: 0 8px 24px rgba(31, 42, 31, 0.16); background: var(--bg); }
+.share-card { flex: none; width: var(--share-w); height: auto; aspect-ratio: 9 / 16; border-radius: 16px; scroll-snap-align: center; scroll-snap-stop: always; box-shadow: 0 8px 24px rgba(31, 42, 31, 0.16); background: var(--bg); cursor: pointer; }
 .share-card.on { outline: 3px solid var(--accent); outline-offset: 2px; }
 .share-dots { margin-top: 10px; display: flex; justify-content: center; gap: 6px; }
 .share-dots i { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--text) 18%, transparent); }
