@@ -576,6 +576,15 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .join-screen .act { margin-top: 24px; }
 
 .chat-connect { margin-top: 20px; background: var(--accent-soft); color: var(--accent-soft-text); }
+/* Подключённый чат Telegram: значок, «Чат Telegram», название; у админов под ним — «Другой чат · Отключить». */
+.chat-row { margin-top: 20px; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+.chat-icon { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb, #2AABEE 14%, var(--surface)); color: #2A8BC8; }
+.chat-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-text small { color: var(--muted); font-size: 13px; line-height: 18px; }
+.chat-text b { font-size: 16px; line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.chat-actions { margin: 2px 0 -10px -8px; display: flex; align-items: center; gap: 2px; color: var(--muted); }
+.chat-actions button { min-height: var(--tap); padding: 0 8px; color: var(--accent); font-size: 15px; font-weight: 600; }
+.chat-actions button.danger { color: var(--warn); }
 
 /* Клетки месяца — плитки со своей заливкой: одна рамка терялась на цветных пятнах фона (02.10.2026).
    Заливка от цвета поверхности, рамка — от цвета текста: видно и в светлой, и в тёмной теме на любом фоне. */

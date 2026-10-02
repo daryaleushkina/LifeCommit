@@ -1,5 +1,5 @@
 // Экран группы (дизайн 16E/16F): дела на сегодня с отметками, люди, приглашение, вклад в общую цель.
-import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { hapticFeedback, openTelegramLink, popup } from '@tma.js/sdk-react';
 import type { GroupDayItem } from '../../shared/groups';
 import { api, ApiError, type GroupDetail } from '../api';
@@ -53,6 +53,16 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   useEffect(() => {
     void load();
   }, [load]);
+  // Чат ещё жив? Проверяем в фоне раз за открытие: удалённый в Telegram чат пропадает из настроек сразу.
+  const chatChecked = useRef(false);
+  useEffect(() => {
+    if (chatChecked.current || !group?.settings.tg_chat_title) return;
+    chatChecked.current = true;
+    api.checkGroupChat(id).then(
+      ({ tg_chat_title }) => setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, tg_chat_title } }),
+      () => {},
+    );
+  }, [id, group?.settings.tg_chat_title, setGroup]);
 
   if (missing) {
     return (
@@ -95,6 +105,17 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
     const url = link.replace('?startapp=', '?startgroup=');
     if (openTelegramLink.isAvailable()) openTelegramLink(url);
     else window.open(url, '_blank');
+  };
+
+  // «Отключить» чат: бот прощается и выходит; на экране — сразу «Подключить чат Telegram».
+  const disconnectChat = async () => {
+    const title = group.settings.tg_chat_title ?? '';
+    if (popup.show.isAvailable()) {
+      const answer = await popup.show({ message: g.chatOffConfirm(title), buttons: [{ id: 'ok', type: 'destructive', text: g.chatOff }, { type: 'cancel' }] });
+      if (answer !== 'ok') return;
+    }
+    setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, tg_chat_title: null } });
+    await api.disconnectGroupChat(group.id).catch(() => void load());
   };
 
   const leave = async (remove: boolean) => {
@@ -221,6 +242,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
           }}
           onAdminsOnly={(on) => setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, admins_only_edit: on } })}
           onConnectChat={() => void connectChat()}
+          onDisconnectChat={() => void disconnectChat()}
           onLeave={() => void leave(false)}
           onDelete={() => void leave(true)}
         />
@@ -287,6 +309,7 @@ function GroupSettingsSheet({
   onRenamed,
   onAdminsOnly,
   onConnectChat,
+  onDisconnectChat,
   onLeave,
   onDelete,
 }: {
@@ -295,6 +318,7 @@ function GroupSettingsSheet({
   onRenamed: (title: string) => void;
   onAdminsOnly: (on: boolean) => void;
   onConnectChat: () => void;
+  onDisconnectChat: () => void;
   onLeave: () => void;
   onDelete: () => void;
 }): ReactNode {
@@ -339,10 +363,39 @@ function GroupSettingsSheet({
           </label>
         </div>
       )}
-      <button className="act wide chat-connect" onClick={onConnectChat}>
-        {group.settings.tg_chat_title ? g.chatConnected(group.settings.tg_chat_title) : g.connectChat}
-      </button>
-      <p className="sheet-note center">{g.connectChatHint}</p>
+      {/* Чат Telegram (решения 02.10.2026): подключённый — строкой с названием, админам — «Другой чат · Отключить»;
+          без чата админам — кнопка «Подключить», остальным — ничего (подключают только админы). */}
+      {group.settings.tg_chat_title ? (
+        <div className="card flat chat-row">
+          <span className="chat-icon" aria-hidden>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 4L3 11l6 2.5M21 4l-3 16-9-6.5M21 4L9 13.5V19l3-3.5" />
+            </svg>
+          </span>
+          <div className="chat-text">
+            <small>{g.chatLabel}</small>
+            <b>{group.settings.tg_chat_title}</b>
+            {canManage && (
+              <span className="chat-actions">
+                <button onClick={onConnectChat}>{g.chatOther}</button>
+                <span aria-hidden>·</span>
+                <button className="danger" onClick={onDisconnectChat}>
+                  {g.chatOff}
+                </button>
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        canManage && (
+          <>
+            <button className="act wide chat-connect" onClick={onConnectChat}>
+              {g.connectChat}
+            </button>
+            <p className="sheet-note center">{g.connectChatHint}</p>
+          </>
+        )
+      )}
       <button className="quiet-link danger" onClick={onLeave}>
         {g.leave}
       </button>

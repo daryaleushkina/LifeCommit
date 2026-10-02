@@ -7,7 +7,7 @@ import { dayCount, dayItem, type GroupDayBlock, type GoalUnit, type GroupItemRow
 import { parseRRule } from '../shared/rrule';
 import type { App, UserRow } from './api';
 import { addDays, logicalDay } from './day';
-import { refreshChat } from './groupBot';
+import { checkChat, disconnectChat, refreshChat } from './groupBot';
 
 export const groups = new Hono<App>();
 
@@ -150,7 +150,26 @@ groups.delete('/groups/:id', async (c) => {
   const sb = c.get('sb');
   const { role } = await membership(sb, id, c.get('user').id);
   if (role !== 'owner') throw new HTTPException(403, { message: 'forbidden' });
+  // Группы больше нет — бот прощается с её чатом и выходит, как при «Отключить».
+  await disconnectChat(c.env, id);
   must(await sb.from('groups').update({ archived_at: new Date().toISOString() }).eq('id', id));
+  return c.json({ ok: true });
+});
+
+// Чат группы ещё жив? Зовётся в фоне при открытии экрана группы: удалённый чат отвязывается сразу,
+// а не при следующем утреннем списке. Ответ — название подключённого чата или null.
+groups.post('/groups/:id/chat/check', async (c) => {
+  const id = groupId(c.req.param('id'));
+  await membership(c.get('sb'), id, c.get('user').id);
+  return c.json({ tg_chat_title: await checkChat(c.env, id) });
+});
+
+// «Отключить» чат: только создатель и админы (решение владелицы 02.10.2026). Бот прощается и выходит.
+groups.delete('/groups/:id/chat', async (c) => {
+  const id = groupId(c.req.param('id'));
+  const { role } = await membership(c.get('sb'), id, c.get('user').id);
+  if (role === 'member') throw new HTTPException(403, { message: 'forbidden' });
+  await disconnectChat(c.env, id);
   return c.json({ ok: true });
 });
 
