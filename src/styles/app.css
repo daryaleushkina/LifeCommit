@@ -302,15 +302,15 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .month-nav.flat { margin-top: 0; }
 .hcal { margin-top: 8px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .hcal span { text-align: center; font-size: 12px; line-height: 18px; color: var(--muted); }
-.hcal i { height: 34px; border-radius: 10px; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 500; color: var(--muted); }
-.hcal i.plan { box-shadow: inset 0 0 0 1.5px var(--line); color: var(--text); }
-.hcal i.some { background: var(--heat-1); color: var(--text); }
-.hcal i.half { background: var(--heat-2); color: var(--text); }
-.hcal i.full { background: var(--heat-3); color: var(--accent-text); }
-.hcal i.clean { background: var(--heat-2); color: var(--text); }
-.hcal i.slip { background: var(--warn-soft); color: var(--warn); }
-:root[data-color-scheme='dark'] .hcal i.some, :root[data-color-scheme='dark'] .hcal i.half, :root[data-color-scheme='dark'] .hcal i.clean { color: var(--text); }
-.hcal i.today { outline: 2px solid var(--text); outline-offset: 2px; }
+.hcal :is(i, button) { height: 34px; border-radius: 10px; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 500; color: var(--muted); }
+.hcal :is(i, button).plan { box-shadow: inset 0 0 0 1.5px var(--line); color: var(--text); }
+.hcal :is(i, button).some { background: var(--heat-1); color: var(--text); }
+.hcal :is(i, button).half { background: var(--heat-2); color: var(--text); }
+.hcal :is(i, button).full { background: var(--heat-3); color: var(--accent-text); }
+.hcal :is(i, button).clean { background: var(--heat-2); color: var(--text); }
+.hcal :is(i, button).slip { background: var(--warn-soft); color: var(--warn); }
+:root[data-color-scheme='dark'] .hcal :is(i, button).some, :root[data-color-scheme='dark'] .hcal :is(i, button).half, :root[data-color-scheme='dark'] .hcal :is(i, button).clean { color: var(--text); }
+.hcal :is(i, button).today { outline: 2px solid var(--text); outline-offset: 2px; }
 .card-title { margin-bottom: 10px; font-size: 15px; font-weight: 600; }
 .bars { position: relative; height: 96px; display: flex; align-items: flex-end; gap: 4px; }
 .bars i { flex: 1; border-radius: 5px 5px 2px 2px; background: var(--k-mid); }
@@ -606,3 +606,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 /* Дело в группу в разборе голоса — значок в цвете групп, чтобы отличалось от своих дел. */
 .todo-tile.group { background: color-mix(in srgb, #4A78D6 14%, var(--surface)); color: #4A78D6; }
+
+/* Календарь привычки: прошедший день — кнопка, его отмечают задним числом. */
+.hcal .hcal-day { font-family: inherit; cursor: pointer; }
+.mark-choice { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.act.soft-bad { background: var(--warn-soft); color: var(--warn); }

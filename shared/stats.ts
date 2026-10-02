@@ -1,5 +1,5 @@
 // Статистика одной привычки: чистые функции над её историей (общие для клиента и тестов).
-import { cleanDaysBeforeStart, type AbstainStatus } from './types';
+import type { AbstainStatus } from './types';
 
 export interface HistoryLog {
   day: string;
@@ -46,8 +46,13 @@ export function targetOn(goals: HistoryGoal[], day: string): number {
 export function cleanRuns(logs: HistoryLog[], start: string, lastSlipOn: string | null, today: string): { longest: number; current: number } {
   const clean = new Set(logs.filter((l) => l.status === 'clean').map((l) => l.day));
   const answered = new Set(logs.map((l) => l.day));
-  let run = cleanDaysBeforeStart(start, lastSlipOn);
-  let longest = run;
+  // До первого дня привычки: после «последнего раза» дни чистые, если задним числом не отметили срыв.
+  let run = 0;
+  let longest = 0;
+  for (let day = lastSlipOn ? addDays(lastSlipOn, 1) : start; day < start; day = addDays(day, 1)) {
+    run = answered.has(day) && !clean.has(day) ? 0 : run + 1;
+    longest = Math.max(longest, run);
+  }
   for (let day = start; day <= today; day = addDays(day, 1)) {
     if (clean.has(day)) run++;
     else if (day === today && !answered.has(day)) break;
