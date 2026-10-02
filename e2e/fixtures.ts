@@ -12,8 +12,10 @@ export interface Me {
   api: <T = unknown>(method: string, path: string, body?: unknown) => Promise<T>;
 }
 
-export const test = base.extend<TgOptions & { me: Me; app: Page }>({
+export const test = base.extend<TgOptions & { tgViewportExtra: number; me: Me; app: Page }>({
   tgTheme: ['light', { option: true }],
+  // Telegram сообщает высоту больше видимой (бывает на iPhone) — проверка, что низ всё равно доступен.
+  tgViewportExtra: [0, { option: true }],
   tgPlatform: ['ios', { option: true }],
   tgInsets: ['0,0,0,0', { option: true }],
 
@@ -40,7 +42,7 @@ export const test = base.extend<TgOptions & { me: Me; app: Page }>({
   },
 
   // Приложение под этим пользователем. Ошибки страницы и ответы сервера 5xx роняют тест.
-  app: async ({ page, me, tgTheme, tgPlatform, tgInsets }, use) => {
+  app: async ({ page, me, tgTheme, tgPlatform, tgInsets, tgViewportExtra }, use) => {
     const problems: string[] = [];
     // Обрыв запроса, когда тест перезагружает страницу, — не ошибка приложения (WebKit: «Load failed»,
     // «… due to access control checks»).
@@ -50,7 +52,7 @@ export const test = base.extend<TgOptions & { me: Me; app: Page }>({
     });
     // Внешнее подменяем: картинка «Поделиться» уходит в Telegram от имени человека, а у тестового чата с ботом нет.
     await page.route('**/api/share', (r) => r.fulfill({ json: { url: 'https://example.com/e2e.jpg', file_id: 'e2e'.repeat(10) } }));
-    await page.goto(`/?tgTheme=${tgTheme}&tgPlatform=${tgPlatform}&tgInsets=${tgInsets}&tgUserId=${me.id}`);
+    await page.goto(`/?tgTheme=${tgTheme}&tgPlatform=${tgPlatform}&tgInsets=${tgInsets}&tgUserId=${me.id}&tgViewportExtra=${tgViewportExtra}`);
     await expect(page.locator('main.app-shell').first()).toBeVisible({ timeout: 30_000 });
     // Отступы выреза приходят от Telegram после первой отрисовки — ждём их, иначе снимок «до» и «после» разный.
     const [safeTop, , contentTop] = tgInsets.split(',');

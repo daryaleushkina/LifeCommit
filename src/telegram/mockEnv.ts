@@ -29,6 +29,8 @@
  *   ?tgStart=abc                 start_param
  *   ?tgUserId=900001             id пользователя Telegram (по умолчанию 1): у каждого e2e-теста — свой,
  *                                чтобы тесты шли параллельно и не видели данных друг друга
+ *   ?tgViewportExtra=120         Telegram сообщает высоту на столько больше видимой (так бывает на iPhone:
+ *                                низ уезжал под панель, и календарь не листался — 03.10.2026)
  */
 import { emitEvent, isTMA, mockTelegramEnv } from '@tma.js/sdk-react';
 
@@ -110,6 +112,7 @@ export async function mockTelegramEnvForDev(): Promise<void> {
   const platform = q.get('tgPlatform') ?? 'ios';
   const version = q.get('tgVersion') ?? '10.1';
   const drawChrome = q.get('tgChrome') !== '0';
+  const viewportExtra = Number.parseInt(q.get('tgViewportExtra') ?? '', 10) || 0;
   const [safeTop = 0, safeBottom = 0, contentTop = 0, contentBottom = 0] = (q.get('tgInsets') ?? '')
     .split(',')
     .map((n) => Number.parseInt(n, 10) || 0);
@@ -129,7 +132,7 @@ export async function mockTelegramEnvForDev(): Promise<void> {
   };
   const emitViewport = (): void => {
     emitEvent('viewport_changed', {
-      height: window.innerHeight - (drawChrome ? barHeight() : 0),
+      height: window.innerHeight - (drawChrome ? barHeight() : 0) + viewportExtra,
       width: window.innerWidth,
       is_expanded: true,
       is_state_stable: true,
