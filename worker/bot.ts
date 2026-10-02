@@ -37,7 +37,7 @@ export const bot = new Hono<{ Bindings: Env }>();
 const texts = {
   ru: {
     welcome: (name: string) =>
-      `Привет, ${name}! 🌱\n\nLifeCommit — отмечай свои привычки, даже понемногу, и смотри, как зеленеет твоя карта. Скоро — вместе с друзьями.\n\nНажми кнопку, чтобы начать.`,
+      `Привет, ${name}! 🌱\n\nLifeCommit — отмечай привычки и дела, даже понемногу, и смотри, как зеленеет твоя карта. Можно голосом, вместе с календарём и с семьёй или друзьями.\n\nНажми кнопку, чтобы начать.`,
     open: 'Открыть LifeCommit',
     openFirst: 'Сначала открой LifeCommit — и потом можно диктовать привычки голосом.',
     tooLong: 'Слишком длинное сообщение. Скажи покороче — до полутора минут.',
@@ -60,7 +60,7 @@ const texts = {
   },
   en: {
     welcome: (name: string) =>
-      `Hi, ${name}! 🌱\n\nLifeCommit — log your daily habits, even a little, and watch your map turn green. Friends are coming soon.\n\nTap the button to start.`,
+      `Hi, ${name}! 🌱\n\nLifeCommit — log your habits and to-dos, even a little, and watch your map turn green. By voice, with your calendar and together with family or friends.\n\nTap the button to start.`,
     open: 'Open LifeCommit',
     openFirst: 'Open LifeCommit first — then you can dictate habits by voice.',
     tooLong: 'That message is too long. Keep it under a minute and a half.',
