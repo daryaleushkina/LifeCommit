@@ -2,7 +2,7 @@
 // протянул до конца — срабатывает крайняя (обычно «Удалить»). Вертикальная прокрутка работает как обычно:
 // строка ловит только явно горизонтальное движение. Открытой бывает одна строка: открыли другую — эта закрывается.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { hapticFeedback } from '@tma.js/sdk-react';
+import { hapticFeedback, swipeBehavior } from '@tma.js/sdk-react';
 
 export interface SwipeAction {
   label: string;
@@ -17,6 +17,16 @@ const BUTTON = 84;
 const FULL = 0.55;
 
 let closeOpen: (() => void) | null = null;
+
+/**
+ * Свайп строки спорит с жестом Telegram «потянуть вниз — свернуть»: палец чуть уходит вниз, и весь мини-апп
+ * съезжает (02.10.2026). Пока палец на смахиваемой строке — вертикальный жест Telegram выключаем, отпустили — включаем.
+ * Свернуть за шапку можно всегда (документация Telegram).
+ */
+const holdTelegramSwipe = (hold: boolean) => {
+  if (hold) swipeBehavior.disableVertical.ifAvailable();
+  else swipeBehavior.enableVertical.ifAvailable();
+};
 
 const ICONS = {
   trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />,
@@ -57,6 +67,7 @@ export function SwipeRow({ actions, className, children }: Props): ReactNode {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     g.current = { x0: e.clientX, y0: e.clientY, base: x, dir: null, id: e.pointerId, full: false };
     moved.current = false;
+    holdTelegramSwipe(true);
   };
   const onMove = (e: React.PointerEvent) => {
     const s = g.current;
@@ -88,6 +99,7 @@ export function SwipeRow({ actions, className, children }: Props): ReactNode {
   const onUp = () => {
     const s = g.current;
     g.current = null;
+    holdTelegramSwipe(false);
     setDragging(false);
     if (!s || s.dir !== 'h') return;
     if (s.full) {
