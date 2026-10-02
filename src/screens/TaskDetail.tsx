@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { cleanRuns, lastDays, targetOn, type TaskHistory } from '../../shared/stats';
 import type { TodayTask } from '../../shared/types';
-import { api } from '../api';
+import { caches, load as fetchInto } from '../caches';
 import { addDays, monthCells, monthOf, shiftMonth } from '../components/Heatmap';
 import { KindTile } from '../components/KindIcon';
 import { cleanDaysOf, DoneButton, Progress, QuitButtons, RoundBtn, useCountValue, type LogChange } from '../components/TaskCard';
@@ -26,13 +26,14 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   const { log, error, clearError } = useTaskLog(setCache, t.error);
   const onLog = (change: LogChange) => void log(task, change);
-  const [history, setHistory] = useState<TaskHistory | null>(null);
+  // История подтянута в фоне после запуска — числа и календарь сразу настоящие.
+  const [history, setHistory] = useState<TaskHistory | null>(caches.history.get(task.id) ?? null);
   const [month, setMonth] = useState(monthOf(today));
 
   useBackButton(onClose);
 
   useEffect(() => {
-    api.history(task.id).then(setHistory, () => {});
+    fetchInto.history(task.id).then(setHistory, () => {});
   }, [task.id]);
 
   // Сегодняшняя отметка уже на экране — подставляем её в историю, не дожидаясь сервера.

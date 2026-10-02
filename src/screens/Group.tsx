@@ -3,6 +3,7 @@ import { useCallback, useContext, useEffect, useState, type ReactNode } from 're
 import { hapticFeedback, openTelegramLink, popup } from '@tma.js/sdk-react';
 import type { GroupDayItem } from '../../shared/groups';
 import { api, ApiError, type GroupDetail } from '../api';
+import { caches, load as fetchInto } from '../caches';
 import { GroupItemSheet } from '../components/GroupItemSheet';
 import { Avatar, AvatarStack, GroupBadge, GroupItemRow } from '../components/groupUi';
 import { Sheet } from '../components/Picker';
@@ -18,9 +19,6 @@ interface Props {
   onChanged: () => void;
 }
 
-/** Экраны групп, которые уже открывали, — между переходами (открываются сразу, свежее подтягивается). */
-const groupCache = new Map<number, GroupDetail>();
-
 /** Порядок: несделанные по времени, потом без времени, мероприятия, сделанные вниз; цели — отдельно сверху. */
 const order = (it: GroupDayItem) => (it.done ? 3 : it.mode === 'event' ? 2 : it.time ? 0 : 1);
 
@@ -28,12 +26,13 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   const t = useT();
   const g = t.gr;
   const locale = useContext(LangContext) === 'ru' ? 'ru-RU' : 'en-US';
-  const [group, setGroupState] = useState<GroupDetail | null>(groupCache.get(id) ?? null);
+  // Экран группы подтянут заранее (при запуске и после каждого обновления) — открывается сразу, свежее подтягивается тихо.
+  const [group, setGroupState] = useState<GroupDetail | null>(caches.groups.get(id) ?? null);
   // Что показали — запоминаем: вернулись на экран — он открывается сразу.
   const setGroup = useCallback((next: GroupDetail | null | ((cur: GroupDetail | null) => GroupDetail | null)) => {
     setGroupState((cur) => {
       const v = typeof next === 'function' ? next(cur) : next;
-      if (v) groupCache.set(id, v);
+      if (v) caches.groups.set(id, v);
       return v;
     });
   }, [id]);
@@ -43,9 +42,14 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   const [editing, setEditing] = useState<GroupDayItem | 'new' | null>(null);
   const [putting, setPutting] = useState<GroupDayItem | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!note) return;
+    const id = window.setTimeout(() => setNote(null), 3500);
+    return () => window.clearTimeout(id);
+  }, [note]);
 
   useBackButton(onBack);
-  const load = useCallback(() => api.group(id).then(setGroup, () => setMissing(true)), [id, setGroup]);
+  const load = useCallback(() => fetchInto.group(id).then(setGroup, () => setMissing(true)), [id, setGroup]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -98,6 +102,8 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
       if (answer !== 'ok') return;
     }
     await (remove ? api.deleteGroup(group.id) : api.leaveGroup(group.id)).catch(() => {});
+    caches.groups.delete(group.id);
+    caches.groupList = caches.groupList?.filter((x) => x.id !== group.id) ?? null;
     onChanged();
     onBack();
   };
@@ -110,6 +116,12 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
 
   return (
     <div className="group-screen">
+      {/* Подсказка после действия — поверх, над нижней панелью: список под ней не съезжает. */}
+      {note && (
+        <p className="toast" role="status" onClick={() => setNote(null)}>
+          {note}
+        </p>
+      )}
       <header className="group-header">
         <GroupBadge id={group.id} title={group.title} size={60} />
         <span className="group-header-text">
@@ -136,11 +148,6 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
         ))}
       </div>
 
-      {note && (
-        <p className="note" onClick={() => setNote(null)}>
-          {note}
-        </p>
-      )}
 
       {tab === 'items' ? (
         <>

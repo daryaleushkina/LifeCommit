@@ -5,7 +5,7 @@ import { readState, signState } from './secret';
 describe('события Google → дела', () => {
   it('событие со временем переводится в пояс человека, длительность — из конца', () => {
     const e = toCalEvent({ id: 'x1', summary: 'Созвон', start: { dateTime: '2026-10-01T10:00:00+03:00' }, end: { dateTime: '2026-10-01T11:30:00+03:00' } }, 'g:x1', 'Asia/Ho_Chi_Minh');
-    expect(e).toEqual({ uid: 'g:x1', title: 'Созвон', day: '2026-10-01', time: '14:00', durationMin: 90, rrule: null, exdates: [] });
+    expect(e).toEqual({ uid: 'g:x1', title: 'Созвон', day: '2026-10-01', time: '14:00', durationMin: 90, rrule: null, exdates: [], details: null });
   });
   it('на весь день — без времени; повтор и исключённые дни из recurrence', () => {
     const e = toCalEvent(

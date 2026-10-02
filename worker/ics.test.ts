@@ -22,7 +22,7 @@ describe('parseEvents', () => {
       wrap('BEGIN:VEVENT', 'UID:a1', 'SUMMARY:Созвон\\, команда', 'DTSTART;TZID=Europe/Moscow:20261001T100000', 'DTEND;TZID=Europe/Moscow:20261001T110000', 'END:VEVENT'),
       'Asia/Ho_Chi_Minh',
     );
-    expect(e).toEqual({ uid: 'a1', title: 'Созвон, команда', day: '2026-10-01', time: '14:00', durationMin: 60, rrule: null, exdates: [] });
+    expect(e).toEqual({ uid: 'a1', title: 'Созвон, команда', day: '2026-10-01', time: '14:00', durationMin: 60, rrule: null, exdates: [], details: null });
   });
   it('событие на весь день и день рождения с повтором', () => {
     const [e] = parseEvents(wrap('BEGIN:VEVENT', 'UID:b1', 'SUMMARY:ДР Маши', 'DTSTART;VALUE=DATE:19951003', 'RRULE:FREQ=YEARLY', 'END:VEVENT'), 'Europe/Moscow');

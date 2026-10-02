@@ -12,6 +12,7 @@ import {
   type TaskKind,
   type TaskTemplate,
   type Todo,
+  type TodoDetails,
   type TodoInput,
   sortTodos,
   type TodayResponse,
@@ -388,8 +389,11 @@ function cleanTodo(input: TodoInput, today: string) {
   const title = String(input.title ?? '').trim().slice(0, 120);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
   const d = Number(input.duration_min);
-  return { title, day: todoDay(input.day, today), time: todoTime(input.time), duration_min: d > 0 && d <= 20160 ? Math.round(d) : null };
+  const location = cleanLocation(input.location);
+  return { title, day: todoDay(input.day, today), time: todoTime(input.time), duration_min: d > 0 && d <= 20160 ? Math.round(d) : null, details: location ? { location } : null };
 }
+
+const cleanLocation = (v: unknown) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, 200) : '');
 
 export async function insertTodos(sb: SupabaseClient, user: UserRow, inputs: TodoInput[]): Promise<number[]> {
   const day = today(user);
@@ -409,8 +413,9 @@ interface TodoRow {
   rrule: string | null;
   exdates: string[] | null;
   source: Todo['source'];
+  details: TodoDetails | null;
 }
-const TODO_COLS = 'id, title, day, done_on, time, duration_min, rrule, exdates, source';
+const TODO_COLS = 'id, title, day, done_on, time, duration_min, rrule, exdates, source, details';
 const hm = (t: string | null) => (t ? t.slice(0, 5) : null);
 
 const asTodo = (r: Omit<TodoRow, 'rrule' | 'exdates'>, day: string, done: boolean, recurring: boolean): Todo => ({
@@ -422,6 +427,7 @@ const asTodo = (r: Omit<TodoRow, 'rrule' | 'exdates'>, day: string, done: boolea
   duration_min: r.duration_min,
   recurring,
   source: r.source,
+  details: r.details ?? null,
 });
 
 /** Повторяющиеся дела → их разы в промежутке дней; правило, которое не поняли, — один раз в день начала. */
@@ -464,9 +470,9 @@ api.patch('/todos/:id', async (c) => {
   const id = Number(c.req.param('id'));
   const user = c.get('user');
   const sb = c.get('sb');
-  const body = await c.req.json<{ title?: string; day?: string; time?: string | null; done?: boolean; on?: string }>();
+  const body = await c.req.json<{ title?: string; day?: string; time?: string | null; done?: boolean; on?: string; location?: string | null }>();
   const day = today(user);
-  const todo = must(await sb.from('todos').select('id, rrule, source').eq('id', id).eq('user_id', user.id).maybeSingle<{ id: number; rrule: string | null; source: Todo['source'] }>());
+  const todo = must(await sb.from('todos').select('id, rrule, source, details').eq('id', id).eq('user_id', user.id).maybeSingle<{ id: number; rrule: string | null; source: Todo['source']; details: TodoDetails | null }>());
   if (!todo) throw new HTTPException(404, { message: 'not_found' });
   // События из календаря не отмечают: это «что сегодня будет», а не дело.
   if (body.done !== undefined && todo.source) throw new HTTPException(400, { message: 'event_not_checkable' });
@@ -485,9 +491,16 @@ api.patch('/todos/:id', async (c) => {
   if (body.day !== undefined && !todo.rrule) fields.day = todoDay(body.day, day);
   if (body.time !== undefined) fields.time = todoTime(body.time);
   if (body.done !== undefined && !todo.rrule) fields.done_on = body.done ? day : null;
+  // Место правится только у своих дел: у событий из календаря его меняют в самом календаре.
+  if (body.location !== undefined && !todo.source) {
+    const { location: _old, ...rest } = todo.details ?? {};
+    const location = cleanLocation(body.location);
+    const next = location ? { ...rest, location } : rest;
+    fields.details = Object.keys(next).length ? next : null;
+  }
   if (Object.keys(fields).length) must(await sb.from('todos').update(fields).eq('id', id).eq('user_id', user.id));
   // «Сделано» в календарь не уходит; название, день и время — уходят.
-  if (fields.title !== undefined || fields.day !== undefined || fields.time !== undefined) pushLater(c, [id]);
+  if (fields.title !== undefined || fields.day !== undefined || fields.time !== undefined || fields.details !== undefined) pushLater(c, [id]);
   return c.json({ ok: true });
 });
 

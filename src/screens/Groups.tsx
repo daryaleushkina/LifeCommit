@@ -2,6 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { GroupToday } from '../../shared/groups';
 import { api } from '../api';
+import { caches, load as fetchInto } from '../caches';
 import { AvatarStack, GroupBadge } from '../components/groupUi';
 import { Sheet } from '../components/Picker';
 import { useT } from '../i18n';
@@ -13,22 +14,13 @@ interface Props {
   onOpen: (id: number) => void;
 }
 
-/** Последний список — между переключениями вкладок. */
-let listCache: GroupToday[] | null = null;
-
 export function Groups({ me, initial, onOpen }: Props): ReactNode {
   const t = useT();
   const g = t.gr;
-  const [list, setList] = useState<GroupToday[] | null>(listCache ?? initial);
+  // Список обновляется вместе с «Сегодня» (после любых правок) — первым кадром он уже свежий.
+  const [list, setList] = useState<GroupToday[] | null>(caches.groupList ?? initial);
   const [creating, setCreating] = useState(false);
-  const load = () =>
-    api.groups().then(
-      (l) => {
-        listCache = l;
-        setList(l);
-      },
-      () => setList((cur) => cur ?? []),
-    );
+  const load = () => fetchInto.groupList().then(setList, () => setList((cur) => cur ?? []));
   useEffect(() => {
     void load();
   }, []);
@@ -104,7 +96,11 @@ function NewGroupSheet({ onClose, onCreated }: { onClose: () => void; onCreated:
     setBusy(true);
     setError(false);
     try {
-      onCreated((await api.createGroup(title.trim(), 'other')).id);
+      const { id } = await api.createGroup(title.trim(), 'other');
+      // Экран новой группы — сразу целиком, и в списке она уже есть, когда вернутся.
+      const detail = await fetchInto.group(id).catch(() => null);
+      if (detail) caches.groupList = [...(caches.groupList ?? []).filter((x) => x.id !== id), detail];
+      onCreated(id);
     } catch {
       setError(true);
       setBusy(false);

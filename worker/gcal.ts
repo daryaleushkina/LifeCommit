@@ -3,6 +3,7 @@
 // при каждой синхронизации. Календарь в нашей базе — его адрес в API (`…/calendars/<id>`), событие —
 // `…/calendars/<id>/events/<eventId>`: так дальше по коду адрес события сам говорит, чьё оно.
 import type { Env } from './env';
+import { buildDetails, personName } from './eventDetails';
 import { parseRecurrence, utcToZoned, type CalEvent } from './ics';
 
 export const GCAL_API = 'https://www.googleapis.com/calendar/v3';
@@ -147,6 +148,12 @@ export interface GoogleEvent {
   recurringEventId?: string;
   originalStartTime?: When;
   extendedProperties?: { private?: Record<string, string> };
+  location?: string;
+  description?: string;
+  hangoutLink?: string;
+  htmlLink?: string;
+  conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[] };
+  attendees?: { email?: string; displayName?: string; self?: boolean; resource?: boolean }[];
 }
 
 export class GoogleSyncExpired extends Error {}
@@ -202,6 +209,13 @@ export function toCalEvent(e: GoogleEvent, uid: string, userTz: string): CalEven
     durationMin: durationMin && durationMin > 0 && durationMin <= 20160 ? durationMin : null,
     rrule: rec.rrule,
     exdates: rec.exdates,
+    details: buildDetails({
+      location: e.location,
+      description: e.description,
+      conference: e.conferenceData?.entryPoints?.find((p) => p.entryPointType === 'video')?.uri ?? e.hangoutLink ?? null,
+      attendees: (e.attendees ?? []).filter((a) => !a.resource).map((a) => ({ name: personName(a.displayName, a.email), self: a.self })),
+      openUrl: e.htmlLink,
+    }),
   };
 }
 
@@ -228,6 +242,7 @@ export interface OwnChange {
   time: string | null;
   durationMin: number | null;
   tz: string;
+  location?: string | null;
 }
 
 /**
@@ -235,7 +250,7 @@ export interface OwnChange {
  * создаём заново. Своё узнаём по метке lifecommit в скрытых свойствах события.
  */
 export async function putOwnEvent(token: string, calUrl: string, href: string | null, e: OwnChange): Promise<{ href: string; etag: string | null }> {
-  const body = { summary: e.title, ...when(e.day, e.time, e.durationMin, e.tz), extendedProperties: { private: { lifecommit: String(e.todoId) } } };
+  const body = { summary: e.title, location: e.location ?? '', ...when(e.day, e.time, e.durationMin, e.tz), extendedProperties: { private: { lifecommit: String(e.todoId) } } };
   if (href) {
     try {
       const saved = await call<GoogleEvent>(token, 'PATCH', href, { ...body, status: 'confirmed' });
