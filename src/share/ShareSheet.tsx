@@ -4,7 +4,7 @@
 // Скорость (02.10.2026): картинка, на которой остановилась лента, готовится заранее — рисуется в полном размере,
 // сжимается в JPEG и уходит в Telegram, пока человек смотрит. К нажатию кнопки ссылка обычно уже есть.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { downloadFile, initData, openLink, requestWriteAccess, shareMessage, shareStory, swipeBehavior } from '@tma.js/sdk-react';
+import { downloadFile, initData, openLink, requestWriteAccess, shareMessage, shareStory } from '@tma.js/sdk-react';
 import { api, ApiError } from '../api';
 import { Sheet } from '../components/Picker';
 import { useT } from '../i18n';
@@ -125,10 +125,6 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
     }
   };
 
-  // Пока палец на ленте, Telegram не сворачивает мини-апп жестом вниз: косой свайп по картинкам не должен его тянуть.
-  // Касания, а не pointer-события: когда лента начинает прокручиваться сама, браузер шлёт pointercancel посреди жеста.
-  const hold = (on: boolean) => (on ? swipeBehavior.disableVertical.ifAvailable() : swipeBehavior.enableVertical.ifAvailable());
-  useEffect(() => () => void hold(false), []);
 
   return (
     <Sheet title={s.title} onClose={onClose}>
@@ -136,9 +132,6 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
         className="share-strip"
         ref={strip}
         onScroll={onScroll}
-        onTouchStart={() => hold(true)}
-        onTouchEnd={() => hold(false)}
-        onTouchCancel={() => hold(false)}
       >
         {templates.map((tpl, i) => (
           <canvas
