@@ -145,7 +145,8 @@ export function App(): ReactNode {
   const home = () => setRoute({ name: 'today' });
 
   const tab = (name: Tab): Route => ({ name });
-  const currentTab: Tab = route.name === 'me' || route.name === 'calendar' || route.name === 'groups' ? route.name : 'today';
+  // Экран группы живёт внутри вкладки, откуда его открыли: нижняя панель и микрофон остаются (02.10.2026).
+  const currentTab: Tab = route.name === 'group' ? route.back : route.name === 'me' || route.name === 'calendar' || route.name === 'groups' ? route.name : 'today';
   const openGroup = (id: number) => setRoute({ name: 'group', id, back: currentTab });
   const closeVoice = () => {
     setVoiceOpen(false);
@@ -212,15 +213,14 @@ export function App(): ReactNode {
       setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
       setRoute({ name: 'group', id, back: 'groups' });
     }} onClose={home} />;
-  } else if (route.name === 'group') {
-    const back = route.back;
-    screen = <Group key={route.id} id={route.id} me={boot.user.id} today={cache.today.day} onBack={() => setRoute(tab(back))} onChanged={() => void refresh()} />;
   } else if (route.name === 'archive') {
     screen = <Archive archived={cache.today.archived} onChanged={refresh} onClose={home} />;
   } else {
     screen = (
       <main className="app-shell with-tabs">
-        {currentTab === 'me' ? (
+        {route.name === 'group' ? (
+          <Group key={route.id} id={route.id} me={boot.user.id} today={cache.today.day} onBack={() => setRoute(tab(currentTab))} onChanged={() => void refresh()} />
+        ) : currentTab === 'me' ? (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         ) : currentTab === 'groups' ? (
           <Groups me={boot.user.id} initial={cache.today.groups} onOpen={openGroup} />

@@ -346,7 +346,9 @@ api.post('/voice', async (c) => {
     try {
       const text = await transcribe(c.env, audio, lang);
       await send({ text });
-      const parsed = text ? await parseHabits(c.env, text, today(user)) : { habits: [], todos: [] };
+      const parsed = text ? await parseHabits(c.env, text, today(user)) : { habits: [], todos: [], by: 'none' };
+      // Ничего не нашли — в лог фразу, чтобы потом разобрать почему (02.10.2026: голосовое «не распозналось»).
+      if (!parsed.habits.length && !parsed.todos.length) console.warn('voice: nothing parsed', { bytes: audio.byteLength, chars: text.length, by: parsed.by, text: text.slice(0, 400) });
       await send({
         actions: [
           ...parsed.todos.map((todo): VoiceAction => ({ type: 'create_todo', todo })),
@@ -385,7 +387,8 @@ function todoTime(value: string | null | undefined): string | null {
 function cleanTodo(input: TodoInput, today: string) {
   const title = String(input.title ?? '').trim().slice(0, 120);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
-  return { title, day: todoDay(input.day, today), time: todoTime(input.time) };
+  const d = Number(input.duration_min);
+  return { title, day: todoDay(input.day, today), time: todoTime(input.time), duration_min: d > 0 && d <= 20160 ? Math.round(d) : null };
 }
 
 export async function insertTodos(sb: SupabaseClient, user: UserRow, inputs: TodoInput[]): Promise<number[]> {

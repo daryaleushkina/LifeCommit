@@ -78,6 +78,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 button:disabled { opacity: 0.4; cursor: default; }
 input, select, textarea { font-size: 16px; /* без зума на iOS */ }
+/* iOS дорисовывает полям свою тень и скругление — поле «меняется» при вводе (02.10.2026). Сбрасываем. */
+input:not([type='checkbox']):not([type='radio']), textarea { -webkit-appearance: none; appearance: none; background-clip: padding-box; }
 h1, h2, p { margin: 0; }
 
 .app-shell { padding-inline: max(20px, var(--app-inset-left)) max(20px, var(--app-inset-right)); padding-bottom: calc(var(--app-inset-bottom) + 32px); display: flex; flex-direction: column; }
@@ -365,7 +367,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .todo-add form { padding-left: 6px; }
 .todo-add input { flex: 1; height: 44px; border: 0; background: none; font-size: 16px; color: var(--text); outline: none; }
 .sheet-input { width: 100%; height: 52px; padding: 0 16px; border: 0; border-radius: 14px; background: var(--bg); font-size: 17px; font-weight: 500; outline: none; }
-.sheet-input:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+/* При вводе поле остаётся тем же: без обводки, только чуть светлее фон. */
+.sheet-input:focus { background: color-mix(in srgb, var(--bg) 55%, var(--surface)); }
 .segmented.todo-days { margin-top: 10px; }
 .card.flat { margin-top: 10px; background: var(--bg); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .todo-list.flat { background: var(--bg); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -554,7 +557,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .group-header h1 { margin: 0; font-size: 26px; line-height: 30px; letter-spacing: -0.02em; }
 .group-sub { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); flex-wrap: wrap; }
 .member-row { gap: 12px; padding: 8px 12px; }
-.fab { position: fixed; right: 20px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); height: 56px; padding: 0 22px; border-radius: 28px; background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent); z-index: 5; }
+.fab { position: fixed; right: 20px; bottom: calc(var(--app-inset-bottom) + 104px); height: 56px; padding: 0 22px; border-radius: 28px; background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent); z-index: 5; }
 .sheet-note.center, .note.center { text-align: center; }
 .sheet-input.big-number { height: 72px; font-size: 34px; font-weight: 700; text-align: center; }
 
