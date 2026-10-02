@@ -29,7 +29,7 @@ const C = {
   heat: ['rgba(31,42,31,0.07)', '#B8E0C4', '#7CCB96', '#3FA968', '#237A46'],
   slip: '#F2C9BC',
 };
-const FONT = "'Onest', system-ui, -apple-system, sans-serif";
+const FONT = "'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif";
 
 /** Месяц в дне: «29 из 31». states: 'on' — сделано (чисто), 'slip' — сорвалось, 'none' — нет. */
 export interface MonthCell {

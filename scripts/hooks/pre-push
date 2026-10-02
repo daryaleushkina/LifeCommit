@@ -36,9 +36,20 @@ if [ -n "$dirty" ]; then
   exit 1
 fi
 
-echo "pre-push: деплой $sha с этой машины…" >&2
-{ pnpm typecheck && pnpm test && pnpm build && pnpm exec wrangler deploy; } >&2 || {
-  echo "pre-push: деплой не прошёл — пуш отменён" >&2
+# Сквозные тесты идут против локальной Supabase (решение владелицы 02.10.2026: всё проверяется перед каждым
+# пушем). Не запущена — поднимаем; нет Docker — пуш останавливается: непроверенное в прод не уходит.
+if ! pnpm exec supabase status >/dev/null 2>&1; then
+  echo "pre-push: поднимаю локальную Supabase для сквозных тестов…" >&2
+  if ! pnpm db:start >&2; then
+    echo "pre-push: локальная Supabase не поднялась (запущен ли Docker?) — пуш отменён." >&2
+    echo "Запусти Docker и пушни ещё раз. Совсем срочно — git push --no-verify (задеплоит Actions без сквозных тестов)." >&2
+    exit 1
+  fi
+fi
+
+echo "pre-push: проверка и деплой $sha с этой машины…" >&2
+{ pnpm typecheck && pnpm test && pnpm e2e && pnpm build && pnpm exec wrangler deploy; } >&2 || {
+  echo "pre-push: проверка или деплой не прошли — пуш отменён (отчёт сквозных тестов: test-results/)" >&2
   exit 1
 }
 

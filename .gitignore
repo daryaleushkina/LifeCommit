@@ -25,3 +25,7 @@ scripts/ru-check/
 
 # Снимки сквозной проверки (pnpm e2e)
 screenshots/
+
+# Сквозные тесты Playwright: результаты и отчёт (эталоны снимков — e2e/__screens__, их коммитим)
+test-results/
+playwright-report/

@@ -63,6 +63,8 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
       patchList((list) => [...list, temp]);
       try {
         const { id } = await api.createTodo({ title, day });
+        // Дело уже на сервере: запросы, начатые до этой минуты, его не знают — пусть перечитают.
+        bumpChange();
         patchList((list) => list.map((d) => (d.id === temp.id ? { ...d, id } : d)));
       } catch {
         patchList((list) => list.filter((d) => d.id !== temp.id));

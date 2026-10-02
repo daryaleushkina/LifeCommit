@@ -1,0 +1,62 @@
+// Дела на «Сегодня»: добавить, отметить, «Все · Осталось», перенести, удалить свайпом с «Вернуть».
+import { closeSheet, expect, swipeLeft, test } from './fixtures';
+
+const row = (page: import('@playwright/test').Page, title: string) => page.locator('.todo-list li', { hasText: title });
+
+test('добавить строкой, отметить и снять отметку', async ({ app: page }) => {
+  await page.getByRole('button', { name: 'Дело на сегодня' }).click();
+  await page.getByPlaceholder('Что сделать?').fill('Купить хлеб');
+  await page.getByPlaceholder('Что сделать?').press('Enter');
+  const r = row(page, 'Купить хлеб');
+  await expect(r).toHaveCount(1);
+  await expect(r).not.toHaveClass(/pending/);
+  await r.locator('.todo-check').click();
+  await expect(r).toHaveClass(/done/);
+  await r.locator('.todo-check').click();
+  await expect(r).not.toHaveClass(/done/);
+});
+
+test('«Все · Осталось» прячет сделанное и помнит выбор', async ({ app: page, me }) => {
+  await me.api('POST', '/todos', { title: 'Позвонить маме' });
+  const done = await me.api<{ id: number }>('POST', '/todos', { title: 'Оплатить свет' });
+  await me.api('PATCH', `/todos/${done.id}`, { done: true });
+  await page.reload();
+  await expect(row(page, 'Оплатить свет')).toHaveClass(/done/);
+  await page.getByRole('button', { name: 'Осталось' }).click();
+  await expect(row(page, 'Оплатить свет')).toHaveCount(0);
+  await expect(row(page, 'Позвонить маме')).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Осталось' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(row(page, 'Оплатить свет')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Все', exact: true }).click();
+  await expect(row(page, 'Оплатить свет')).toHaveCount(1);
+});
+
+test('шторка: на завтра и обратно на сегодня', async ({ app: page, me }) => {
+  await me.api('POST', '/todos', { title: 'Записаться к врачу' });
+  await page.reload();
+  await row(page, 'Записаться к врачу').locator('.todo-main').click();
+  const sheet = page.locator('.sheet');
+  await sheet.getByText('Завтра', { exact: true }).click();
+  await sheet.getByRole('button', { name: 'Готово' }).click();
+  await expect(row(page, 'Записаться к врачу')).toHaveCount(0);
+  await page.getByRole('button', { name: /Потом · 1/ }).click();
+  await page.locator('.sheet').getByText('Записаться к врачу').click();
+  const edit = page.locator('.sheet').last();
+  await edit.getByText('Сегодня', { exact: true }).click();
+  await edit.getByRole('button', { name: 'Готово' }).click();
+  await closeSheet(page);
+  await expect(row(page, 'Записаться к врачу')).toHaveCount(1);
+});
+
+test('свайп: «Вернуть» возвращает, без него — удалено', async ({ app: page, me }) => {
+  await me.api('POST', '/todos', { title: 'Купить корм' });
+  await page.reload();
+  await swipeLeft(page, row(page, 'Купить корм').locator('.swipe-body'));
+  await expect(row(page, 'Купить корм')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Вернуть' }).click();
+  await expect(row(page, 'Купить корм')).toHaveCount(1);
+  await swipeLeft(page, row(page, 'Купить корм').locator('.swipe-body'));
+  await expect(page.locator('.undo-toast')).toHaveCount(0, { timeout: 8_000 });
+  await expect.poll(async () => (await me.api<{ todos: { title: string }[] }>('GET', '/today')).todos.some((t) => t.title === 'Купить корм')).toBe(false);
+});

@@ -9,7 +9,7 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "load": "k6 run scripts/load.js",
-    "e2e": "node scripts/e2e.mjs",
+    "e2e": "playwright test",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler deploy",
@@ -20,6 +20,7 @@
     "hooks:install": "git config core.hooksPath scripts/hooks"
   },
   "dependencies": {
+    "@fontsource-variable/onest": "^5.3.1",
     "@supabase/supabase-js": "^2.117.2",
     "@tma.js/init-data-node": "^2.0.8",
     "@tma.js/sdk-react": "^3.0.23",
@@ -30,6 +31,8 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.62.0",
     "@cloudflare/workers-types": "^5.20260928.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

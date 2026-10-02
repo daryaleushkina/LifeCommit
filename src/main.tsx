@@ -14,6 +14,9 @@ import {
 } from '@tma.js/sdk-react';
 import { App } from './App';
 import { dictionaries } from './i18n';
+// Шрифт — со своего сервера, а не с Google (02.10.2026): из России Google-домены бывают медленными, а снимки
+// экрана в тестах не должны зависеть от сети.
+import '@fontsource-variable/onest';
 import './styles/telegram.css';
 import './styles/app.css';
 
