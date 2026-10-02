@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useDebugTaps, ViewportDebug } from '../components/ViewportDebug';
 import { sortTodos, type Todo } from '../../shared/types';
 import { api, type CalendarAccount } from '../api';
 import { caches, load as fetchInto, warm } from '../caches';
@@ -59,6 +60,8 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
   const key = `${from}:${to}`;
   // Что на экране — прямо из кэша, ещё до первой отрисовки: уже виденный (или подтянутый заранее) день открывается сразу.
   // Правки «на месте» (отметили — галочка сразу, сервер догоняет) пишутся в тот же кэш.
+  // Временная панель замеров высоты: пять тапов по заголовку (03.10.2026, календарь не листался на iPhone).
+  const [debugOpen, debugTap, debugClose] = useDebugTaps();
   const [, rerender] = useState(0);
   const shown = caches.days.get(key);
   const todos = shown?.todos ?? null;
@@ -137,7 +140,7 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
   return (
     <>
       <header className="page-head with-action">
-        <h1>{t.calendar}</h1>
+        <h1 onClick={debugTap}>{t.calendar}</h1>
         <span className="head-actions">
           {/* Обновить — просто обновляет, крутится, пока идёт; настройки календарей — отдельная кнопка. */}
           {accounts && accounts.length > 0 && (
@@ -156,6 +159,7 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
           </button>
         </span>
       </header>
+      {debugOpen && <ViewportDebug onClose={debugClose} />}
 
       {accounts && accounts.length === 0 && !bannerHidden && (
         <div className="cal-banner">

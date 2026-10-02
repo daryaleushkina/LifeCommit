@@ -680,3 +680,6 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .share-dots i.on { background: var(--accent); }
 .share-more { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .share-more .act { width: 100%; }
+
+/* Временная панель замеров высоты (ViewportDebug): поверх всего, мелко, тап — закрыть. */
+.viewport-debug { position: fixed; z-index: 100; left: 8px; right: 8px; top: calc(var(--app-inset-top) + 8px); padding: 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.82); color: #FFFFFF; font: 11px/16px ui-monospace, Menlo, monospace; text-align: left; display: flex; flex-direction: column; gap: 2px; }
