@@ -25,12 +25,13 @@ const SCHEMA = {
           weekdays: { type: 'array', items: { type: 'string', enum: [...WD] } },
           day: { type: 'string', nullable: true },
           time: { type: 'string', nullable: true },
+          duration: { type: 'number', nullable: true },
           target: { type: 'number', nullable: true },
           unit: { type: 'string', nullable: true },
           currency: { type: 'string', nullable: true },
         },
         // Все поля обязательны (пустые — null): иначе модель от раза к разу пропускает дату, время и даже целые пункты.
-        required: ['title', 'mode', 'people', 'rotate', 'repeat', 'weekdays', 'day', 'time', 'target', 'unit', 'currency'],
+        required: ['title', 'mode', 'people', 'rotate', 'repeat', 'weekdays', 'day', 'time', 'duration', 'target', 'unit', 'currency'],
       },
     },
   },
@@ -44,7 +45,7 @@ For each thing to do, pick a mode:
 - "assign": specific people do it. people = their names exactly as in Members (convert inflected forms: «Алёне», «Алёной» → «Алёна»). «я», «мне», «сама», «сам» = the Speaker. «все», «каждый», «каждому», «everyone», «each» → people ["all"]. «по очереди», «take turns» → rotate true (people are the ones taking turns; nobody named → ["all"]).
 - "event": something people attend rather than check off (family dinner, trip, birthday, meeting). people ["all"] unless names are given.
 - "goal": a shared number to accumulate together (save 150 000 for a vacation, run 500 km as a team, read 50 books). target = the number (150 тысяч → 150000), unit = the word as said («рублей», «км», «книг»), currency = ISO code only if money and the currency was said (RUB, USD, EUR…), otherwise omit.
-Schedule: repeat = once | daily | weekdays (Mon–Fri) | weekends | weekly | days (then weekdays = MO…SU; «по субботам» = days + ["SA"]). For "once" ALWAYS give day as YYYY-MM-DD counted from Today («завтра» = Today + 1, «в пятницу» = the next Friday); today → Today's date. time = HH:MM in 24h if a time was said («в шесть вечера» → 18:00, «в восемь» about dinner → 20:00), else null. Fill every field; use null or [] when it does not apply.
+Schedule: repeat = once | daily | weekdays (Mon–Fri) | weekends | weekly | days (then weekdays = MO…SU; «по субботам» = days + ["SA"]). For "once" ALWAYS give day as YYYY-MM-DD counted from Today («завтра» = Today + 1, «в пятницу» = the next Friday); today → Today's date. time = HH:MM in 24h if a time was said («в шесть вечера» → 18:00, «в восемь» about dinner → 20:00), else null. duration = minutes if said («на 3 часа» = 180, «полтора часа» = 90), else null. Fill every field; use null or [] when it does not apply.
 Every thing mentioned becomes its own item — never drop one.
 title: short, in the speaker's language, without names, time or schedule («Мыть посуду», not «Алёна моет посуду каждый вечер»). Skip greetings and chatter. If there is nothing to add, return {"items": []}.`;
 
@@ -94,6 +95,7 @@ export interface GroupDraft {
   rotate: boolean;
   target: number | null;
   unit: GoalUnit | null;
+  duration_min: number | null;
 }
 
 /** Латиница → кириллица для сравнения имён: «Dasha» в Telegram и «Даше» в голосе — один человек. */
@@ -184,6 +186,7 @@ export function toGroupDrafts(raw: unknown, today: string, members: { id: number
       all_members: (finalMode === 'assign' || finalMode === 'event') && (all || (finalMode === 'event' && ids.length === 0)),
       rotate: finalMode === 'assign' && r.rotate === true && (all || ids.length > 1),
       target,
+      duration_min: finalMode !== 'goal' && typeof r.duration === 'number' && r.duration > 0 && r.duration <= 20160 ? Math.round(r.duration) : null,
       // Единица: валюта — только если её сказали; слово — как сказали (формы уточним словарём позже, docs/groups-goals.md).
       unit: finalMode !== 'goal' ? null : currency ? { type: 'money', forms: [currency, currency, currency], currency } : unitWord ? { type: 'custom', forms: [unitWord, unitWord, unitWord] } : null,
     });

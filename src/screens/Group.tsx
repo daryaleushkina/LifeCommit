@@ -52,12 +52,10 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
 
   if (missing) {
     return (
-      <main className="app-shell">
-        <p className="empty">{g.join.notFound}</p>
-      </main>
+      <p className="empty">{g.join.notFound}</p>
     );
   }
-  if (!group) return <main className="app-shell" />;
+  if (!group) return null;
 
   const changed = () => {
     void load();
@@ -111,7 +109,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   const doneToday = (uid: number) => group.items.filter((it) => it.done_by.includes(uid)).map((it) => it.title);
 
   return (
-    <main className="app-shell group-screen">
+    <div className="group-screen">
       <header className="group-header">
         <GroupBadge id={group.id} title={group.title} size={60} />
         <span className="group-header-text">
@@ -244,7 +242,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
           }}
         />
       )}
-    </main>
+    </div>
   );
 }
 
