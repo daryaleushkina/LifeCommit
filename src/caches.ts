@@ -5,6 +5,7 @@ import type { GroupDayBlock, GroupToday } from '../shared/groups';
 import type { TaskHistory } from '../shared/stats';
 import type { Todo } from '../shared/types';
 import { api, type CalendarAccount, type GroupDetail, type Invitation } from './api';
+import { currentChange } from './useTaskLog';
 
 /** Ссылка входа Google живёт 15 минут; берём запас. */
 const GOOGLE_URL_TTL = 12 * 60_000;
@@ -54,7 +55,16 @@ export const load = {
     }),
   range: (from: string, to: string) =>
     once(`range:${from}:${to}`, async () => {
-      const res = await api.calendar(from, to);
+      // Пока шёл запрос, дело добавили, отметили или удалили — ответ уже устарел и затёр бы правку на экране
+      // (02.10.2026: открыла следующий день, сразу добавила дело — оно пропадало). Тогда спрашиваем ещё раз:
+      // в кэш попадает только ответ, за время которого ничего не менялось.
+      let seq: number;
+      let res: Awaited<ReturnType<typeof api.calendar>>;
+      let tries = 0;
+      do {
+        seq = currentChange();
+        res = await api.calendar(from, to);
+      } while (seq !== currentChange() && ++tries < 4);
       const v = { todos: res.todos, groups: res.groups ?? [] };
       caches.days.set(`${from}:${to}`, v);
       return v;

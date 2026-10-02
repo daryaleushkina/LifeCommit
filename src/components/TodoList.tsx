@@ -133,12 +133,14 @@ export function TodoList({ todos: all, later = 0, today, heading, addLabel, show
           const end = d.time && d.duration_min ? endTime(d.time, d.duration_min) : null;
           const note = [when, end && t.todo.until(end)].filter(Boolean).join(' · ');
           return (
-            <SwipeRow key={`${d.id}:${d.day}`} className={d.done ? 'done' : undefined} actions={swipe.actions(d)}>
+            // Только что добавленное ещё без номера с сервера (id < 0): смахнуть и отметить его пока нельзя —
+            // удаление или отметка ушли бы по временному номеру, и дело вернулось бы (02.10.2026, нашёл e2e).
+            <SwipeRow key={`${d.id}:${d.day}`} className={[d.done && 'done', d.id < 0 && 'pending'].filter(Boolean).join(' ') || undefined} actions={d.id < 0 ? [] : swipe.actions(d)}>
               {/* Событие из календаря — «что сегодня будет»: отмечать нечего, на карту не влияет. */}
               {d.source ? (
                 <span className="todo-event" aria-hidden />
               ) : (
-                <button className="todo-check" aria-pressed={d.done} aria-label={d.done ? t.todo.uncheck(d.title) : t.todo.check(d.title)} onClick={() => onToggle(d)}>
+                <button className="todo-check" disabled={d.id < 0} aria-pressed={d.done} aria-label={d.done ? t.todo.uncheck(d.title) : t.todo.check(d.title)} onClick={() => onToggle(d)}>
                   <Check />
                 </button>
               )}
@@ -169,7 +171,7 @@ export function TodoList({ todos: all, later = 0, today, heading, addLabel, show
                 maxLength={120}
                 enterKeyHint="done"
                 placeholder={t.todo.addPh}
-                aria-label={t.todo.add}
+                aria-label={addLabel ?? t.todo.add}
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={() => {
                   submit();

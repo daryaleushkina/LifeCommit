@@ -27,6 +27,8 @@
  *   ?tgInsets=59,34,46,0         safe top, safe bottom, content top, content bottom
  *   ?tgChrome=0                  не рисовать заглушки нативных кнопок
  *   ?tgStart=abc                 start_param
+ *   ?tgUserId=900001             id пользователя Telegram (по умолчанию 1): у каждого e2e-теста — свой,
+ *                                чтобы тесты шли параллельно и не видели данных друг друга
  */
 import { emitEvent, isTMA, mockTelegramEnv } from '@tma.js/sdk-react';
 
@@ -179,7 +181,7 @@ export async function mockTelegramEnvForDev(): Promise<void> {
         ['auth_date', String(Math.floor(Date.now() / 1000))], // секунды, не миллисекунды
         ['hash', 'mock-hash-not-valid-for-backend'],
         ['signature', 'mock-signature'],
-        ['user', JSON.stringify({ id: 1, first_name: 'Тест', language_code: 'ru' })],
+        ['user', JSON.stringify({ id: Number(q.get('tgUserId') ?? 1), first_name: 'Тест', language_code: 'ru' })],
         ...(q.get('tgStart') ? [['start_param', q.get('tgStart') ?? '']] : []),
       ]).toString()],
       ['tgWebAppVersion', version],

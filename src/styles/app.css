@@ -37,7 +37,7 @@
   --radius-btn: 14px;
   --tap: 48px;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  font-family: 'Onest', system-ui, -apple-system, sans-serif;
+  font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif;
   font-size: 16px;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
@@ -372,6 +372,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .todo-event { flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center; }
 .todo-event::before { content: ''; width: 4px; height: 22px; border-radius: 2px; background: #6E8FD9; }
 .todo-check:active svg { transform: scale(0.9); }
+/* Ещё сохраняется — кружок как обычно, не бледный: это доли секунды. */
+.todo-check:disabled { opacity: 1; }
 .todo-main { flex: 1; min-width: 0; min-height: 52px; padding: 8px 14px 8px 4px; display: flex; flex-direction: column; justify-content: center; text-align: left; }
 .todo-text > span { font-size: 16px; line-height: 21px; overflow-wrap: anywhere; }
 .todo-text small { margin-top: 1px; font-size: 13px; color: var(--muted); }
