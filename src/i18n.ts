@@ -209,6 +209,10 @@ const ru = {
   // дела на день
   todo: {
     block: 'Дела',
+    /** Переключатель на «Сегодня»: все дела или только несделанные (круг 22E). */
+    showAll: 'Все',
+    showLeft: 'Осталось',
+    showWhich: 'Какие дела показывать',
     add: 'Дело на сегодня',
     addPh: 'Что сделать?',
     later: (n: number) => `Потом · ${ruNum.format(n)}`,
@@ -414,6 +418,9 @@ const en: Dict = {
   },
   todo: {
     block: 'To-dos',
+    showAll: 'All',
+    showLeft: 'To do',
+    showWhich: 'Which to-dos to show',
     add: 'To-do for today',
     addPh: 'What to do?',
     later: (n) => `Later · ${enNum.format(n)}`,

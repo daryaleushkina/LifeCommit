@@ -28,6 +28,31 @@ interface Props {
   onRemove: (todo: Todo) => Promise<void>;
   /** Скрыть событие из календаря у нас (в самом календаре оно остаётся). */
   onHide?: (todo: Todo) => Promise<void>;
+  /** Переключатель «Все · Осталось» в шапке — только на «Сегодня». */
+  filterable?: boolean;
+}
+
+const LEFT_KEY = 'lc-todos-left';
+
+/** «Только несделанные» — запоминается на этом устройстве (решение владелицы 02.10.2026), как тема. */
+function useOnlyLeft(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(LEFT_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const set = (next: boolean) => {
+    setOn(next);
+    try {
+      if (next) localStorage.setItem(LEFT_KEY, '1');
+      else localStorage.removeItem(LEFT_KEY);
+    } catch {
+      // нет хранилища — запомним до закрытия
+    }
+  };
+  return [on, set];
 }
 
 /** Что под свайпом: своё дело — «Удалить»; событие из календаря — «Удалить» (и в календаре) и «Скрыть» (крайняя, она же — до конца). */
@@ -64,10 +89,14 @@ export function endTime(start: string, minutes: number): string | null {
 }
 
 /** Блок «Дела» на «Сегодня»: свои дела с кружком-галочкой, события из календаря без него, строка для нового дела, «Потом · N». */
-export function TodoList({ todos: all, later = 0, today, heading, addLabel, showCarry = true, canAdd = true, onToggle, onAdd, onUpdate, onRemove, onHide }: Props): ReactNode {
+export function TodoList({ todos: all, later = 0, today, heading, addLabel, showCarry = true, canAdd = true, onToggle, onAdd, onUpdate, onRemove, onHide, filterable = false }: Props): ReactNode {
   const t = useT();
   const swipe = useTodoSwipe(onRemove, onHide);
-  const todos = all.filter(swipe.visible);
+  const listed = all.filter(swipe.visible);
+  const [onlyLeft, setOnlyLeft] = useOnlyLeft();
+  // Прятать есть что, только когда есть свои дела: у событий из календаря галочки нет.
+  const canFilter = filterable && listed.some((d) => !d.source);
+  const todos = canFilter && onlyLeft ? listed.filter((d) => !d.done) : listed;
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   const [adding, setAdding] = useState(false);
@@ -84,7 +113,20 @@ export function TodoList({ todos: all, later = 0, today, heading, addLabel, show
   return (
     <>
       {/* Только события из календаря — «События», вперемешку со своими — «События и дела» (как у Apple: событие — то, что будет). */}
-      <h2 className="section-label">{heading ?? (todos.length && todos.every((d) => d.source) ? t.todo.blockEvents : todos.some((d) => d.source) ? t.todo.blockMixed : t.todo.block)}</h2>
+      <div className="section-head">
+        <h2 className="section-label">{heading ?? (listed.length && listed.every((d) => d.source) ? t.todo.blockEvents : listed.some((d) => d.source) ? t.todo.blockMixed : t.todo.block)}</h2>
+        {/* Круг 22E: «Все · Осталось» — спрятать сделанные дела, если их много. */}
+        {canFilter && (
+          <div className="seg-mini" role="group" aria-label={t.todo.showWhich}>
+            <button aria-pressed={!onlyLeft} className={onlyLeft ? undefined : 'on'} onClick={() => setOnlyLeft(false)}>
+              {t.todo.showAll}
+            </button>
+            <button aria-pressed={onlyLeft} className={onlyLeft ? 'on' : undefined} onClick={() => setOnlyLeft(true)}>
+              {t.todo.showLeft}
+            </button>
+          </div>
+        )}
+      </div>
       <ul className="card todo-list">
         {todos.map((d) => {
           const when = showCarry && !d.recurring ? todoWhen(t, d.day, today, locale) : null;

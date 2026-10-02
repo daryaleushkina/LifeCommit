@@ -352,6 +352,13 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 /* ── Дела на день ── */
 .section-label { margin: 24px 4px 8px; font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .section-label + .tasks, .section-label + .empty, .section-label + .card { margin-top: 0; }
+/* Шапка блока «Дела»: название слева, на «Сегодня» справа — «Все · Осталось» (круг 22E). */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; margin: 16px 4px 6px; }
+.section-head .section-label { margin: 0; }
+.section-head + .card { margin-top: 0; }
+.seg-mini { flex: none; display: flex; padding: 3px; border-radius: 14px; background: var(--heat-0); }
+.seg-mini button { min-height: 30px; padding: 0 12px; border-radius: 11px; color: var(--muted); font-size: 13px; font-weight: 600; transition: background-color 160ms, color 160ms; }
+.seg-mini button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 /* Без отступа сверху и снизу: кнопка свайпа первой и последней строки стоит на том же расстоянии от края карточки,
    что и от соседних строк. */
 .todo-list { margin: 0; padding: 0; list-style: none; }

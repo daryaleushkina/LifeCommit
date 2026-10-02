@@ -88,6 +88,7 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onD
 
       {/* Разовые дела — над привычками: их обычно надо сделать сегодня и один раз. */}
       <TodoList
+        filterable
         todos={data.todos}
         later={data.todos_later}
         today={data.day}
