@@ -1,0 +1,1379 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T19:41:26.916Z",
+  "title": "Design System: LifeCommit",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Тёплая бумага",
+        "canonical": "oklch(96.7% 0.008 91.5)",
+        "tonalRamp": [
+          "#0C0B07",
+          "#262521",
+          "#43423D",
+          "#63615C",
+          "#84827D",
+          "#A7A59F",
+          "#CBC9C3",
+          "#F0EEE8"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Белый лист",
+        "canonical": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#A5A5A5",
+          "#C9C9C9",
+          "#EEEEEE"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Хвойный графит",
+        "canonical": "oklch(27.1% 0.025 144.8)",
+        "tonalRamp": [
+          "#050E05",
+          "#1D281D",
+          "#3A463A",
+          "#596559",
+          "#798779",
+          "#9CA99B",
+          "#C0CEBF",
+          "#E5F3E4"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Мох",
+        "canonical": "oklch(50.0% 0.020 137.1)",
+        "tonalRamp": [
+          "#070D06",
+          "#21271E",
+          "#3D453A",
+          "#5C6459",
+          "#7D857A",
+          "#9FA89C",
+          "#C3CCC0",
+          "#E8F2E5"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Льняная линия",
+        "canonical": "oklch(90.6% 0.014 93.0)",
+        "tonalRamp": [
+          "#0D0B05",
+          "#27251E",
+          "#44423A",
+          "#646159",
+          "#858279",
+          "#A8A59C",
+          "#CCC9BF",
+          "#F1EEE4"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Зелёный отметки",
+        "canonical": "oklch(51.5% 0.116 152.9)",
+        "tonalRamp": [
+          "#001004",
+          "#002E14",
+          "#005027",
+          "#1A7340",
+          "#439660",
+          "#67BA82",
+          "#8CDFA5",
+          "#C6FFD5"
+        ]
+      },
+      "accent-text": {
+        "role": "primary",
+        "displayName": "Текст на зелёном",
+        "canonical": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#A5A5A5",
+          "#C9C9C9",
+          "#EEEEEE"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Мягкий зелёный",
+        "canonical": "oklch(95.0% 0.017 153.6)",
+        "tonalRamp": [
+          "#060D08",
+          "#1F2821",
+          "#3B453E",
+          "#5A645D",
+          "#7B867E",
+          "#9DA8A0",
+          "#C1CDC4",
+          "#E6F2E9"
+        ]
+      },
+      "accent-soft-text": {
+        "role": "primary",
+        "displayName": "Текст на мягком зелёном",
+        "canonical": "oklch(43.9% 0.095 154.1)",
+        "tonalRamp": [
+          "#000F05",
+          "#012E16",
+          "#005029",
+          "#2D7148",
+          "#509368",
+          "#73B78A",
+          "#97DCAD",
+          "#C6FFD7"
+        ]
+      },
+      "warn": {
+        "role": "secondary",
+        "displayName": "Терракота",
+        "canonical": "oklch(55.7% 0.137 41.9)",
+        "tonalRamp": [
+          "#1A0400",
+          "#431400",
+          "#712701",
+          "#9F3F13",
+          "#C5623A",
+          "#EC855D",
+          "#FEB599",
+          "#FEE9E1"
+        ]
+      },
+      "warn-soft": {
+        "role": "secondary",
+        "displayName": "Мягкая терракота",
+        "canonical": "oklch(93.2% 0.026 48.4)",
+        "tonalRamp": [
+          "#140803",
+          "#30211A",
+          "#4E3E36",
+          "#6E5D55",
+          "#907E75",
+          "#B3A197",
+          "#D8C5BB",
+          "#FEEAE0"
+        ]
+      },
+      "warn-text": {
+        "role": "secondary",
+        "displayName": "Текст на терракоте",
+        "canonical": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#A5A5A5",
+          "#C9C9C9",
+          "#EEEEEE"
+        ]
+      },
+      "heat-0": {
+        "role": "neutral",
+        "displayName": "Пустая клетка",
+        "canonical": "oklch(92.5% 0.013 126.4)",
+        "tonalRamp": [
+          "#0A0C07",
+          "#232620",
+          "#40433C",
+          "#5F635B",
+          "#80847C",
+          "#A3A79E",
+          "#C7CBC2",
+          "#ECF0E7"
+        ]
+      },
+      "heat-1": {
+        "role": "neutral",
+        "displayName": "Ступень карты 1",
+        "canonical": "oklch(87.0% 0.057 154.6)",
+        "tonalRamp": [
+          "#000F05",
+          "#082D18",
+          "#284B34",
+          "#476B53",
+          "#678D73",
+          "#89B095",
+          "#ADD5B9",
+          "#D2FADE"
+        ]
+      },
+      "heat-2": {
+        "role": "neutral",
+        "displayName": "Ступень карты 2",
+        "canonical": "oklch(77.7% 0.109 153.8)",
+        "tonalRamp": [
+          "#000F05",
+          "#002E15",
+          "#015029",
+          "#207343",
+          "#469563",
+          "#6BB985",
+          "#8FDEA8",
+          "#C6FFD6"
+        ]
+      },
+      "heat-3": {
+        "role": "neutral",
+        "displayName": "Ступень карты 3",
+        "canonical": "oklch(65.7% 0.137 153.2)",
+        "tonalRamp": [
+          "#001004",
+          "#002E14",
+          "#035028",
+          "#03753D",
+          "#2C9959",
+          "#56BE7B",
+          "#7CE39E",
+          "#C6FFD6"
+        ]
+      },
+      "heat-4": {
+        "role": "neutral",
+        "displayName": "Ступень карты 4",
+        "canonical": "oklch(51.5% 0.116 152.9)",
+        "tonalRamp": [
+          "#001004",
+          "#002E14",
+          "#005027",
+          "#1A7340",
+          "#439660",
+          "#67BA82",
+          "#8CDFA5",
+          "#C6FFD5"
+        ]
+      },
+      "glass": {
+        "role": "neutral",
+        "displayName": "Стекло",
+        "canonical": "rgba(255, 255, 255, 0.58)"
+      },
+      "backdrop": {
+        "role": "neutral",
+        "displayName": "Затемнение под шторкой",
+        "canonical": "rgba(0, 0, 0, 0.4)"
+      },
+      "kind-check-bg": {
+        "role": "tertiary",
+        "displayName": "Делать — плитка",
+        "canonical": "oklch(95.0% 0.017 153.6)",
+        "tonalRamp": [
+          "#060D08",
+          "#1F2821",
+          "#3B453E",
+          "#5A645D",
+          "#7B867E",
+          "#9DA8A0",
+          "#C1CDC4",
+          "#E6F2E9"
+        ]
+      },
+      "kind-check-ink": {
+        "role": "tertiary",
+        "displayName": "Делать — линия",
+        "canonical": "oklch(51.5% 0.116 152.9)",
+        "tonalRamp": [
+          "#001004",
+          "#002E14",
+          "#005027",
+          "#1A7340",
+          "#439660",
+          "#67BA82",
+          "#8CDFA5",
+          "#C6FFD5"
+        ]
+      },
+      "kind-check-mid": {
+        "role": "tertiary",
+        "displayName": "Делать — заливка рисунка",
+        "canonical": "oklch(88.3% 0.050 156.1)",
+        "tonalRamp": [
+          "#000F05",
+          "#0D2C1B",
+          "#2B4A37",
+          "#4A6A55",
+          "#6A8C76",
+          "#8CAF98",
+          "#B0D3BC",
+          "#D5F9E1"
+        ]
+      },
+      "kind-count-bg": {
+        "role": "tertiary",
+        "displayName": "Считать — плитка (песок)",
+        "canonical": "oklch(94.2% 0.033 88.1)",
+        "tonalRamp": [
+          "#110A00",
+          "#2C2411",
+          "#49412D",
+          "#69604C",
+          "#8B826C",
+          "#AEA48E",
+          "#D2C8B1",
+          "#F8EED6"
+        ]
+      },
+      "kind-count-ink": {
+        "role": "tertiary",
+        "displayName": "Считать — линия",
+        "canonical": "oklch(52.9% 0.103 80.7)",
+        "tonalRamp": [
+          "#120900",
+          "#322201",
+          "#573D02",
+          "#7F5A02",
+          "#A27B30",
+          "#C69E55",
+          "#ECC279",
+          "#FEECCD"
+        ]
+      },
+      "kind-count-mid": {
+        "role": "tertiary",
+        "displayName": "Считать — заливка рисунка",
+        "canonical": "oklch(87.0% 0.076 87.9)",
+        "tonalRamp": [
+          "#110A00",
+          "#302300",
+          "#533F03",
+          "#735F2A",
+          "#95804B",
+          "#B9A36D",
+          "#DEC790",
+          "#FFEDC3"
+        ]
+      },
+      "kind-abstain-bg": {
+        "role": "tertiary",
+        "displayName": "Бросить — плитка (терракота)",
+        "canonical": "oklch(93.2% 0.026 48.4)",
+        "tonalRamp": [
+          "#140803",
+          "#30211A",
+          "#4E3E36",
+          "#6E5D55",
+          "#907E75",
+          "#B3A197",
+          "#D8C5BB",
+          "#FEEAE0"
+        ]
+      },
+      "kind-abstain-ink": {
+        "role": "tertiary",
+        "displayName": "Бросить — линия",
+        "canonical": "oklch(55.7% 0.137 41.9)",
+        "tonalRamp": [
+          "#1A0400",
+          "#431400",
+          "#712701",
+          "#9F3F13",
+          "#C5623A",
+          "#EC855D",
+          "#FEB599",
+          "#FEE9E1"
+        ]
+      },
+      "kind-abstain-mid": {
+        "role": "tertiary",
+        "displayName": "Бросить — заливка рисунка",
+        "canonical": "oklch(85.0% 0.058 46.9)",
+        "tonalRamp": [
+          "#190500",
+          "#3B1B09",
+          "#5B3826",
+          "#7D5745",
+          "#A07865",
+          "#C59A86",
+          "#EABEA9",
+          "#FEEAE0"
+        ]
+      },
+      "event-blue": {
+        "role": "tertiary",
+        "displayName": "Синий события календаря",
+        "canonical": "oklch(65.7% 0.117 265.1)",
+        "tonalRamp": [
+          "#010035",
+          "#081D5D",
+          "#233D7F",
+          "#405EA3",
+          "#6080C8",
+          "#81A3EF",
+          "#B0C9FF",
+          "#E7EFFF"
+        ]
+      },
+      "outside-blue": {
+        "role": "tertiary",
+        "displayName": "Синий «извне» (Google, группа)",
+        "canonical": "oklch(58.7% 0.153 262.9)",
+        "tonalRamp": [
+          "#00052C",
+          "#001A64",
+          "#113991",
+          "#305BB7",
+          "#507EDD",
+          "#75A3FE",
+          "#AECAFF",
+          "#E7EFFE"
+        ]
+      },
+      "destructive": {
+        "role": "tertiary",
+        "displayName": "Красный удаления",
+        "canonical": "oklch(61.8% 0.170 27.0)",
+        "tonalRamp": [
+          "#1F0000",
+          "#4D0003",
+          "#810009",
+          "#AD2825",
+          "#D54F47",
+          "#FE7469",
+          "#FFB3AA",
+          "#FFE9E6"
+        ]
+      },
+      "swipe-neutral": {
+        "role": "tertiary",
+        "displayName": "Серая таблетка свайпа",
+        "canonical": "oklch(65.7% 0.017 139.4)",
+        "tonalRamp": [
+          "#080D06",
+          "#21271F",
+          "#3D443C",
+          "#5C645A",
+          "#7D857B",
+          "#A0A89E",
+          "#C4CCC1",
+          "#E9F1E7"
+        ]
+      },
+      "identity-sand": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Песок",
+        "canonical": "oklch(94.2% 0.033 88.1)",
+        "tonalRamp": [
+          "#110A00",
+          "#2C2411",
+          "#49412D",
+          "#69604C",
+          "#8B826C",
+          "#AEA48E",
+          "#D2C8B1",
+          "#F8EED6"
+        ]
+      },
+      "identity-sand-ink": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Песок (буква)",
+        "canonical": "oklch(45.0% 0.087 80.3)",
+        "tonalRamp": [
+          "#120900",
+          "#332100",
+          "#573D02",
+          "#7B5B1E",
+          "#9D7D42",
+          "#C29F64",
+          "#E7C488",
+          "#FFECCD"
+        ]
+      },
+      "identity-green": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Мята",
+        "canonical": "oklch(95.0% 0.017 153.6)",
+        "tonalRamp": [
+          "#060D08",
+          "#1F2821",
+          "#3B453E",
+          "#5A645D",
+          "#7B867E",
+          "#9DA8A0",
+          "#C1CDC4",
+          "#E6F2E9"
+        ]
+      },
+      "identity-green-ink": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Мята (буква)",
+        "canonical": "oklch(51.5% 0.116 152.9)",
+        "tonalRamp": [
+          "#001004",
+          "#002E14",
+          "#005027",
+          "#1A7340",
+          "#439660",
+          "#67BA82",
+          "#8CDFA5",
+          "#C6FFD5"
+        ]
+      },
+      "identity-blue": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Васильковый",
+        "canonical": "oklch(93.3% 0.019 266.0)",
+        "tonalRamp": [
+          "#080B13",
+          "#21252E",
+          "#3D424C",
+          "#5C616C",
+          "#7D828E",
+          "#9FA5B1",
+          "#C3C9D6",
+          "#E9EFFC"
+        ]
+      },
+      "identity-blue-ink": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Васильковый (буква)",
+        "canonical": "oklch(39.7% 0.094 262.8)",
+        "tonalRamp": [
+          "#00062C",
+          "#0A2152",
+          "#264073",
+          "#446096",
+          "#6482BB",
+          "#86A5E0",
+          "#AECAFE",
+          "#E7EFFE"
+        ]
+      },
+      "identity-plum": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Слива",
+        "canonical": "oklch(90.9% 0.021 337.7)",
+        "tonalRamp": [
+          "#11080E",
+          "#2C2129",
+          "#4A3E46",
+          "#6A5D65",
+          "#8B7E87",
+          "#AEA0AA",
+          "#D3C4CE",
+          "#F9E9F3"
+        ]
+      },
+      "identity-plum-ink": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Слива (буква)",
+        "canonical": "oklch(35.6% 0.087 342.9)",
+        "tonalRamp": [
+          "#1C0012",
+          "#400E30",
+          "#612D4E",
+          "#834C6E",
+          "#A76D90",
+          "#CC8FB4",
+          "#F2B3D8",
+          "#FEE7F4"
+        ]
+      },
+      "identity-violet": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Лаванда",
+        "canonical": "oklch(91.4% 0.024 293.6)",
+        "tonalRamp": [
+          "#0C0914",
+          "#252330",
+          "#42404E",
+          "#625F6E",
+          "#838090",
+          "#A5A2B3",
+          "#C9C6D8",
+          "#EFECFE"
+        ]
+      },
+      "identity-violet-ink": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Лаванда (буква)",
+        "canonical": "oklch(35.1% 0.101 288.5)",
+        "tonalRamp": [
+          "#0D002C",
+          "#251852",
+          "#413773",
+          "#5F5797",
+          "#8078BB",
+          "#A29BE1",
+          "#C6C1FF",
+          "#EDECFF"
+        ]
+      },
+      "identity-stone": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Камень",
+        "canonical": "oklch(93.7% 0.010 93.6)",
+        "tonalRamp": [
+          "#0C0B07",
+          "#272520",
+          "#44423C",
+          "#63615B",
+          "#84827C",
+          "#A7A59E",
+          "#CBC9C2",
+          "#F0EEE7"
+        ]
+      },
+      "identity-stone-ink": {
+        "role": "tertiary",
+        "displayName": "Значок группы — Камень (буква)",
+        "canonical": "oklch(43.3% 0.022 142.7)",
+        "tonalRamp": [
+          "#060E06",
+          "#1F281E",
+          "#3B453A",
+          "#5A6559",
+          "#7B867A",
+          "#9DA99C",
+          "#C1CDC0",
+          "#E6F3E5"
+        ]
+      },
+      "bg-dark": {
+        "role": "neutral",
+        "displayName": "Тёплая бумага (тёмная)",
+        "canonical": "oklch(18.8% 0.012 155.9)",
+        "tonalRamp": [
+          "#070D09",
+          "#202723",
+          "#3D443F",
+          "#5C635E",
+          "#7D857F",
+          "#9FA7A2",
+          "#C3CCC6",
+          "#E8F1EB"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Белый лист (тёмная)",
+        "canonical": "oklch(24.0% 0.013 150.1)",
+        "tonalRamp": [
+          "#070D08",
+          "#212722",
+          "#3D443E",
+          "#5C635D",
+          "#7D857E",
+          "#A0A7A1",
+          "#C4CCC5",
+          "#E9F1EA"
+        ]
+      },
+      "text-dark": {
+        "role": "neutral",
+        "displayName": "Хвойный графит (тёмная)",
+        "canonical": "oklch(94.2% 0.012 137.8)",
+        "tonalRamp": [
+          "#090C08",
+          "#222721",
+          "#3F443D",
+          "#5E635C",
+          "#7F847D",
+          "#A1A79F",
+          "#C5CBC3",
+          "#EBF1E9"
+        ]
+      },
+      "muted-dark": {
+        "role": "neutral",
+        "displayName": "Мох (тёмная)",
+        "canonical": "oklch(73.6% 0.023 136.6)",
+        "tonalRamp": [
+          "#070D05",
+          "#20281D",
+          "#3C4539",
+          "#5B6458",
+          "#7C8678",
+          "#9FA99B",
+          "#C2CDBE",
+          "#E8F2E3"
+        ]
+      },
+      "line-dark": {
+        "role": "neutral",
+        "displayName": "Льняная линия (тёмная)",
+        "canonical": "oklch(30.7% 0.017 148.7)",
+        "tonalRamp": [
+          "#070D07",
+          "#202721",
+          "#3C453D",
+          "#5B645C",
+          "#7C857D",
+          "#9EA89F",
+          "#C2CCC3",
+          "#E7F2E8"
+        ]
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "Зелёный отметки (тёмная)",
+        "canonical": "oklch(65.7% 0.137 153.2)",
+        "tonalRamp": [
+          "#001004",
+          "#002E14",
+          "#035028",
+          "#03753D",
+          "#2C9959",
+          "#56BE7B",
+          "#7CE39E",
+          "#C6FFD6"
+        ]
+      },
+      "accent-text-dark": {
+        "role": "primary",
+        "displayName": "Текст на зелёном (тёмная)",
+        "canonical": "oklch(20.3% 0.023 154.6)",
+        "tonalRamp": [
+          "#040E07",
+          "#1C2920",
+          "#38463C",
+          "#57655B",
+          "#78877C",
+          "#9AAA9F",
+          "#BECEC2",
+          "#E3F3E8"
+        ]
+      },
+      "accent-soft-dark": {
+        "role": "primary",
+        "displayName": "Мягкий зелёный (тёмная)",
+        "canonical": "oklch(29.8% 0.037 154.4)",
+        "tonalRamp": [
+          "#000F05",
+          "#162A1D",
+          "#324839",
+          "#516858",
+          "#718978",
+          "#94AC9B",
+          "#B7D1BE",
+          "#DCF6E4"
+        ]
+      },
+      "accent-soft-text-dark": {
+        "role": "primary",
+        "displayName": "Текст на мягком зелёном (тёмная)",
+        "canonical": "oklch(81.6% 0.099 154.1)",
+        "tonalRamp": [
+          "#001004",
+          "#002E15",
+          "#01502A",
+          "#2A7147",
+          "#4E9467",
+          "#71B789",
+          "#95DCAC",
+          "#C6FFD7"
+        ]
+      },
+      "accent-label-dark": {
+        "role": "primary",
+        "displayName": "Зелёный подписи вкладки (тёмная)",
+        "canonical": "oklch(70.3% 0.137 154.5)",
+        "tonalRamp": [
+          "#001005",
+          "#012E16",
+          "#02502A",
+          "#057440",
+          "#279A5C",
+          "#52BE7D",
+          "#79E3A1",
+          "#C5FFD7"
+        ]
+      },
+      "warn-dark": {
+        "role": "secondary",
+        "displayName": "Терракота (тёмная)",
+        "canonical": "oklch(71.9% 0.122 44.6)",
+        "tonalRamp": [
+          "#190400",
+          "#421500",
+          "#6E2A01",
+          "#98461D",
+          "#BD6840",
+          "#E48B63",
+          "#FFB596",
+          "#FEEAE1"
+        ]
+      },
+      "warn-soft-dark": {
+        "role": "secondary",
+        "displayName": "Мягкая терракота (тёмная)",
+        "canonical": "oklch(28.5% 0.037 43.0)",
+        "tonalRamp": [
+          "#180601",
+          "#341F16",
+          "#533C32",
+          "#745B50",
+          "#977C71",
+          "#BA9E93",
+          "#DFC2B6",
+          "#FEEAE1"
+        ]
+      },
+      "warn-text-dark": {
+        "role": "secondary",
+        "displayName": "Текст на терракоте (тёмная)",
+        "canonical": "oklch(18.9% 0.020 47.7)",
+        "tonalRamp": [
+          "#120905",
+          "#2D221D",
+          "#4B3F39",
+          "#6B5E58",
+          "#8D7F78",
+          "#B0A29B",
+          "#D5C6BE",
+          "#FAEBE3"
+        ]
+      },
+      "heat-0-dark": {
+        "role": "neutral",
+        "displayName": "Пустая клетка (тёмная)",
+        "canonical": "rgba(255, 255, 255, 0.09)"
+      },
+      "heat-1-dark": {
+        "role": "neutral",
+        "displayName": "Ступень карты 1 (тёмная)",
+        "canonical": "oklch(36.9% 0.069 153.4)",
+        "tonalRamp": [
+          "#001004",
+          "#002E15",
+          "#214D30",
+          "#416D4F",
+          "#628F6F",
+          "#84B291",
+          "#A7D7B5",
+          "#CCFDD9"
+        ]
+      },
+      "heat-2-dark": {
+        "role": "neutral",
+        "displayName": "Ступень карты 2 (тёмная)",
+        "canonical": "oklch(49.2% 0.102 152.0)",
+        "tonalRamp": [
+          "#001004",
+          "#002E13",
+          "#005025",
+          "#2B7143",
+          "#4F9464",
+          "#72B885",
+          "#96DDA9",
+          "#C7FFD5"
+        ]
+      },
+      "heat-3-dark": {
+        "role": "neutral",
+        "displayName": "Ступень карты 3 (тёмная)",
+        "canonical": "oklch(65.7% 0.137 153.2)",
+        "tonalRamp": [
+          "#001004",
+          "#002E14",
+          "#035028",
+          "#03753D",
+          "#2C9959",
+          "#56BE7B",
+          "#7CE39E",
+          "#C6FFD6"
+        ]
+      },
+      "heat-4-dark": {
+        "role": "neutral",
+        "displayName": "Ступень карты 4 (тёмная)",
+        "canonical": "oklch(77.7% 0.109 153.8)",
+        "tonalRamp": [
+          "#000F05",
+          "#002E15",
+          "#015029",
+          "#207343",
+          "#469563",
+          "#6BB985",
+          "#8FDEA8",
+          "#C6FFD6"
+        ]
+      },
+      "glass-dark": {
+        "role": "neutral",
+        "displayName": "Стекло (тёмная)",
+        "canonical": "rgba(255, 255, 255, 0.07)"
+      },
+      "kind-check-bg-dark": {
+        "role": "tertiary",
+        "displayName": "Делать — плитка (тёмная)",
+        "canonical": "oklch(29.8% 0.037 154.4)",
+        "tonalRamp": [
+          "#000F05",
+          "#162A1D",
+          "#324839",
+          "#516858",
+          "#718978",
+          "#94AC9B",
+          "#B7D1BE",
+          "#DCF6E4"
+        ]
+      },
+      "kind-check-ink-dark": {
+        "role": "tertiary",
+        "displayName": "Делать — линия (тёмная)",
+        "canonical": "oklch(81.6% 0.099 154.1)",
+        "tonalRamp": [
+          "#001004",
+          "#002E15",
+          "#01502A",
+          "#2A7147",
+          "#4E9467",
+          "#71B789",
+          "#95DCAC",
+          "#C6FFD7"
+        ]
+      },
+      "kind-check-mid-dark": {
+        "role": "tertiary",
+        "displayName": "Делать — заливка рисунка (тёмная)",
+        "canonical": "oklch(42.5% 0.074 152.4)",
+        "tonalRamp": [
+          "#001004",
+          "#002E13",
+          "#1E4D2E",
+          "#3E6D4C",
+          "#5F8F6D",
+          "#82B38F",
+          "#A5D8B2",
+          "#CAFED7"
+        ]
+      },
+      "kind-count-bg-dark": {
+        "role": "tertiary",
+        "displayName": "Считать — плитка (песок) (тёмная)",
+        "canonical": "oklch(31.6% 0.044 91.3)",
+        "tonalRamp": [
+          "#100A00",
+          "#2D2409",
+          "#4B4126",
+          "#6A6144",
+          "#8C8264",
+          "#AFA586",
+          "#D4C9A9",
+          "#F9EECE"
+        ]
+      },
+      "kind-count-ink-dark": {
+        "role": "tertiary",
+        "displayName": "Считать — линия (тёмная)",
+        "canonical": "oklch(82.6% 0.113 90.4)",
+        "tonalRamp": [
+          "#100A00",
+          "#2F2401",
+          "#524000",
+          "#775E04",
+          "#9C7F20",
+          "#C0A249",
+          "#E5C66E",
+          "#FFEEBF"
+        ]
+      },
+      "kind-count-mid-dark": {
+        "role": "tertiary",
+        "displayName": "Считать — заливка рисунка (тёмная)",
+        "canonical": "oklch(46.5% 0.077 88.9)",
+        "tonalRamp": [
+          "#100A00",
+          "#2F2301",
+          "#533F00",
+          "#735F28",
+          "#95804A",
+          "#B9A36C",
+          "#DDC78F",
+          "#FFEDC2"
+        ]
+      },
+      "kind-abstain-bg-dark": {
+        "role": "tertiary",
+        "displayName": "Бросить — плитка (терракота) (тёмная)",
+        "canonical": "oklch(28.5% 0.037 43.0)",
+        "tonalRamp": [
+          "#180601",
+          "#341F16",
+          "#533C32",
+          "#745B50",
+          "#977C71",
+          "#BA9E93",
+          "#DFC2B6",
+          "#FEEAE1"
+        ]
+      },
+      "kind-abstain-ink-dark": {
+        "role": "tertiary",
+        "displayName": "Бросить — линия (тёмная)",
+        "canonical": "oklch(71.9% 0.122 44.6)",
+        "tonalRamp": [
+          "#190400",
+          "#421500",
+          "#6E2A01",
+          "#98461D",
+          "#BD6840",
+          "#E48B63",
+          "#FFB596",
+          "#FEEAE1"
+        ]
+      },
+      "kind-abstain-mid-dark": {
+        "role": "tertiary",
+        "displayName": "Бросить — заливка рисунка (тёмная)",
+        "canonical": "oklch(42.0% 0.072 42.5)",
+        "tonalRamp": [
+          "#1A0400",
+          "#411604",
+          "#623421",
+          "#845340",
+          "#A87460",
+          "#CD9781",
+          "#F3BAA4",
+          "#FEEAE2"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Заголовок вкладки",
+        "purpose": "«Сегодня», «Календарь», «Вместе»; под ним дата 15/20 muted."
+      },
+      "headline": {
+        "displayName": "Заголовок вложенного экрана",
+        "purpose": "Группа, друг, «Что показать друзьям?»."
+      },
+      "hero-number": {
+        "displayName": "Главное число",
+        "purpose": "Одно число экрана привычки, цвет accent."
+      },
+      "stat-number": {
+        "displayName": "Число статистики",
+        "purpose": "Ключевые числа; первое — в цвете вида привычки."
+      },
+      "title": {
+        "displayName": "Заголовок шторки",
+        "purpose": "Шапка любой шторки снизу."
+      },
+      "card-title": {
+        "displayName": "Название карточки",
+        "purpose": "Намерение, блок «Сегодня», группа, строка разбора голоса."
+      },
+      "body": {
+        "displayName": "Название",
+        "purpose": "Привычка, дело, строка настройки."
+      },
+      "body-text": {
+        "displayName": "Текст",
+        "purpose": "Текст длиннее одной строки."
+      },
+      "secondary": {
+        "displayName": "Вторичный",
+        "purpose": "«5 из 8», пометки, заметки, строка ошибки; цвет muted."
+      },
+      "label": {
+        "displayName": "Подпись раздела",
+        "purpose": "ДЕЛА, ПРИВЫЧКИ — верхний регистр, +0.04em, muted."
+      },
+      "caption": {
+        "displayName": "Мелкая подпись",
+        "purpose": "Подписи вкладок, бейджи, оси графиков."
+      },
+      "field": {
+        "displayName": "Поле",
+        "purpose": "Текст в полях ввода (не меньше 16px — иначе iOS приближает)."
+      },
+      "button": {
+        "displayName": "Кнопка",
+        "purpose": "Обычная и мягкая кнопка."
+      },
+      "button-primary": {
+        "displayName": "Главная кнопка",
+        "purpose": "Одна на экран."
+      },
+      "button-small": {
+        "displayName": "Малая кнопка",
+        "purpose": "Действия в строках и карточках."
+      }
+    },
+    "shadows": [
+      {
+        "name": "glass-edge",
+        "value": "inset 0 0 0 1px rgba(255,255,255,0.75), 0 8px 24px rgba(31,42,31,0.07)",
+        "purpose": "Кромка стекла в светлой теме; вместе с --glass и blur(22px)."
+      },
+      {
+        "name": "glass-edge-dark",
+        "value": "inset 0 1px 0 rgba(255,255,255,0.2), inset 0 0 0 1px rgba(255,255,255,0.07), 0 10px 30px rgba(0,0,0,0.25)",
+        "purpose": "Кромка тёмного стекла: блик сверху и тонкий контур; blur(24px)."
+      },
+      {
+        "name": "hairline",
+        "value": "0 1px 2px rgba(31,42,31,0.06)",
+        "purpose": "Выбранный сегмент переключателя; в тёмной теме нет."
+      },
+      {
+        "name": "mic-lift",
+        "value": "0 0 0 7px var(--bg), 0 8px 22px rgba(35,122,70,0.28)",
+        "purpose": "Микрофон над нижней панелью."
+      },
+      {
+        "name": "fab",
+        "value": "0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent)",
+        "purpose": "Плавающая кнопка на экране группы."
+      },
+      {
+        "name": "toast",
+        "value": "0 8px 24px rgba(0,0,0,0.18)",
+        "purpose": "Короткая подсказка после действия."
+      },
+      {
+        "name": "undo-toast",
+        "value": "0 10px 30px rgba(0,0,0,0.2)",
+        "purpose": "«Удалено · Вернуть»."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Единственная кривая всех переходов и появлений (--ease-out)."
+      },
+      {
+        "name": "duration-press",
+        "value": "160ms",
+        "purpose": "Отклик на нажатие и мелкие смены."
+      },
+      {
+        "name": "duration-state",
+        "value": "200ms",
+        "purpose": "Смена состояния: цвет, переключатель, подсказка."
+      },
+      {
+        "name": "duration-move",
+        "value": "240ms",
+        "purpose": "Перемещение: шторка, свайп, возврат строки."
+      },
+      {
+        "name": "press-scale",
+        "value": "scale(0.96)",
+        "purpose": "Сжатие при нажатии, transform 160ms на --ease-out."
+      },
+      {
+        "name": "stagger",
+        "value": "60ms",
+        "purpose": "Шаг появления строк списка и клеток знака на заставке."
+      },
+      {
+        "name": "glass-blur",
+        "value": "blur(22px)",
+        "purpose": "Размытие стекла; в тёмной теме blur(24px)."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Главная кнопка",
+      "kind": "button",
+      "refersTo": "button-primary-wide",
+      "description": "Одно главное действие экрана: зелёная, во всю ширину, 48px.",
+      "html": "<button class=\"ds-btn-primary\">Готово</button>",
+      "css": ".ds-btn-primary { font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif; width: 100%; height: 48px; padding: 0 14px; border: 0; border-radius: 14px; background: var(--accent, #237A46); color: var(--accent-text, #FFFFFF); font-size: 17px; font-weight: 700; cursor: pointer; transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-btn-primary:active { transform: scale(0.96); } .ds-btn-primary:focus-visible { outline: 2px solid var(--accent, #237A46); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.4; }"
+    },
+    {
+      "name": "Мягкая и малая кнопки",
+      "kind": "button",
+      "refersTo": "button-soft",
+      "description": "Второстепенные действия: мягкая на подложке bg, малая — мягкий зелёный, 40px.",
+      "html": "<div class=\"ds-btn-row\"><button class=\"ds-btn-soft\">Вернуть</button><button class=\"ds-btn-small\">Принять</button></div>",
+      "css": ".ds-btn-row { display: flex; gap: 8px; align-items: center; } .ds-btn-soft, .ds-btn-small { font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif; border: 0; border-radius: 14px; padding: 0 14px; font-weight: 700; cursor: pointer; transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-btn-soft { height: 48px; min-width: 64px; background: var(--bg, #F6F4EE); color: var(--text, #1F2A1F); font-size: 16px; } .ds-btn-small { height: 40px; background: var(--accent-soft, #E6F2E9); color: var(--accent, #237A46); font-size: 15px; } .ds-btn-soft:active, .ds-btn-small:active { transform: scale(0.96); } .ds-btn-soft:focus-visible, .ds-btn-small:focus-visible { outline: 2px solid var(--accent, #237A46); outline-offset: 2px; }"
+    },
+    {
+      "name": "Круглые кнопки отметки",
+      "kind": "custom",
+      "refersTo": "mark-button",
+      "description": "Главный жест: круги 48px одного размера; выбранная заливается, вторая гаснет.",
+      "html": "<div class=\"ds-marks\"><button class=\"ds-mark ds-mark-no\" aria-label=\"Было\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 7l10 10M17 7L7 17\"/></svg></button><button class=\"ds-mark ds-mark-ok ds-on\" aria-label=\"Получилось\" aria-pressed=\"true\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg></button><button class=\"ds-mark ds-mark-edit\" aria-label=\"Ввести число\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z\"/><path d=\"M13.5 6.5l3 3\"/></svg></button></div>",
+      "css": ".ds-marks { display: flex; gap: 8px; } .ds-mark { width: 48px; height: 48px; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer; transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), background-color 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-mark:active { transform: scale(0.96); } .ds-mark:focus-visible { outline: 2px solid var(--accent, #237A46); outline-offset: 2px; } .ds-mark-ok { background: var(--accent-soft, #E6F2E9); color: var(--accent, #237A46); } .ds-mark-ok.ds-on { background: var(--accent, #237A46); color: var(--accent-text, #FFFFFF); } .ds-mark-no { background: var(--heat-0, #E4E8DF); color: var(--muted, #5E665B); opacity: 0.6; } .ds-mark-no:hover { opacity: 1; background: var(--warn-soft, #F8E4DA); color: var(--warn, #B4532A); } .ds-mark-edit { background: var(--heat-0, #E4E8DF); color: var(--muted, #5E665B); }"
+    },
+    {
+      "name": "Карточка привычки",
+      "kind": "card",
+      "refersTo": "habit-card",
+      "description": "Стеклянная карточка 72px: плитка вида, название, значение, отметки; у «считать» — полоса прогресса.",
+      "html": "<article class=\"ds-habit\"><span class=\"ds-tile\"><svg width=\"28\" height=\"28\" viewBox=\"0 0 48 48\" fill=\"none\" aria-hidden=\"true\"><rect x=\"8\" y=\"26\" width=\"8\" height=\"14\" rx=\"3\" fill=\"#E9D29B\"/><rect x=\"20\" y=\"18\" width=\"8\" height=\"22\" rx=\"3\" fill=\"#E9D29B\"/><rect x=\"32\" y=\"9\" width=\"8\" height=\"31\" rx=\"3\" fill=\"#8A6412\"/><path d=\"M6 42h36\" stroke=\"#8A6412\" stroke-width=\"2.5\" stroke-linecap=\"round\"/></svg></span><div class=\"ds-habit-main\"><b>Пить воду</b><span><strong>5</strong> из 8 стаканов</span></div><div class=\"ds-habit-marks\"><button class=\"ds-hm ds-hm-edit\" aria-label=\"Ввести число\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z\"/><path d=\"M13.5 6.5l3 3\"/></svg></button><button class=\"ds-hm ds-hm-ok\" aria-label=\"Сделано\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg></button></div><i class=\"ds-progress\"><i></i></i></article>",
+      "css": ".ds-habit { font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; row-gap: 8px; min-height: 72px; padding: 12px 14px 14px; border-radius: 20px; color: var(--text, #1F2A1F); background: var(--glass, rgba(255,255,255,0.58)); -webkit-backdrop-filter: var(--glass-blur, blur(22px)); backdrop-filter: var(--glass-blur, blur(22px)); box-shadow: var(--glass-edge, inset 0 0 0 1px rgba(255,255,255,0.75), 0 8px 24px rgba(31,42,31,0.07)); } .ds-tile { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: #F5EBD3; } .ds-habit-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; } .ds-habit-main b { font-size: 16px; line-height: 22px; font-weight: 500; } .ds-habit-main span { font-size: 14px; line-height: 18px; color: var(--muted, #5E665B); } .ds-habit-main strong { color: var(--text, #1F2A1F); font-weight: 700; } .ds-habit-marks { display: flex; gap: 8px; } .ds-hm { width: 48px; height: 48px; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer; transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-hm:active { transform: scale(0.96); } .ds-hm-edit { background: var(--heat-0, #E4E8DF); color: var(--muted, #5E665B); } .ds-hm-ok { background: var(--accent-soft, #E6F2E9); color: var(--accent, #237A46); } .ds-progress { flex: 0 0 100%; height: 6px; border-radius: 3px; background: var(--heat-0, #E4E8DF); overflow: hidden; display: block; } .ds-progress i { display: block; height: 100%; width: 100%; border-radius: 3px; background: var(--heat-3, #3FA968); transform-origin: left; transform: scaleX(0.625); transition: transform 240ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }"
+    },
+    {
+      "name": "Карточка намерения",
+      "kind": "card",
+      "refersTo": "intent-card",
+      "description": "«Чего я хочу?»: стеклянная карточка 88px с цветной плиткой вида, примерами и шевроном.",
+      "html": "<button class=\"ds-intent\"><span class=\"ds-intent-tile\"><svg width=\"28\" height=\"28\" viewBox=\"0 0 48 48\" fill=\"none\" aria-hidden=\"true\"><rect x=\"8\" y=\"10\" width=\"32\" height=\"30\" rx=\"8\" fill=\"#BFE3CB\" stroke=\"#237A46\" stroke-width=\"2.5\"/><path d=\"M8 20h32M17 6v8M31 6v8\" stroke=\"#237A46\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><path d=\"M17 30l5 5 9-10\" stroke=\"#237A46\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></span><span class=\"ds-intent-text\"><b>Делать регулярно</b><span>каждый день или пару раз в неделю: спортзал, уборка</span></span><svg class=\"ds-chev\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M9.5 6l6 6-6 6\"/></svg></button>",
+      "css": ".ds-intent { font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif; width: 100%; min-height: 88px; padding: 16px; border: 0; border-radius: 20px; display: flex; align-items: center; gap: 16px; text-align: left; color: var(--text, #1F2A1F); cursor: pointer; background: var(--glass, rgba(255,255,255,0.58)); -webkit-backdrop-filter: var(--glass-blur, blur(22px)); backdrop-filter: var(--glass-blur, blur(22px)); box-shadow: var(--glass-edge, inset 0 0 0 1px rgba(255,255,255,0.75), 0 8px 24px rgba(31,42,31,0.07)); transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-intent:active { transform: scale(0.96); } .ds-intent:focus-visible { outline: 2px solid var(--accent, #237A46); outline-offset: 2px; } .ds-intent-tile { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: #E6F2E9; } .ds-intent-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; } .ds-intent-text b { font-size: 17px; line-height: 22px; font-weight: 600; } .ds-intent-text span { font-size: 14px; line-height: 18px; color: var(--muted, #5E665B); } .ds-chev { flex: none; color: var(--muted, #5E665B); }"
+    },
+    {
+      "name": "Поле на стекле и поле в шторке",
+      "kind": "input",
+      "refersTo": "text-field",
+      "description": "На холсте — стекло 56px с кольцом фокуса; в шторке — подложка bg 52px, фокус только светлеет.",
+      "html": "<div class=\"ds-fields\"><input class=\"ds-input-glass\" placeholder=\"Название привычки\" aria-label=\"Название привычки\"><input class=\"ds-input-sheet\" placeholder=\"Дело\" aria-label=\"Дело\"></div>",
+      "css": ".ds-fields { display: flex; flex-direction: column; gap: 10px; } .ds-input-glass, .ds-input-sheet { font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif; width: 100%; padding: 0 16px; border: 0; border-radius: 16px; font-size: 17px; font-weight: 500; color: var(--text, #1F2A1F); outline: none; -webkit-appearance: none; appearance: none; } .ds-input-glass { height: 56px; background: var(--glass, rgba(255,255,255,0.58)); -webkit-backdrop-filter: var(--glass-blur, blur(22px)); backdrop-filter: var(--glass-blur, blur(22px)); box-shadow: var(--glass-edge, inset 0 0 0 1px rgba(255,255,255,0.75), 0 8px 24px rgba(31,42,31,0.07)); } .ds-input-glass:focus { box-shadow: inset 0 0 0 2px var(--accent, #237A46), 0 8px 24px rgba(31,42,31,0.07); } .ds-input-sheet { height: 52px; background: var(--bg, #F6F4EE); transition: background-color 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-input-sheet:focus { background: color-mix(in srgb, var(--bg, #F6F4EE) 55%, var(--surface, #FFFFFF)); } .ds-input-glass::placeholder, .ds-input-sheet::placeholder { color: var(--muted, #5E665B); }"
+    },
+    {
+      "name": "Переключатель",
+      "kind": "chip",
+      "refersTo": "segmented",
+      "description": "Сегменты на heat-0, выбранный — surface с волоском; радиусы концентричны (16 / 4 / 12).",
+      "html": "<div class=\"ds-seg\" role=\"tablist\"><button class=\"ds-on\" role=\"tab\" aria-selected=\"true\">Месяц</button><button role=\"tab\" aria-selected=\"false\">Год</button></div>",
+      "css": ".ds-seg { font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 16px; background: var(--heat-0, #E4E8DF); } .ds-seg button { min-height: 44px; border: 0; border-radius: 12px; background: none; color: var(--text, #1F2A1F); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color 200ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-seg button.ds-on { background: var(--surface, #FFFFFF); box-shadow: var(--shadow, 0 1px 2px rgba(31,42,31,0.06)); font-weight: 600; } .ds-seg button:focus-visible { outline: 2px solid var(--accent, #237A46); outline-offset: 2px; }"
+    },
+    {
+      "name": "Нижняя панель с микрофоном",
+      "kind": "nav",
+      "refersTo": "tab-bar",
+      "description": "Стекло во всю ширину: Сегодня · Календарь · микрофон 68px · Вместе · Я; активная — зелёная подпись и таблетка.",
+      "html": "<nav class=\"ds-tabbar\"><button class=\"ds-tab ds-active\"><span class=\"ds-pill\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"5\" height=\"5\" rx=\"1.5\"/><rect x=\"9.5\" y=\"3\" width=\"5\" height=\"5\" rx=\"1.5\"/><rect x=\"16\" y=\"3\" width=\"5\" height=\"5\" rx=\"1.5\"/><rect x=\"3\" y=\"9.5\" width=\"5\" height=\"5\" rx=\"1.5\"/><rect x=\"9.5\" y=\"9.5\" width=\"5\" height=\"5\" rx=\"1.5\"/><rect x=\"16\" y=\"9.5\" width=\"5\" height=\"5\" rx=\"1.5\"/><rect x=\"3\" y=\"16\" width=\"5\" height=\"5\" rx=\"1.5\"/><rect x=\"9.5\" y=\"16\" width=\"5\" height=\"5\" rx=\"1.5\"/><rect x=\"16\" y=\"16\" width=\"5\" height=\"5\" rx=\"1.5\"/></svg></span>Сегодня</button><button class=\"ds-tab\"><span class=\"ds-pill\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><rect x=\"4\" y=\"5\" width=\"16\" height=\"15\" rx=\"3\"/><path d=\"M4 10h16M9 3v4M15 3v4\"/></svg></span>Календарь</button><button class=\"ds-mic\" aria-label=\"Сказать голосом\"><svg width=\"28\" height=\"28\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><rect x=\"9\" y=\"3\" width=\"6\" height=\"11\" rx=\"3\"/><path d=\"M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21\"/></svg></button><button class=\"ds-tab\"><span class=\"ds-pill\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.8c1.6.8 2.6 2.5 3 5.2\"/></svg></span>Вместе</button><button class=\"ds-tab\"><span class=\"ds-pill\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4.5 20.5c1-4 4-6 7.5-6s6.5 2 7.5 6\"/></svg></span>Я</button></nav>",
+      "css": ".ds-tabbar { font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif; display: grid; grid-template-columns: 1fr 1fr 80px 1fr 1fr; padding: 6px 4px 12px; margin-top: 30px; background: var(--glass, rgba(255,255,255,0.58)); -webkit-backdrop-filter: var(--glass-blur, blur(22px)); backdrop-filter: var(--glass-blur, blur(22px)); box-shadow: var(--glass-edge, inset 0 0 0 1px rgba(255,255,255,0.75), 0 8px 24px rgba(31,42,31,0.07)); } .ds-tab { min-height: 56px; border: 0; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font: inherit; font-size: 12px; font-weight: 500; color: var(--muted, #5E665B); cursor: pointer; } .ds-tab.ds-active { color: var(--accent, #237A46); font-weight: 700; } .ds-pill { width: 48px; height: 30px; border-radius: 999px; display: grid; place-items: center; } .ds-tab.ds-active .ds-pill { background: var(--accent-soft, #E6F2E9); } .ds-mic { justify-self: center; align-self: start; width: 68px; height: 68px; margin-top: -26px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--accent, #237A46); color: var(--accent-text, #FFFFFF); box-shadow: 0 0 0 7px var(--bg, #F6F4EE), 0 8px 22px rgba(35,122,70,0.28); cursor: pointer; transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-mic:active { transform: scale(0.96); } .ds-tab:focus-visible, .ds-mic:focus-visible { outline: 2px solid var(--accent, #237A46); outline-offset: 2px; }"
+    },
+    {
+      "name": "Месяц на карте активности",
+      "kind": "custom",
+      "refersTo": "heat-cell",
+      "description": "Пять ступеней зелёного, квадраты 28px без чисел и легенды; сегодня — кольцо, будущее — контур.",
+      "html": "<div class=\"ds-heat\"><i class=\"ds-l0\"></i><i class=\"ds-l1\"></i><i class=\"ds-l2\"></i><i class=\"ds-l0\"></i><i class=\"ds-l3\"></i><i class=\"ds-l4\"></i><i class=\"ds-l2\"></i><i class=\"ds-l1\"></i><i class=\"ds-l0\"></i><i class=\"ds-l3\"></i><i class=\"ds-l4\"></i><i class=\"ds-l4\"></i><i class=\"ds-l2\"></i><i class=\"ds-l0\"></i><i class=\"ds-l1\"></i><i class=\"ds-l2\"></i><i class=\"ds-l3\"></i><i class=\"ds-l3 ds-today\"></i><i class=\"ds-future\"></i><i class=\"ds-future\"></i><i class=\"ds-future\"></i></div>",
+      "css": ".ds-heat { display: grid; grid-template-columns: repeat(7, 28px); justify-content: space-between; gap: 7px 0; padding: 16px 18px; border-radius: 20px; background: var(--glass, rgba(255,255,255,0.58)); -webkit-backdrop-filter: var(--glass-blur, blur(22px)); backdrop-filter: var(--glass-blur, blur(22px)); box-shadow: var(--glass-edge, inset 0 0 0 1px rgba(255,255,255,0.75), 0 8px 24px rgba(31,42,31,0.07)); } .ds-heat i { width: 28px; height: 28px; border-radius: 8px; background: var(--heat-0, #E4E8DF); } .ds-heat i.ds-l1 { background: var(--heat-1, #B8E0C4); } .ds-heat i.ds-l2 { background: var(--heat-2, #7CCB96); } .ds-heat i.ds-l3 { background: var(--heat-3, #3FA968); } .ds-heat i.ds-l4 { background: var(--heat-4, #237A46); } .ds-heat i.ds-today { box-shadow: 0 0 0 1px var(--surface, #FFFFFF), 0 0 0 2.5px var(--text, #1F2A1F); } .ds-heat i.ds-future { background: transparent; box-shadow: inset 0 0 0 1px var(--line, #E3E0D6); }"
+    },
+    {
+      "name": "Чипы и бейджи",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Пилюли: чип выбора людей 44px (выбран — кольцо accent), «Все» — сплошной зелёный; бейдж 22px.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip ds-chip-all ds-on\">Все</button><button class=\"ds-chip ds-on\"><span class=\"ds-av\">А</span>Алёна</button><button class=\"ds-chip\"><span class=\"ds-av ds-av-b\">К</span>Костя</button><span class=\"ds-badge\">админ</span></div>",
+      "css": ".ds-chips { font-family: 'Onest Variable', 'Onest', system-ui, -apple-system, sans-serif; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } .ds-chip { min-height: 44px; padding: 0 12px 0 6px; border: 0; border-radius: 22px; background: var(--bg, #F6F4EE); color: var(--text, #1F2A1F); display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; transition: transform 160ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); } .ds-chip:active { transform: scale(0.96); } .ds-chip.ds-on { background: var(--surface, #FFFFFF); box-shadow: inset 0 0 0 2px var(--accent, #237A46); } .ds-chip-all { padding: 0 16px; font-weight: 600; } .ds-chip-all.ds-on { background: var(--accent, #237A46); color: var(--accent-text, #FFFFFF); box-shadow: none; } .ds-av { width: 32px; height: 32px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 13px; font-weight: 700; background: #E6F2E9; color: #237A46; } .ds-av-b { background: #E3E9F6; color: #2B4579; } .ds-badge { height: 22px; padding: 0 8px; border-radius: 11px; display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; background: var(--accent-soft, #E6F2E9); color: var(--accent-soft-text, #1B6139); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Бережный день",
+    "overview": "LifeCommit — мини-апп Telegram для привычек, дел на день, календаря и общих целей с близкими. Важная часть аудитории — люди с СДВГ, и отличие от конкурентов (Challenger с дедлайнами, сериями и соревнованием) — бережность. Интерфейс разговаривает как спокойный друг, а не как надзиратель: ни один пиксель не стыдит, не торопит и не считает провалы. Основа — стиль A «Мягкий» (утверждён 30.09.2026): тёплая бумага вместо белого, тёмно-зелёный графит вместо чёрного, один зелёный акцент, шрифт Onest, крупные мягкие скругления. Поверх него — матовое стекло (30.09.2026, круг 12, вариант 1): карточки, карта активности, поля и нижняя панель полупрозрачные и размывают мягкие цветные пятна фона (мята, песок, персик). В тёмной теме то же стекло тёмное, а пятна светятся.\n\nПлотность низкая и это правило, а не вкус. На экране одно главное действие и 3–4 блока, без легенд, подписей-пояснений и повторных чисел; второстепенное — за тапом (шторка, экран привычки). Отметить привычку — одно касание круглой кнопки 48 px. Число вводят только цифрами. Всё выбирается в шторках снизу; системных выпадающих списков, полей даты и времени нет. Пропущенное не краснеет: несделанное дело тихо переезжает на завтра с пометкой «со вчера» серым цветом.\n\nОтвергнуто владелицей, не возвращать: git и код в интерфейсе (заставка-терминал убрана 30.09), стили «Блокнот», «Игровой», «Сад», лоадеры из клеток 3×3 («опять квадратики»), «три точки», всё похожее на микрофон во время разбора голоса, стрики и серии, красный цвет и слово «просрочено», слоган, системный шрифт как голос, цвета темы Telegram, `tabular-nums`. Файл описывает мини-апп в обеих темах на iPhone и Android. Картинки «Поделиться» (`src/share/draw.ts`) и будущий лендинг — отдельные поверхности: палитру и Onest берут отсюда, композицию решают сами.",
+    "keyCharacteristics": [
+      "Тёплая бумага и один зелёный; цвет вида привычки живёт только на её плитке, значке и статистике.",
+      "Матовое стекло на холсте с неподвижными цветными пятнами; шторки сплошные.",
+      "Onest 500–700, короткие крупные заголовки с трекингом −0.02em, обычные (не моноширинные) цифры.",
+      "Всё круглое: карточки 20 px, кнопки 14 px, отметки — круги 48 px; внутренние радиусы концентричны внешним.",
+      "Карта активности — пять ступеней зелёного, квадратные клетки, без легенды.",
+      "Движение короткое, одна кривая, мягкое сжатие при нажатии; при `prefers-reduced-motion` выключается всё."
+    ],
+    "rules": [
+      {
+        "name": "The No-Shame Color Rule",
+        "body": "У состояния привычки, дела, дня или цели нет красного, нет «просрочено» и нет счётчика, который обнуляется. Срыв у «бросить» — мягкая терракота, пропущенное дело — серая пометка «со вчера». Красный `destructive` разрешён только на действии «Удалить».",
+        "section": "colors"
+      },
+      {
+        "name": "The One Green Rule",
+        "body": "Зелёный — единственный акцентный цвет действия и выполненного. Песок, терракота и синий не спорят с ним: каждый живёт в своей узкой роли (вид привычки, срыв или ошибка, «пришло извне»).",
+        "section": "colors"
+      },
+      {
+        "name": "The Own Palette Rule",
+        "body": "Цвета приложения — свои hex из этого файла, а не `--tg-theme-*`. Это осознанное отступление от гайда Telegram и скилла `telegram-mini-app` (его `check.sh` на это ругается, так и задумано). Шапка, фон и нижняя полоса Telegram красятся в `bg`, MainButton — в `accent`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Onest Voice Rule",
+        "body": "Onest — голос интерфейса, а не украшение. Приложение ждёт загрузки шрифта до 1,5 с (`document.fonts.ready` на заставке), чтобы текст не перескакивал с системного шрифта. Системный шрифт допустим только как fallback.",
+        "section": "typography"
+      },
+      {
+        "name": "The Plain Digits Rule",
+        "body": "Цифры обычные, пропорциональные; `tabular-nums` запрещён: моноширинная «1» в Onest даёт дыру («1 46»). Разряды группируются через `t.num()` (`Intl.NumberFormat`) только с четырёх знаков: 146, 1 146, 25 546.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Action Rule",
+        "body": "Одно главное действие, 3–4 блока, без легенд, подписей-пояснений и повторных чисел. Второстепенное — за тапом. Если на экране две зелёные кнопки во всю ширину, одна лишняя.",
+        "section": "layout"
+      },
+      {
+        "name": "The Clear Tab Bar Rule",
+        "body": "Ничего не лежит поверх нижней панели при любой прокрутке, ничего не шире экрана, последний элемент списка виден целиком. `checkScreen` в `e2e/screens.spec.ts` проверяет это на каждом экране и шторке.",
+        "section": "layout"
+      },
+      {
+        "name": "The No-Jump Rule",
+        "body": "Переключение вида не меняет высоту блока: «Месяц» и «Год» лежат в одной клетке сетки, в месяце всегда шесть строк, у «К сегодня» место зарезервировано заранее.",
+        "section": "layout"
+      },
+      {
+        "name": "The Frosted Canvas Rule",
+        "body": "Стекло (`glass` + `--glass-blur` + `--glass-edge`) — на всём, что лежит на холсте: карточки, карта активности, поля, иконки-кнопки, поиск, нижняя панель. Без размытия стекло не считается стеклом.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Solid Sheet Rule",
+        "body": "Шторки сплошные (`surface`) ради читаемости. Внутри шторки стекла нет: сгруппированные строки, поля и списки лежат на плоской подложке `bg`.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Fixed Glow Rule",
+        "body": "Пятна фона неподвижны. Прокручивается `.app-shell`, а не `body`; новый экран не должен вешать свою прокрутку на документ. Если на слабых телефонах прокрутка тормозит, размытие сначала остаётся только у нижней панели и карты, а карточки получают полупрозрачную заливку без размытия (`docs/HANDOFF.md`, «оптимизировать», п. 8).",
+        "section": "elevation"
+      },
+      {
+        "name": "The Concentric Rule",
+        "body": "Внутренний радиус = внешний − отступ. Переключатель: 16 снаружи, 4 отступ, 12 у сегмента; мини-переключатель 14 / 3 / 11; таблетка свайпа в списке — `radius − 4px`. Вложенный скруглённый элемент без такой арифметики выглядит чужим.",
+        "section": "shapes"
+      },
+      {
+        "name": "The No Sharp Corners Rule",
+        "body": "У всего, что нажимается или выделяется, есть скругление из шкалы. Таблетка свайпа на карточке привычки — во всю высоту карточки и с её радиусом.",
+        "section": "shapes"
+      },
+      {
+        "name": "The One Curve Rule",
+        "body": "Новая анимация берёт `--ease-out` и одну из трёх длительностей. Пружины с перелётом, отскок и анимация `width` / `height` запрещены.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "**Do** брать каждый цвет из токенов и задавать его парой для светлой и тёмной темы; новый цвет сначала появляется в `:root` и `:root[data-color-scheme='dark']`.",
+      "**Do** давать экрану одно главное действие: зелёная кнопка 48px во всю ширину или MainButton Telegram в редакторе.",
+      "**Do** класть карточки, карту, поля и панель на стекло (`--glass` + `--glass-blur` + `--glass-edge`), а шторки делать сплошными `surface`.",
+      "**Do** отмечать привычку круглыми кнопками 48px одинакового размера; повторный тап снимает отметку.",
+      "**Do** показывать пропущенное тихо: серая пометка «со вчера», без смены цвета строки.",
+      "**Do** давать нажатию `scale(0.96)` за 160ms на `--ease-out`, а переходам — 160 / 200 / 240ms на той же кривой.",
+      "**Do** выключать каждую анимацию при `prefers-reduced-motion: reduce`.",
+      "**Do** держать контраст текста не ниже 4,5:1 на стекле в обеих темах (axe в `e2e/a11y.spec.ts`).",
+      "**Do** добавлять «Выбрать все» везде, где можно выбрать несколько.",
+      "**Do** сохранять высоту блока при переключении вида.",
+      "**Do** вычислять внутренний радиус как внешний минус отступ.",
+      "**Do** добавлять новый экран или шторку в `e2e/screens.spec.ts` через `checkScreen`."
+    ],
+    "donts": [
+      "**Don't** красить состояние привычки, дела, дня или цели в красный и писать «просрочено»; `destructive` — только на «Удалить».",
+      "**Don't** показывать стрики, серии, огоньки и счётчики, которые обнуляются после срыва.",
+      "**Don't** брать цвета из `--tg-theme-*` и ставить системный шрифт голосом интерфейса.",
+      "**Don't** включать `tabular-nums`.",
+      "**Don't** добавлять легенды, подписи-пояснения, повторные числа и вторую главную кнопку.",
+      "**Don't** ставить системные select, поля даты и времени — только шторки `Picker`.",
+      "**Don't** класть стекло на шторку и что-либо поверх нижней панели.",
+      "**Don't** возвращать git, терминал и код в интерфейс; не делать лоадеры из клеток 3×3, «три точки» и микрофон во время разбора.",
+      "**Don't** использовать пружины с перелётом, отскок, анимацию `width` / `height` и вторую кривую.",
+      "**Don't** делать острые углы у того, что нажимается.",
+      "**Don't** писать слоган и фразы-наполнители на экранах и картинках «Поделиться»."
+    ]
+  }
+}
