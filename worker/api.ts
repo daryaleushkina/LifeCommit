@@ -22,6 +22,7 @@ import {
 } from '../shared/types';
 import type { TaskHistory } from '../shared/stats';
 import { summarize, type SummaryLog, type SummaryTask } from '../shared/summary';
+import { cleanText } from '../shared/text';
 import { requireTelegram, type AuthVars } from './auth';
 import { addDays, isValidTimeZone, logicalDay, weekStart } from './day';
 import { byTelegram, db, type Env } from './env';
@@ -108,8 +109,8 @@ api.post('/session', async (c) => {
   }
   const profile = {
     id: tgUser.id,
-    first_name: tgUser.first_name ?? '',
-    last_name: tgUser.last_name ?? null,
+    first_name: cleanText(tgUser.first_name ?? '', 64),
+    last_name: cleanText(tgUser.last_name ?? '', 64) || null,
     username: tgUser.username ?? null,
     photo_url: tgUser.photo_url ?? null,
     last_seen_at: new Date().toISOString(),
@@ -199,7 +200,7 @@ const SCHEDULES = ['daily', 'weekdays', 'per_week'];
 const VISIBILITIES = ['private', 'friends'];
 
 function cleanTask(input: TaskInput, day: string) {
-  const title = String(input.title ?? '').trim().slice(0, 80);
+  const title = cleanText(String(input.title ?? ''), 80);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
   if (!['count', 'check', 'abstain'].includes(input.kind)) throw new HTTPException(400, { message: 'bad_kind' });
   const binary = input.kind === 'check' || input.kind === 'abstain';
@@ -211,7 +212,7 @@ function cleanTask(input: TaskInput, day: string) {
       title,
       emoji: input.emoji?.slice(0, 16) || null,
       kind: input.kind,
-      unit: binary ? null : input.unit?.trim().slice(0, 20) || null,
+      unit: binary ? null : cleanText(input.unit ?? '', 20) || null,
       step: binary ? 1 : autoStep(target),
       schedule,
       weekdays: schedule === 'weekdays' ? Math.min(127, Math.max(1, input.weekdays ?? 127)) : 127,
@@ -220,7 +221,7 @@ function cleanTask(input: TaskInput, day: string) {
       last_slip_on: input.kind === 'abstain' ? cleanSlipDate(input.last_slip_on, day) : null,
     },
     target,
-    subtasks: (input.subtasks ?? []).map((s) => s.trim().slice(0, 80)).filter(Boolean).slice(0, 20),
+    subtasks: (input.subtasks ?? []).map((s) => cleanText(s, 80)).filter(Boolean).slice(0, 20),
   };
 }
 
@@ -355,14 +356,14 @@ function todoTime(value: string | null | undefined): string | null {
 }
 
 function cleanTodo(input: TodoInput, today: string) {
-  const title = String(input.title ?? '').trim().slice(0, 120);
+  const title = cleanText(String(input.title ?? ''), 120);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
   const d = Number(input.duration_min);
   const location = cleanLocation(input.location);
   return { title, day: todoDay(input.day, today), time: todoTime(input.time), duration_min: d > 0 && d <= 20160 ? Math.round(d) : null, details: location ? { location } : null };
 }
 
-const cleanLocation = (v: unknown) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, 200) : '');
+const cleanLocation = (v: unknown) => (typeof v === 'string' ? cleanText(v, 200) : '');
 
 export async function insertTodos(sb: SupabaseClient, user: UserRow, inputs: TodoInput[]): Promise<number[]> {
   const day = today(user);
@@ -660,12 +661,12 @@ api.patch('/tasks/:id', async (c) => {
 
   const fields: Record<string, unknown> = {};
   if (patch.title !== undefined) {
-    const title = patch.title.trim().slice(0, 80);
+    const title = cleanText(patch.title, 80);
     if (!title) throw new HTTPException(400, { message: 'title_required' });
     fields.title = title;
   }
   if (patch.emoji !== undefined) fields.emoji = patch.emoji?.slice(0, 16) || null;
-  if (patch.unit !== undefined) fields.unit = patch.unit?.trim().slice(0, 20) || null;
+  if (patch.unit !== undefined) fields.unit = cleanText(patch.unit ?? '', 20) || null;
   if (patch.visibility !== undefined) fields.visibility = known(patch.visibility, VISIBILITIES, 'bad_visibility');
   if (patch.last_slip_on !== undefined && task.kind === 'abstain') fields.last_slip_on = cleanSlipDate(patch.last_slip_on, today(user));
   if (patch.schedule !== undefined) {

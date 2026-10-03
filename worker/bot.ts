@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { TaskInput, TodoInput } from '../shared/types';
 import { FREE_TASK_LIMIT, MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT } from '../shared/types';
+import { cleanText } from '../shared/text';
 import { countActive, insertTasks, insertTodos, isPremium, takeVoiceQuota, today, USER_COLS, type UserRow } from './api';
 import { addDays } from './day';
 import { byTelegram, db, tg, type Env } from './env';
@@ -138,8 +139,8 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
     if (!linked) await sb.from('users').upsert(
       {
         id: msg.from.id,
-        first_name: msg.from.first_name ?? '',
-        last_name: msg.from.last_name ?? null,
+        first_name: cleanText(msg.from.first_name ?? '', 64),
+        last_name: cleanText(msg.from.last_name ?? '', 64) || null,
         username: msg.from.username ?? null,
         bot_chat_ok: true,
       },
