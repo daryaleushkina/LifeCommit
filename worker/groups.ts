@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { dayCount, dayItem, type GroupDayBlock, type GoalUnit, type GroupItemRow, type GroupKind, type GroupMember, type GroupMode, type GroupRole, type GroupToday } from '../shared/groups';
 import { parseRRule } from '../shared/rrule';
+import { cleanText } from '../shared/text';
 import type { App, UserRow } from './api';
 import { addDays, logicalDay } from './day';
 import { checkChat, disconnectChat, refreshChat } from './groupBot';
@@ -108,7 +109,7 @@ groups.get('/groups', async (c) => c.json(await groupsToday(c.get('sb'), c.get('
 
 groups.post('/groups', async (c) => {
   const body = await c.req.json<{ title?: string; kind?: GroupKind }>();
-  const title = (body.title ?? '').trim().slice(0, 60);
+  const title = cleanText(body.title ?? '', 60);
   if (!title) throw bad('no_title');
   const kind = KINDS.includes(body.kind as GroupKind) ? body.kind : 'other';
   const sb = c.get('sb');
@@ -149,7 +150,7 @@ groups.patch('/groups/:id', async (c) => {
   if (role === 'member') throw new HTTPException(403, { message: 'forbidden' });
   const body = await c.req.json<Record<string, unknown>>();
   const fields: Record<string, unknown> = {};
-  if (typeof body.title === 'string' && body.title.trim()) fields.title = body.title.trim().slice(0, 60);
+  if (typeof body.title === 'string' && cleanText(body.title)) fields.title = cleanText(body.title, 60);
   if (KINDS.includes(body.kind as GroupKind)) fields.kind = body.kind;
   for (const k of ['admins_only_edit', 'rating_enabled', 'chat_digest', 'chat_reminders'] as const) if (typeof body[k] === 'boolean') fields[k] = body[k];
   if (Object.keys(fields).length) must(await sb.from('groups').update(fields).eq('id', id));
@@ -277,7 +278,7 @@ interface ItemInput {
 function cleanItem(body: ItemInput, today: string, memberIds: number[], partial: boolean): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (body.title !== undefined || !partial) {
-    const title = (body.title ?? '').trim().slice(0, 120);
+    const title = cleanText(body.title ?? '', 120);
     if (!title) throw bad('no_title');
     out.title = title;
   }

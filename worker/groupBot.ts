@@ -3,6 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { dayCount, dayItem, type GroupDayItem, type GroupItemRow, type GroupMember } from '../shared/groups';
 import { MAX_VOICE_SECONDS } from '../shared/types';
+import { cleanText } from '../shared/text';
 import { takeVoiceQuota, USER_COLS, type UserRow } from './api';
 import { logicalDay, localTime } from './day';
 import { byTelegram, db, tg, TgError, type Env } from './env';
@@ -43,6 +44,8 @@ export interface GroupUpdate {
 const isGroupChat = (c?: TgChat) => c?.type === 'group' || c?.type === 'supergroup';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+/** Название чата Telegram, которое увидят в настройках группы: без невидимых символов; пустое — null. */
+const chatTitle = (s: string | undefined) => cleanText(s ?? '', 128) || null;
 
 const T = {
   ru: {
@@ -285,8 +288,9 @@ export async function checkChat(env: Env, groupId: number): Promise<string | nul
       await unbind(sb, chatId);
       return null;
     }
-    if (chat.title && chat.title !== data.tg_chat_title) await sb.from('groups').update({ tg_chat_title: chat.title }).eq('id', groupId);
-    return chat.title ?? data.tg_chat_title;
+    const title = chatTitle(chat.title);
+    if (title && title !== data.tg_chat_title) await sb.from('groups').update({ tg_chat_title: title }).eq('id', groupId);
+    return title ?? data.tg_chat_title;
   } catch (e) {
     if (chatFate(e) === 'gone') {
       await unbind(sb, chatId);
@@ -355,7 +359,7 @@ async function bindChat(env: Env, sb: SupabaseClient, groupId: number, chat: TgC
   const { data: before, error: readError } = await sb.from('groups').select(GROUP_COLS).eq('id', groupId).single();
   if (!before) return failed(readError);
   const old = before as unknown as ChatGroup;
-  const { error: bindError } = await sb.from('groups').update({ tg_chat_id: chat.id, tg_chat_title: chat.title ?? null, tg_today_msg_id: null, tg_today_day: null }).eq('id', groupId);
+  const { error: bindError } = await sb.from('groups').update({ tg_chat_id: chat.id, tg_chat_title: chatTitle(chat.title), tg_today_msg_id: null, tg_today_day: null }).eq('id', groupId);
   if (bindError) return failed(bindError);
   // «Другой чат»: из прежнего бот прощается и выходит — как при «Отключить».
   if (old.tg_chat_id && old.tg_chat_id !== chat.id) await leaveChat(env, old.tg_chat_id, old.title, textsOf(old));
@@ -392,7 +396,7 @@ export async function handleGroupUpdate(env: Env, u: GroupUpdate): Promise<boole
       return true;
     }
     // Группа и её владелец — два запроса без транзакции: не вышло — в лог и в чат, без группы-сироты.
-    const { data: created, error: createError } = await sb.from('groups').insert({ title: cut(chat.title?.trim() || 'Группа', 60), kind: 'other', owner_id: user.id }).select('id').single<{ id: number }>();
+    const { data: created, error: createError } = await sb.from('groups').insert({ title: cut(cleanText(chat.title ?? '') || 'Группа', 60), kind: 'other', owner_id: user.id }).select('id').single<{ id: number }>();
     if (!created) {
       console.error('group from chat: create failed', chat.id, user.id, createError);
       await tg(env, 'sendMessage', { chat_id: chat.id, text: t.connectFailed });
@@ -428,7 +432,7 @@ export async function handleGroupUpdate(env: Env, u: GroupUpdate): Promise<boole
       return true;
     }
     if (msg.new_chat_title) {
-      await sb.from('groups').update({ tg_chat_title: msg.new_chat_title }).eq('tg_chat_id', msg.chat.id);
+      await sb.from('groups').update({ tg_chat_title: chatTitle(msg.new_chat_title) }).eq('tg_chat_id', msg.chat.id);
       return true;
     }
   }
