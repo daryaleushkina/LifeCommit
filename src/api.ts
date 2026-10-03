@@ -2,7 +2,7 @@ import { retrieveRawInitData } from '@tma.js/sdk-react';
 import type { GroupDayBlock, GroupKind, GroupMode, GroupToday } from '../shared/groups';
 import type { TaskHistory } from '../shared/stats';
 import type { SummaryItem } from '../shared/summary';
-import type { HeatDay, TaskInput, Todo, TodoInput, TodayResponse, UserSettings, VoiceAction, VoiceEvent } from '../shared/types';
+import type { FriendProfile, FriendsResponse, HeatDay, Person, PersonStatus, TaskInput, Todo, TodoInput, TodayResponse, UserSettings, VoiceAction, VoiceEvent } from '../shared/types';
 
 /** Подключённый календарь. */
 export interface CalendarAccount {
@@ -99,6 +99,24 @@ export const api = {
   settings: (patch: Partial<UserSettings>) => call<UserSettings>('PATCH', '/settings', patch),
   writeAccess: () => call<{ ok: true }>('POST', '/write-access'),
   deleteAccount: () => call<{ ok: true }>('DELETE', '/account'),
+  // Друзья
+  friends: () => call<FriendsResponse>('GET', '/friends'),
+  friend: (id: number) => call<FriendProfile>('GET', `/friends/${id}`),
+  findPerson: (username: string) => call<{ person: Person; status: PersonStatus }>('GET', `/friends/find?username=${encodeURIComponent(username)}`),
+  friendLink: (code: string) => call<{ person: Person; status: PersonStatus }>('GET', `/friends/link/${encodeURIComponent(code)}`),
+  /** Позвать по @username или по чужой ссылке: заявка ушла или уже друзья (встречная заявка). */
+  requestFriend: (to: { username: string } | { code: string }) => call<{ status: 'sent' | 'friends' }>('POST', '/friends/requests', to),
+  acceptFriend: (id: number) => call<{ ok: true }>('POST', `/friends/requests/${id}/accept`),
+  /** Отклонить заявку ко мне или отменить свою. */
+  dropRequest: (id: number) => call<{ ok: true }>('DELETE', `/friends/requests/${id}`),
+  removeFriend: (id: number) => call<{ ok: true }>('DELETE', `/friends/${id}`),
+  block: (id: number) => call<{ ok: true }>('POST', `/friends/${id}/block`),
+  blocks: () => call<Person[]>('GET', '/blocks'),
+  unblock: (id: number) => call<{ ok: true }>('DELETE', `/blocks/${id}`),
+  /** «Что показать друзьям?»: открыть эти привычки, остальные — только мне. */
+  setShown: (taskIds: number[]) => call<{ ok: true }>('PUT', '/friends/shown', { task_ids: taskIds }),
+  /** Шторку «Что показать друзьям?» закрыли, ничего не меняя. */
+  promptSeen: () => call<{ ok: true }>('POST', '/friends/prompted'),
   // Группы
   groups: () => call<GroupToday[]>('GET', '/groups'),
   group: (id: number) => call<GroupDetail>('GET', `/groups/${id}`),

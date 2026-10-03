@@ -3,7 +3,8 @@ import type { GroupItemDraft, GroupToday } from './groups';
 
 export type TaskKind = 'count' | 'check' | 'abstain';
 export type Schedule = 'daily' | 'weekdays' | 'per_week';
-export type Visibility = 'private' | 'followers' | 'public';
+/** Кто видит привычку: только я или друзья (решение 03.10.2026; по умолчанию — только я). */
+export type Visibility = 'private' | 'friends';
 export type AbstainStatus = 'clean' | 'slip' | null;
 
 export interface Subtask {
@@ -47,7 +48,6 @@ export interface UserSettings {
   remind_morning: string | null;
   remind_evening: string | null;
   bot_chat_ok: boolean;
-  profile_mode: 'open' | 'closed';
   premium: boolean;
 }
 
@@ -105,6 +105,73 @@ export function sortTodos<T extends Pick<Todo, 'done' | 'time'>>(list: readonly 
     .map((d, i) => ({ d, i }))
     .sort((a, b) => rank(a.d) - rank(b.d) || (rank(a.d) === 0 ? a.d.time!.localeCompare(b.d.time!) : 0) || a.i - b.i)
     .map(({ d }) => d);
+}
+
+// ── Друзья (допрос 03.10.2026) ──
+
+/** Человек — как его видят другие: в списке друзей, в заявке, в поиске по @username. */
+export interface Person {
+  id: number;
+  first_name: string;
+  username: string | null;
+  photo_url: string | null;
+}
+
+/** Друг в списке: сколько открытых мне привычек он сделал сегодня из нужных сегодня. */
+export interface FriendCard extends Person {
+  /** Когда стали друзьями. */
+  since: string | null;
+  done: number;
+  due: number;
+  /** Общая карта за последние 14 дней друга (с самого раннего по сегодня) — полоска в карточке. */
+  days: number[];
+}
+
+/** Заявка ко мне: нашли по @username или открыли мою ссылку. */
+export interface FriendRequest extends Person {
+  via: 'username' | 'link';
+}
+
+export interface FriendsResponse {
+  friends: FriendCard[];
+  /** Заявки ко мне. */
+  incoming: FriendRequest[];
+  /** Мои заявки, которые ещё не приняли. */
+  outgoing: Person[];
+  /** Моя постоянная ссылка «Позвать друга» (открывший присылает заявку). */
+  link: string;
+  /** Показать один раз шторку «Что показать друзьям?»: друг уже есть, а шторку ещё не видели. */
+  prompt: boolean;
+}
+
+/** Кто это для меня: друг, заявка от меня, заявка ко мне, я сам, я его заблокировала — или никто. */
+export type PersonStatus = 'none' | 'friends' | 'sent' | 'incoming' | 'self' | 'blocked';
+
+/** Открытая друзьям привычка — на экране друга. */
+export interface FriendHabit {
+  id: number;
+  title: string;
+  emoji: string | null;
+  kind: TaskKind;
+  unit: string | null;
+  target: number;
+  value: number;
+  status: AbstainStatus;
+  due: boolean;
+  /** Отказ: «N дней без». */
+  clean_days: number;
+  /** Отметки за последние 35 дней. */
+  logs: { day: string; value: number; status: AbstainStatus }[];
+}
+
+export interface FriendProfile {
+  person: Person;
+  since: string | null;
+  /** Логический день друга (его «сегодня»). */
+  today: string;
+  /** Общая карта за год — по всем привычкам и делам, без названий. */
+  heat: HeatDay[];
+  habits: FriendHabit[];
 }
 
 export interface TodayResponse {

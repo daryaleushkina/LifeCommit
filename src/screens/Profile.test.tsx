@@ -8,7 +8,7 @@ import { renderApp } from '../test/render';
 import { Profile } from './Profile';
 
 const m = vi.hoisted(() => ({
-  api: { settings: vi.fn(), writeAccess: vi.fn(), deleteAccount: vi.fn(), summary: vi.fn() },
+  api: { settings: vi.fn(), writeAccess: vi.fn(), deleteAccount: vi.fn(), summary: vi.fn(), blocks: vi.fn(), unblock: vi.fn() },
   share: { templates: null as Template[] | null },
   tg: { popup: false, answer: 'delete' as string | null, popups: [] as unknown[], writeAccess: false, writeAnswer: 'allowed', links: [] as string[] },
 }));
@@ -39,7 +39,7 @@ vi.mock('../share/ShareSheet', async () => {
 const TODAY = '2026-10-03';
 const user = (patch: Partial<UserSettings> = {}): UserSettings => ({
   id: 1, first_name: 'Даша', username: 'dasha', photo_url: null, language_code: 'ru', timezone: 'Europe/Moscow', day_start_hour: 4,
-  remind_morning: null, remind_evening: null, bot_chat_ok: true, profile_mode: 'closed', premium: false, ...patch,
+  remind_morning: null, remind_evening: null, bot_chat_ok: true, premium: false, ...patch,
 });
 const days: HeatDay[] = [
   { day: '2025-12-31', score: 1 },
@@ -70,6 +70,8 @@ beforeEach(() => {
   m.api.settings.mockImplementation(async (patch: Partial<UserSettings>) => user(patch));
   m.api.writeAccess.mockResolvedValue({ ok: true });
   m.api.summary.mockResolvedValue([]);
+  m.api.blocks.mockResolvedValue([]);
+  m.api.unblock.mockResolvedValue({ ok: true });
   m.share.templates = null;
   Object.assign(m.tg, { popup: false, answer: 'delete', popups: [], writeAccess: false, writeAnswer: 'allowed', links: [] });
 });
@@ -198,11 +200,9 @@ describe('настройки', () => {
     expect(m.api.settings).toHaveBeenCalledWith({ day_start_hour: 6 });
   });
 
-  it('приватность и язык — через шторку выбора', async () => {
+  it('язык — через шторку выбора; переключателя «Приватность профиля» больше нет', async () => {
     await setup();
-    await page.getByRole('button', { name: /Приватность профиля/ }).click();
-    await page.getByRole('option', { name: 'Открытый' }).click();
-    expect(m.api.settings).toHaveBeenCalledWith({ profile_mode: 'open' });
+    expect(page.getByRole('button', { name: /Приватность профиля/ }).elements()).toEqual([]);
     await page.getByRole('button', { name: /Язык/ }).click();
     await page.getByRole('option', { name: 'English' }).click();
     expect(m.api.settings).toHaveBeenCalledWith({ language_code: 'en' });
@@ -230,10 +230,43 @@ describe('настройки', () => {
   it('настройка не сохранилась — сообщение об ошибке', async () => {
     m.api.settings.mockRejectedValue(new Error('сеть'));
     const { onUser } = await setup();
-    await page.getByRole('button', { name: /Приватность профиля/ }).click();
-    await page.getByRole('option', { name: 'Открытый' }).click();
+    await page.getByRole('button', { name: /Язык/ }).click();
+    await page.getByRole('option', { name: 'English' }).click();
     await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
     expect(onUser).not.toHaveBeenCalled();
+  });
+
+  it('заблокированные: строки нет, пока никого; есть — список и «Разблокировать»', async () => {
+    await setup();
+    await expect.element(page.getByRole('button', { name: /Язык/ })).toBeVisible();
+    expect(page.getByRole('button', { name: /Заблокированные/ }).elements()).toEqual([]);
+  });
+
+  it('заблокированных можно разблокировать по одному', async () => {
+    m.api.blocks.mockResolvedValue([
+      { id: 5, first_name: 'Тимур', username: 'timur', photo_url: null },
+      { id: 6, first_name: 'Аня', username: null, photo_url: null },
+    ]);
+    await setup();
+    await page.getByRole('button', { name: /Заблокированные/ }).click();
+    const sheet = page.getByRole('dialog', { name: 'Заблокированные' });
+    await expect.element(sheet.getByText('@timur')).toBeVisible();
+    await sheet.getByRole('button', { name: 'Разблокировать' }).first().click();
+    expect(m.api.unblock).toHaveBeenCalledWith(5);
+    await expect.element(sheet.getByText('Тимур')).not.toBeInTheDocument();
+    // Сервер не ответил — строка всё равно уходит; шторка закрывается.
+    m.api.unblock.mockRejectedValue(new Error('сеть'));
+    await sheet.getByRole('button', { name: 'Разблокировать' }).click();
+    await expect.element(sheet.getByText('Аня')).not.toBeInTheDocument();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('список заблокированных не загрузился — строки нет', async () => {
+    m.api.blocks.mockRejectedValue(new Error('сеть'));
+    await setup();
+    await expect.element(page.getByRole('button', { name: /Язык/ })).toBeVisible();
+    expect(page.getByRole('button', { name: /Заблокированные/ }).elements()).toEqual([]);
   });
 
   it('«Поддержать проект» открывает страницу донатов в Telegram', async () => {

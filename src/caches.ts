@@ -3,7 +3,7 @@
 // Нужное заранее подтягивается при запуске (пока видна заставка) и в фоне сразу после неё.
 import type { GroupDayBlock, GroupToday } from '../shared/groups';
 import type { TaskHistory } from '../shared/stats';
-import type { Todo } from '../shared/types';
+import type { FriendProfile, FriendsResponse, Todo } from '../shared/types';
 import { api, type CalendarAccount, type GroupDetail, type Invitation } from './api';
 import { currentChange } from './useTaskLog';
 
@@ -27,6 +27,10 @@ export const caches = {
   invitations: new Map<string, Invitation>(),
   /** «Потом» — дела на следующие дни. */
   later: null as Todo[] | null,
+  /** Друзья, заявки и моя ссылка (вкладка «Вместе» → «Друзья»). */
+  friends: null as FriendsResponse | null,
+  /** Экраны друзей. */
+  friendProfiles: new Map<number, FriendProfile>(),
 };
 
 /** Один и тот же запрос не шлём дважды, пока первый не вернулся. */
@@ -96,6 +100,17 @@ export const load = {
     once('later', async () => {
       caches.later = await api.laterTodos();
       return caches.later;
+    }),
+  friends: () =>
+    once('friends', async () => {
+      caches.friends = await api.friends();
+      return caches.friends;
+    }),
+  friend: (id: number) =>
+    once(`friend:${id}`, async () => {
+      const f = await api.friend(id);
+      caches.friendProfiles.set(id, f);
+      return f;
     }),
 };
 

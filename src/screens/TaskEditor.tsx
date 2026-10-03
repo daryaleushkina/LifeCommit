@@ -9,7 +9,7 @@ import { DateRow, SelectRow, Sheet } from '../components/Picker';
 import { useBackButton, useMainButton, type SubmitState } from '../telegram/hooks';
 
 const SCHEDULES: Schedule[] = ['daily', 'weekdays', 'per_week'];
-const VISIBILITY: Visibility[] = ['private', 'followers', 'public'];
+const VISIBILITY: Visibility[] = ['private', 'friends'];
 
 interface Form {
   title: string;

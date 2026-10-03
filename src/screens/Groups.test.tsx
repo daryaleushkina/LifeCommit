@@ -7,10 +7,12 @@ import { caches } from '../caches';
 import { renderApp } from '../test/render';
 import { Groups } from './Groups';
 
-const m = vi.hoisted(() => ({ api: { groups: vi.fn(), createGroup: vi.fn(), group: vi.fn() } }));
+const m = vi.hoisted(() => ({ api: { groups: vi.fn(), createGroup: vi.fn(), group: vi.fn(), friends: vi.fn() } }));
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: m.api }));
 
 const ME = 1;
+/** Друзей здесь не открываем — их проверяет Friends.test.tsx. */
+const friendsProps = { habits: [], onOpenFriend: () => {}, onRequests: () => {}, onShown: () => {} };
 const item = (patch: Partial<GroupDayItem>): GroupDayItem => ({
   id: 1, title: 'Дело', mode: 'assign', time: null, duration_min: null, due_day: null, carried: false, recurring: false,
   people: [ME], all_members: false, rotate: false, turn: null, for_me: true, can_mark: true, done: false, done_by: [],
@@ -23,6 +25,7 @@ const group = (patch: Partial<GroupToday>): GroupToday => ({
 });
 
 beforeEach(() => {
+  localStorage.removeItem('lc-together');
   caches.groupList = null;
   caches.groups.clear();
   m.api.groups.mockReset().mockResolvedValue([]);
@@ -30,9 +33,47 @@ beforeEach(() => {
   m.api.group.mockReset().mockResolvedValue(group({ id: 11, title: 'Бег' }) as GroupDetail);
 });
 
+describe('«Группы · Друзья»', () => {
+  it('выбор раздела запоминается; плюс в шапке — «Позвать друга», закрывается', async () => {
+    m.api.friends.mockResolvedValue({ friends: [], incoming: [], outgoing: [], link: 'https://t.me/x?startapp=f_a', prompt: false });
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={() => {}} />);
+    expect(page.getByRole('button', { name: 'Позвать друга' }).elements()).toEqual([]);
+    await page.getByRole('radio', { name: 'Друзья' }).click();
+    expect(localStorage.getItem('lc-together')).toBe('friends');
+    await page.getByRole('button', { name: 'Позвать друга' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Позвать друга' })).toBeVisible();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+    await page.getByRole('radio', { name: 'Группы' }).click();
+    expect(localStorage.getItem('lc-together')).toBe('groups');
+  });
+
+  it('хранилище сломалось — открываются группы, переключение всё равно работает', async () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('нет доступа');
+    });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('нет доступа');
+    });
+    m.api.friends.mockResolvedValue({ friends: [], incoming: [], outgoing: [], link: '', prompt: false });
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={() => {}} />);
+    await expect.element(page.getByRole('radio', { name: 'Группы' })).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('radio', { name: 'Друзья' }).click();
+    await expect.element(page.getByRole('radio', { name: 'Друзья' })).toHaveAttribute('aria-checked', 'true');
+    get.mockRestore();
+    set.mockRestore();
+  });
+
+  it('раздел можно открыть сразу (пришли со ссылки друга)', async () => {
+    m.api.friends.mockResolvedValue({ friends: [], incoming: [], outgoing: [], link: '', prompt: false });
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={() => {}} section="friends" />);
+    await expect.element(page.getByRole('radio', { name: 'Друзья' })).toHaveAttribute('aria-checked', 'true');
+  });
+});
+
 describe('Вкладка «Вместе»', () => {
   it('пока групп нет — подсказка завести', async () => {
-    await renderApp(<Groups me={ME} initial={[]} onOpen={() => {}} />);
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={() => {}} />);
     await expect.element(page.getByText('Пока ни одной группы. Заведи семейную — или позови друга вдвоём.')).toBeVisible();
   });
 
@@ -48,7 +89,7 @@ describe('Вкладка «Вместе»', () => {
     });
     m.api.groups.mockResolvedValue([fresh]);
     const onOpen = vi.fn();
-    await renderApp(<Groups me={ME} initial={[group({ title: 'Старое имя' })]} onOpen={onOpen} />);
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[group({ title: 'Старое имя' })]} onOpen={onOpen} />);
     await expect.element(page.getByText('Семья')).toBeVisible();
     await expect.element(page.getByText('2 человека')).toBeVisible();
     await expect.element(page.getByText('1 из 4 сегодня')).toBeVisible();
@@ -61,7 +102,7 @@ describe('Вкладка «Вместе»', () => {
   it('список уже в кэше — показывается он; не загрузился — остаётся как был', async () => {
     caches.groupList = [group({ title: 'Из кэша', items: [item({ mode: 'goal', target: null })] })];
     m.api.groups.mockRejectedValue(new Error('сеть'));
-    await renderApp(<Groups me={ME} initial={[]} onOpen={() => {}} />);
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={() => {}} />);
     await expect.element(page.getByText('Из кэша')).toBeVisible();
     await expect.element(page.getByText(/из 0 сегодня/)).not.toBeInTheDocument();
   });
@@ -69,7 +110,7 @@ describe('Вкладка «Вместе»', () => {
   it('ничего не было и список не загрузился — пустое состояние; новая группа станет первой в списке', async () => {
     m.api.groups.mockRejectedValue(new Error('сеть'));
     const onOpen = vi.fn();
-    await renderApp(<Groups me={ME} initial={null as unknown as GroupToday[]} onOpen={onOpen} />);
+    await renderApp(<Groups {...friendsProps} me={ME} initial={null as unknown as GroupToday[]} onOpen={onOpen} />);
     await expect.element(page.getByText(/Пока ни одной группы/)).toBeVisible();
     expect(caches.groupList).toBeNull();
     await page.getByRole('button', { name: 'Новая группа' }).click();
@@ -81,14 +122,14 @@ describe('Вкладка «Вместе»', () => {
 
   it('общая цель, куда ещё ничего не положили, — «0 из …»', async () => {
     m.api.groups.mockResolvedValue([group({ items: [item({ title: 'Отпуск', mode: 'goal', target: 500, total: null })] })]);
-    await renderApp(<Groups me={ME} initial={[]} onOpen={() => {}} />);
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={() => {}} />);
     await expect.element(page.getByText('Отпуск: 0 из 500')).toBeVisible();
   });
 
   it('«Новая группа»: пустое имя не создаёт, Enter создаёт, группа сразу в списке и открывается', async () => {
     m.api.groups.mockResolvedValue([group({})]);
     const onOpen = vi.fn();
-    await renderApp(<Groups me={ME} initial={[]} onOpen={onOpen} />);
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={onOpen} />);
     await page.getByRole('button', { name: 'Новая группа' }).click();
     const create = page.getByRole('button', { name: 'Создать группу' });
     await expect.element(create).toBeDisabled();
@@ -109,7 +150,7 @@ describe('Вкладка «Вместе»', () => {
     m.api.groups.mockResolvedValue([group({})]);
     m.api.group.mockRejectedValue(new Error('сеть'));
     const onOpen = vi.fn();
-    await renderApp(<Groups me={ME} initial={[]} onOpen={onOpen} />);
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={onOpen} />);
     await page.getByRole('button', { name: 'Новая группа' }).click();
     await page.getByRole('textbox').fill('Бег');
     await page.getByRole('button', { name: 'Создать группу' }).click();
@@ -119,7 +160,7 @@ describe('Вкладка «Вместе»', () => {
 
   it('создать не вышло — ошибка, можно ещё раз; шторка закрывается', async () => {
     m.api.createGroup.mockRejectedValueOnce(new Error('сеть'));
-    await renderApp(<Groups me={ME} initial={[]} onOpen={() => {}} />);
+    await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={() => {}} />);
     await page.getByRole('button', { name: 'Новая группа' }).click();
     await page.getByRole('textbox').fill('Бег');
     await page.getByRole('button', { name: 'Создать группу' }).click();

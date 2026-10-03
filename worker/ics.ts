@@ -315,8 +315,11 @@ export function patchEvent(ics: string, change: { title: string; day: string; ti
         continue;
       }
       const startLine = block.find((l) => /^DTSTART[;:]/i.test(l));
-      const startDay = startLine ? (/(\d{4})(\d{2})(\d{2})/.exec(startLine.split(':').pop() ?? '') ?? []).slice(1, 4).join('-') : change.day;
-      const day = change.recurring ? startDay || change.day : change.day;
+      // День начала повтора — в поясе человека, как и время дела: у события в чужом поясе (22:00 UTC — это
+      // уже завтра во Вьетнаме) день из самой строки DTSTART сдвинул бы всю серию на день.
+      const start = startLine ? parseLine(startLine) : null;
+      const startDay = (start && readMoment(start, change.tz)?.day) || change.day;
+      const day = change.recurring ? startDay : change.day;
       const kept = block.filter((l) => !/^(SUMMARY|DTSTART|DTEND|DURATION|DTSTAMP)[;:]/i.test(l) && !/^(BEGIN|END):VEVENT$/i.test(l));
       const span = change.time ? 1 : allDaySpan(block);
       out.push('BEGIN:VEVENT', `DTSTAMP:${stamp(now)}`, `SUMMARY:${escapeText(change.title)}`, ...whenLines(day, change.time, change.durationMin, change.tz, span), ...kept, 'END:VEVENT');

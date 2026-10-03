@@ -353,13 +353,13 @@ describe.skipIf(!ready)('привычки: создание', () => {
       target: 25,
       unit: '  страниц на ночь перед сном  ',
       emoji: '📚',
-      visibility: 'followers',
+      visibility: 'friends',
       schedule: 'weekdays',
       weekdays: 500,
       subtasks,
     });
     const { data: t } = await sb.from('tasks').select('title, unit, step, emoji, weekdays, per_week, visibility, schedule').eq('id', id).single();
-    expect(t).toEqual({ title: 'Ч'.repeat(80), unit: 'страниц на ночь пере', step: 5, emoji: '📚', weekdays: 127, per_week: null, visibility: 'followers', schedule: 'weekdays' });
+    expect(t).toEqual({ title: 'Ч'.repeat(80), unit: 'страниц на ночь пере', step: 5, emoji: '📚', weekdays: 127, per_week: null, visibility: 'friends', schedule: 'weekdays' });
     const { data: subs } = await sb.from('task_subtasks').select('title, position').eq('task_id', id).order('position');
     expect(subs).toHaveLength(20);
     expect(subs![0]).toEqual({ title: 'Глава', position: 0 });
@@ -456,9 +456,9 @@ describe.skipIf(!ready)('привычки: правка', () => {
     const u = await user();
     const id = await habit(u, { title: 'Читать', kind: 'count', target: 10, unit: 'стр', emoji: '📖' });
     expect(await u.call('PATCH', `/tasks/${id}`, { title: '   ' })).toMatchObject({ status: 400, body: { error: 'title_required' } });
-    await u.call('PATCH', `/tasks/${id}`, { title: `  ${'К'.repeat(90)} `, emoji: '🔥', unit: '  страниц  ', visibility: 'public' });
+    await u.call('PATCH', `/tasks/${id}`, { title: `  ${'К'.repeat(90)} `, emoji: '🔥', unit: '  страниц  ', visibility: 'friends' });
     const row = async () => (await sb.from('tasks').select('title, emoji, unit, visibility, schedule, weekdays, per_week, last_slip_on').eq('id', id).single()).data!;
-    expect(await row()).toMatchObject({ title: 'К'.repeat(80), emoji: '🔥', unit: 'страниц', visibility: 'public' });
+    expect(await row()).toMatchObject({ title: 'К'.repeat(80), emoji: '🔥', unit: 'страниц', visibility: 'friends' });
     await u.call('PATCH', `/tasks/${id}`, { emoji: null, unit: '' });
     expect(await row()).toMatchObject({ emoji: null, unit: null });
     await u.call('PATCH', `/tasks/${id}`, { emoji: '', unit: null });
@@ -487,6 +487,8 @@ describe.skipIf(!ready)('привычки: правка', () => {
     expect(await row()).toEqual({ schedule: 'daily', weekdays: 127, per_week: null });
     expect(await u.call('PATCH', `/tasks/${id}`, { schedule: 'yearly' })).toMatchObject({ status: 400, body: { error: 'bad_schedule' } });
     expect(await u.call('PATCH', `/tasks/${id}`, { visibility: 'world' })).toMatchObject({ status: 400, body: { error: 'bad_visibility' } });
+    // «Подписчики» и «Все» больше нет — только «Только я / Друзья».
+    expect(await u.call('PATCH', `/tasks/${id}`, { visibility: 'public' })).toMatchObject({ status: 400, body: { error: 'bad_visibility' } });
     expect(await row()).toEqual({ schedule: 'daily', weekdays: 127, per_week: null });
   });
 
@@ -799,7 +801,7 @@ describe.skipIf(!ready)('настройки', () => {
   it('неверные значения не применяются; час начала дня зажимается в 0–12', async () => {
     const u = await user();
     const before = (await u.call('GET', '/me')).body;
-    const res = await u.call('PATCH', '/settings', { language_code: 'de', timezone: 'Mars/Base', profile_mode: 'secret', remind_morning: '8:30', remind_evening: 'вечером' });
+    const res = await u.call('PATCH', '/settings', { language_code: 'de', timezone: 'Mars/Base', remind_morning: '8:30', remind_evening: 'вечером' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual(before);
 
@@ -819,13 +821,14 @@ describe.skipIf(!ready)('настройки', () => {
     }
   });
 
-  it('всё сразу: язык, пояс, профиль, напоминания; снять напоминание — null', async () => {
+  it('всё сразу: язык, пояс, напоминания; снять напоминание — null; переключателя профиля больше нет', async () => {
     const u = await user();
     const res = await u.call('PATCH', '/settings', { language_code: 'en', timezone: 'Asia/Almaty', profile_mode: 'open', remind_morning: '07:15', remind_evening: '22:00' });
-    expect(res.body).toMatchObject({ language_code: 'en', timezone: 'Asia/Almaty', profile_mode: 'open', remind_morning: '07:15', remind_evening: '22:00' });
+    expect(res.body).toMatchObject({ language_code: 'en', timezone: 'Asia/Almaty', remind_morning: '07:15', remind_evening: '22:00' });
+    expect(res.body).not.toHaveProperty('profile_mode');
     expect((await sb.from('users').select('remind_morning').eq('id', u.id).single()).data?.remind_morning).toBe('07:15:00');
     expect((await u.call('PATCH', '/settings', { remind_morning: null })).body).toMatchObject({ remind_morning: null, remind_evening: '22:00' });
-    expect((await u.call('GET', '/me')).body).toMatchObject({ language_code: 'en', remind_morning: null, remind_evening: '22:00', profile_mode: 'open' });
+    expect((await u.call('GET', '/me')).body).toMatchObject({ language_code: 'en', remind_morning: null, remind_evening: '22:00' });
   });
 
   it('пустая правка — ничего не меняет', async () => {

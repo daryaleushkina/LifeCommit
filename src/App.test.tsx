@@ -17,6 +17,7 @@ const m = vi.hoisted(() => ({
     invitation: vi.fn(), join: vi.fn(), group: vi.fn(), groups: vi.fn(), history: vi.fn(), laterTodos: vi.fn(), createTodos: vi.fn(),
     createTasks: vi.fn(), createItem: vi.fn(), createTask: vi.fn(), updateTask: vi.fn(), archiveTask: vi.fn(), restoreTask: vi.fn(),
     deleteTask: vi.fn(), settings: vi.fn(), summary: vi.fn(), log: vi.fn(), checkGroupChat: vi.fn(), markItem: vi.fn(),
+    friends: vi.fn(), friend: vi.fn(), friendLink: vi.fn(), blocks: vi.fn(), requestFriend: vi.fn(), setShown: vi.fn(),
   },
   main: { text: '', press: null as null | (() => void) },
   back: { current: null as (() => void) | null },
@@ -55,7 +56,7 @@ vi.mock('./components/VoiceSheet', async (orig) => {
 const TODAY = '2026-10-03';
 const user = (patch: Partial<UserSettings> = {}): UserSettings => ({
   id: 1, first_name: 'Даша', username: null, photo_url: null, language_code: 'ru', timezone: 'Europe/Moscow', day_start_hour: 4,
-  remind_morning: null, remind_evening: null, bot_chat_ok: true, profile_mode: 'closed', premium: false, ...patch,
+  remind_morning: null, remind_evening: null, bot_chat_ok: true, premium: false, ...patch,
 });
 const task = (patch: Partial<TodayTask> = {}): TodayTask => ({
   id: 1, title: 'Бег', emoji: null, kind: 'check', unit: null, step: 1, schedule: 'daily', weekdays: 127, per_week: null,
@@ -106,6 +107,10 @@ beforeEach(() => {
   m.api.join.mockResolvedValue({ id: 10 });
   m.api.group.mockResolvedValue(family());
   m.api.groups.mockResolvedValue([]);
+  m.api.friends.mockResolvedValue({ friends: [{ id: 2, first_name: 'Маша', username: 'masha', photo_url: null, since: null, done: 1, due: 2, days: Array(14).fill(0) }], incoming: [{ id: 5, first_name: 'Тимур', username: 'timur', photo_url: null, via: 'username' }], outgoing: [], link: 'https://t.me/LifeCommit_bot?startapp=f_abc', prompt: false });
+  m.api.friend.mockResolvedValue({ person: { id: 2, first_name: 'Маша', username: 'masha', photo_url: null }, since: null, today: TODAY, heat: [], habits: [] });
+  m.api.friendLink.mockResolvedValue({ person: { id: 3, first_name: 'Даша Л', username: null, photo_url: null }, status: 'none' });
+  m.api.blocks.mockResolvedValue([]);
   m.api.history.mockResolvedValue({ start: TODAY, goals: [], logs: [] });
   m.api.laterTodos.mockResolvedValue([]);
   m.api.createTodos.mockResolvedValue({ ids: [] });
@@ -250,6 +255,53 @@ describe('запуск', () => {
     await expect.element(page.getByText('Приглашение не найдено.')).toBeVisible();
     await page.getByRole('button', { name: 'Не сейчас' }).click();
     await expect.element(heading('Сегодня')).toBeVisible();
+  });
+
+  it('startapp=f_<код> (чужая ссылка «Позвать друга») — экран «зовёт в друзья»; «Не сейчас» — на «Сегодня»', async () => {
+    await boot({ start_param: 'f_abc' });
+    await expect.element(heading('Даша Л зовёт в друзья')).toBeVisible();
+    expect(m.api.friendLink).toHaveBeenCalledWith('abc');
+    await page.getByRole('button', { name: 'Не сейчас' }).click();
+    await expect.element(heading('Сегодня')).toBeVisible();
+  });
+
+  it('ссылка друга: «Хочу дружить» → «Открыть» ведёт во «Вместе» сразу к друзьям', async () => {
+    localStorage.removeItem('lc-together');
+    m.api.requestFriend.mockResolvedValue({ status: 'sent' });
+    await boot({ start_param: 'f_abc' });
+    await page.getByRole('button', { name: 'Хочу дружить' }).click();
+    await page.getByRole('button', { name: 'Открыть' }).click();
+    await expect.element(page.getByRole('radio', { name: 'Друзья' })).toHaveAttribute('aria-checked', 'true');
+    await expect.element(tab('Вместе')).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('«Что показать друзьям?»: выбрали — «Сегодня» перечитывается (видимость привычек поменялась)', async () => {
+    localStorage.setItem('lc-together', 'friends');
+    m.api.friends.mockResolvedValue({ friends: [{ id: 2, first_name: 'Маша', username: 'masha', photo_url: null, since: null, done: 0, due: 0, days: Array(14).fill(0) }], incoming: [], outgoing: [], link: 'https://t.me/x?startapp=f_a', prompt: true });
+    m.api.setShown.mockResolvedValue({ ok: true });
+    await boot();
+    await tab('Вместе').click();
+    const calls = m.api.today.mock.calls.length;
+    await page.getByRole('button', { name: 'Готово' }).click();
+    await expect.poll(() => m.api.today.mock.calls.length).toBeGreaterThan(calls);
+    localStorage.removeItem('lc-together');
+  });
+
+  it('«Вместе» → «Друзья»: друг открывается и «назад» возвращает к списку; заявки — отдельным экраном', async () => {
+    localStorage.removeItem('lc-together');
+    await boot();
+    await tab('Вместе').click();
+    await page.getByRole('radio', { name: 'Друзья' }).click();
+    expect(localStorage.getItem('lc-together')).toBe('friends');
+    await page.getByRole('button', { name: /Маша/ }).click();
+    await expect.element(heading('Маша')).toBeVisible();
+    await expect.element(tab('Вместе')).toHaveAttribute('aria-current', 'page');
+    m.back.current!();
+    await page.getByRole('button', { name: /Заявки · 1/ }).click();
+    await expect.element(heading('Заявки')).toBeVisible();
+    m.back.current!();
+    await expect.element(page.getByRole('radio', { name: 'Друзья' })).toHaveAttribute('aria-checked', 'true');
+    localStorage.removeItem('lc-together');
   });
 
   it('язык из настроек: английский', async () => {

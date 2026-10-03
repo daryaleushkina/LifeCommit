@@ -1,11 +1,13 @@
-import { useContext, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
-import { heatLevel, type HeatDay, type UserSettings } from '../../shared/types';
+import { heatLevel, type HeatDay, type Person, type UserSettings } from '../../shared/types';
 import { api } from '../api';
 import type { Theme } from '../App';
-import { MonthCalendar, YearMap, monthOf, shiftMonth, yearStart } from '../components/Heatmap';
-import { SelectRow, TimeRow } from '../components/Picker';
-import { LangContext, useT } from '../i18n';
+import { HeatCard, useMonthName } from '../components/HeatCard';
+import { monthOf, shiftMonth } from '../components/Heatmap';
+import { Avatar } from '../components/groupUi';
+import { SelectRow, Sheet, TimeRow } from '../components/Picker';
+import { useT } from '../i18n';
 import type { SumRow, Template } from '../share/draw';
 import type { SummaryItem } from '../../shared/summary';
 import { ShareSheet } from '../share/ShareSheet';
@@ -40,17 +42,23 @@ interface Props {
   onTheme: (theme: Theme) => void;
 }
 
-/** Сколько месяцев назад можно листать: столько истории загружено для карты года. */
-const MONTHS_BACK = 11;
-
 export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNode {
   const t = useT();
-  const lang = useContext(LangContext);
   const [view, setView] = useState<'month' | 'year'>('month');
   // Сдвиг от текущего месяца: 0 — этот, -1 — прошлый.
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // Заблокированные (друзья, 03.10.2026): строка видна, только если кто-то есть; там же — «Разблокировать».
+  const [blocked, setBlocked] = useState<Person[]>([]);
+  const [blockedOpen, setBlockedOpen] = useState(false);
+  useEffect(() => {
+    api.blocks().then(setBlocked, () => {});
+  }, []);
+  const unblock = async (p: Person) => {
+    setBlocked((cur) => cur.filter((x) => x.id !== p.id));
+    await api.unblock(p.id).catch(() => {});
+  };
 
   const save = async (patch: Partial<UserSettings>) => {
     try {
@@ -80,11 +88,7 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   };
 
   const month = shiftMonth(monthOf(heat.today), offset);
-  const shown = view === 'year' ? heat.days : heat.days.filter((d) => d.day.startsWith(month));
-  const active = shown.filter((d) => d.score > 0).length;
-  const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
-  // Месяц и год собираем сами: в русской локали «long + numeric» даёт «сентябрь 2026 г.».
-  const monthName = (m: string, width: 'long' | 'short') => new Date(`${m}-15T12:00:00`).toLocaleDateString(locale, { month: width }).replace('.', '');
+  const monthName = useMonthName();
   const monthLabel = `${monthName(month, 'long')} ${month.slice(0, 4)}`;
   // Итог по всем целям за открытый месяц и за год (круг 23) — подгружаем заранее, «Поделиться» открывается сразу.
   const year = heat.today.slice(0, 4);
@@ -108,9 +112,6 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
       t: i.title,
       months: i.months,
     }));
-
-  const from = monthOf(yearStart(heat.today));
-  const yearLabel = `${monthName(from, 'short')} ${from.slice(0, 4)} — ${monthName(monthOf(heat.today), 'short')} ${heat.today.slice(0, 4)}`;
 
   /** «214 дней работы над собой в 2026» (20H — двенадцать месяцев, 20I — тёмная, весь год сеткой). */
   const yearTemplates = (): Template[] => {
@@ -175,38 +176,7 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
         </button>
       </header>
 
-      <section className="card pad heat-card">
-        <div className="segmented two">
-          <button className={view === 'month' ? 'on' : ''} onClick={() => setView('month')}>
-            {t.month}
-          </button>
-          <button className={view === 'year' ? 'on' : ''} onClick={() => setView('year')}>
-            {t.year}
-          </button>
-        </div>
-        {/* Строка с периодом есть в обоих видах — блок не прыгает при переключении. */}
-        <div className="month-nav">
-          <button aria-label={t.prevMonth} hidden={view === 'year'} disabled={offset <= -MONTHS_BACK} onClick={() => setOffset(offset - 1)}>
-            ‹
-          </button>
-          <span className="period">
-            <b>{view === 'month' ? monthLabel : yearLabel}</b>
-            <small>{t.activeDays(active)}</small>
-          </span>
-          <button aria-label={t.nextMonth} hidden={view === 'year'} disabled={offset >= 0} onClick={() => setOffset(offset + 1)}>
-            ›
-          </button>
-        </div>
-        {/* Оба вида лежат в одной клетке сетки: высота блока всегда по большему из них. */}
-        <div className="views">
-          <div className={view === 'month' ? '' : 'off'}>
-            <MonthCalendar days={heat.days} today={heat.today} month={month} />
-          </div>
-          <div className={view === 'year' ? '' : 'off'}>
-            <YearMap days={heat.days} today={heat.today} monthName={(m) => monthName(m, 'short')} />
-          </div>
-        </div>
-      </section>
+      <HeatCard days={heat.days} today={heat.today} view={view} onView={setView} offset={offset} onOffset={setOffset} />
 
       {error && <p className="error">{t.error}</p>}
 
@@ -224,15 +194,6 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
           minuteStep={60}
           maxHour={12}
           onChange={(v) => v && void save({ day_start_hour: Number(v.slice(0, 2)) })}
-        />
-        <SelectRow
-          label={t.privacy}
-          value={user.profile_mode}
-          options={[
-            { value: 'closed', label: t.closed },
-            { value: 'open', label: t.open },
-          ]}
-          onChange={(v) => void save({ profile_mode: v })}
         />
         <div className="row">
           <span className="label">{t.theme}</span>
@@ -254,7 +215,31 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
           ]}
           onChange={(v) => void save({ language_code: v })}
         />
+        {blocked.length > 0 && (
+          <button className="row" onClick={() => setBlockedOpen(true)}>
+            <span className="label">{t.fr.blocked}</span>
+            <span className="value">{t.num(blocked.length)}</span>
+            <Chevron />
+          </button>
+        )}
       </section>
+
+      {blockedOpen && (
+        <Sheet title={t.fr.blocked} onClose={() => setBlockedOpen(false)}>
+          {blocked.map((p) => (
+            <div key={p.id} className="person-row">
+              <Avatar member={{ id: p.id, name: p.first_name, photo: p.photo_url }} size={40} />
+              <span className="friend-text">
+                <b>{p.first_name}</b>
+                {p.username && <small>@{p.username}</small>}
+              </span>
+              <button className="act small" onClick={() => void unblock(p)}>
+                {t.fr.unblock}
+              </button>
+            </div>
+          ))}
+        </Sheet>
+      )}
 
       <section className="card">
         <button className="row" onClick={() => openTelegramLink.ifAvailable(SUPPORT_URL)}>

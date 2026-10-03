@@ -4,6 +4,7 @@ import { FREE_TASK_LIMIT, MAX_VOICE_SECONDS, VOICE_DAILY_LIMIT } from '../shared
 import { countActive, insertTasks, insertTodos, isPremium, takeVoiceQuota, today, USER_COLS, type UserRow } from './api';
 import { addDays } from './day';
 import { byTelegram, db, tg, type Env } from './env';
+import { acceptRequest, blockPerson, declineRequest } from './friends';
 import { handleGroupUpdate, type GroupUpdate } from './groupBot';
 import { parseGroupItems } from './groupVoice';
 import { parseHabits, transcribe } from './voice';
@@ -123,6 +124,7 @@ bot.post('/webhook', async (c) => {
 async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
   // Всё, что про групповые чаты (привязка, отметки кнопками, дела ответом боту), — в groupBot.ts.
   if (await handleGroupUpdate(env, update as GroupUpdate)) return;
+  if (update.callback_query?.data?.startsWith('fr:')) return friendRequest(env, update.callback_query);
   if (update.callback_query) return undo(env, update.callback_query);
   const msg = update.message;
   if (!msg?.from || msg.from.is_bot) return;
@@ -239,6 +241,43 @@ async function undo(env: Env, q: NonNullable<Update['callback_query']>): Promise
   if (q.message) {
     await tg(env, 'editMessageText', { chat_id: q.message.chat.id, message_id: q.message.message_id, text: t.undone });
   }
+}
+
+const friendTexts = {
+  ru: {
+    accepted: (name: string) => `Вы теперь друзья с ${name}. Открытые вам привычки и карта — во вкладке «Вместе».`,
+    declined: 'Заявка отклонена.',
+    blocked: (name: string) => `${name} заблокирован(а): не найдёт вас и не пришлёт заявку. Снять блок можно в профиле LifeCommit.`,
+    gone: 'Этой заявки уже нет.',
+  },
+  en: {
+    accepted: (name: string) => `You and ${name} are friends now. Their map and the habits they share are in the «Together» tab.`,
+    declined: 'Request declined.',
+    blocked: (name: string) => `${name} is blocked: they can't find you or send requests. You can unblock them in your LifeCommit profile.`,
+    gone: 'This request is no longer there.',
+  },
+};
+
+/** Кнопки под заявкой в друзья: «fr:a|d|b:<кто прислал>» — принять, отклонить, заблокировать. */
+async function friendRequest(env: Env, q: NonNullable<Update['callback_query']>): Promise<void> {
+  const [, action, raw] = q.data!.split(':');
+  const from = Number(raw);
+  const sb = db(env);
+  const { data: me } = await sb.from('users').select('id, language_code').or(byTelegram(q.from.id)).limit(1).maybeSingle<{ id: number; language_code: string }>();
+  const t = me?.language_code === 'en' ? friendTexts.en : friendTexts.ru;
+  const { data: who } = Number.isSafeInteger(from) && from > 0 ? await sb.from('users').select('first_name').eq('id', from).maybeSingle<{ first_name: string }>() : { data: null };
+  let text = t.gone;
+  if (me && who) {
+    if (action === 'a' && (await acceptRequest(sb, me.id, from))) text = t.accepted(who.first_name);
+    else if (action === 'd' && (await declineRequest(sb, me.id, from))) text = t.declined;
+    else if (action === 'b') {
+      // Заблокировать можно и после того, как заявку уже приняли или отклонили — блок важнее.
+      await blockPerson(sb, me.id, from);
+      text = t.blocked(who.first_name);
+    }
+  }
+  await tg(env, 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {});
+  if (q.message) await tg(env, 'editMessageText', { chat_id: q.message.chat.id, message_id: q.message.message_id, text }).catch(() => {});
 }
 
 // Только для локальной разработки: разбор фразы в группе (участники — ?members=Даша,Алёна&speaker=Даша).

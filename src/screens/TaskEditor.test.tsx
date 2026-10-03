@@ -167,11 +167,13 @@ describe('новая привычка', () => {
     await sheet.getByRole('button', { name: 'Готово' }).click();
     await expect.element(page.getByRole('button', { name: /Повторять/ })).toMatchTextContent(/6 раз в неделю/);
 
+    // «Кто видит»: только я или друзья (03.10.2026: «Подписчики» и «Все» убраны).
     await page.getByRole('button', { name: /Кто видит/ }).click();
-    await page.getByRole('option', { name: 'Все' }).click();
+    expect(page.getByRole('option', { name: 'Все' }).elements()).toEqual([]);
+    await page.getByRole('option', { name: 'Друзья' }).click();
     press();
     await expect.poll(() => m.api.createTask.mock.calls.length).toBe(1);
-    expect(m.api.createTask.mock.calls[0]![0]).toMatchObject({ schedule: 'per_week', per_week: 6, weekdays: 4, visibility: 'public' });
+    expect(m.api.createTask.mock.calls[0]![0]).toMatchObject({ schedule: 'per_week', per_week: 6, weekdays: 4, visibility: 'friends' });
   });
 
   it('шторку «Повторять» можно закрыть, выбор остаётся', async () => {
