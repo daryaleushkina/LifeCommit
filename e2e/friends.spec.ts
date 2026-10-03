@@ -110,3 +110,13 @@ test('«Что показать друзьям?»: плитки, «Выбрат�
   // Шторка закрывается сразу, выбор уходит на сервер следом.
   await expect.poll(async () => (await masha.api<{ habits: { title: string }[] }>('GET', `/friends/${me.id}`)).habits.map((h) => h.title)).toEqual(['Чтение']);
 });
+
+test('шапка «Вместе» с плюсом не наезжает на «Группы · Друзья»', async ({ app: page }) => {
+  await openFriends(page);
+  const head = await page.locator('.page-head').boundingBox();
+  const plus = await page.getByRole('button', { name: 'Позвать друга' }).boundingBox();
+  const tabs = await page.locator('.together-switch').boundingBox();
+  // Между низом шапки (и кнопки «+») и переключателем — заметный зазор (03.10.2026: плюс почти касался вкладок).
+  expect(tabs!.y - (head!.y + head!.height)).toBeGreaterThanOrEqual(12);
+  expect(tabs!.y - (plus!.y + plus!.height)).toBeGreaterThanOrEqual(12);
+});
