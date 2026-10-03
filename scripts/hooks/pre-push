@@ -55,6 +55,19 @@ echo "pre-push: проверка и деплой $sha с этой машины�
   exit 1
 }
 
+# Прод сразу после деплоя (scripts/postdeploy-check.mjs, только чтение, без секретов): главная и её скрипт — той самой
+# сборки, что в dist/, API без подписи — 401, вебхук без секрета — 403. Не прошло — Worker откатывается на предыдущую
+# версию, пуш отменяется (LOCAL_DEPLOYED_SHA не пишем: этот коммит в проде не живёт).
+if ! node scripts/postdeploy-check.mjs >&2; then
+  echo "pre-push: прод после деплоя отвечает не так — откатываю Worker на предыдущую версию…" >&2
+  if pnpm exec wrangler rollback --yes --message "pre-push: postdeploy check failed for $sha" >&2; then
+    echo "pre-push: откат сделан, пуш отменён. Разберись по выводу выше и логам Worker'а, потом пушни снова." >&2
+  else
+    echo "pre-push: откат НЕ прошёл — откати вручную: pnpm exec wrangler rollback (или в панели Cloudflare). Пуш отменён." >&2
+  fi
+  exit 1
+fi
+
 if ! gh variable set LOCAL_DEPLOYED_SHA --body "$sha" >&2; then
   echo "pre-push: не удалось записать LOCAL_DEPLOYED_SHA — GitHub Actions задеплоит этот коммит ещё раз (безвредно)" >&2
 fi

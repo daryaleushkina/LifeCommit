@@ -10,12 +10,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     projects: [
-      // + хуки Claude Code и git-хуки (.claude/hooks, scripts/hooks) — в покрытие не входят, но тестами проверены.
+      // + хуки Claude Code, git-хуки и скрипты деплоя (.claude/hooks, scripts) — в покрытие не входят, но тестами проверены.
       {
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['{src,worker,shared}/**/*.test.ts', '.claude/hooks/**/*.test.ts', 'scripts/hooks/**/*.test.ts'],
+          include: ['{src,worker,shared}/**/*.test.ts', '.claude/hooks/**/*.test.ts', 'scripts/**/*.test.ts'],
           exclude: ['**/*.int.test.ts', '**/node_modules/**'],
         },
       },

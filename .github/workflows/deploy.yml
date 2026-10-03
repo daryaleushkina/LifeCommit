@@ -60,3 +60,15 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Прод сразу после деплоя — как в scripts/hooks/pre-push: главная и её скрипт той самой сборки, API без подписи — 401,
+      # вебхук без секрета — 403 (только чтение). Не прошло — откат Worker'а на предыдущую версию, задача красная.
+      - name: Проверка прода после деплоя (откат при провале)
+        run: |
+          if ! node scripts/postdeploy-check.mjs; then
+            echo "Прод после деплоя отвечает не так — откатываю Worker на предыдущую версию"
+            pnpm exec wrangler rollback --yes --message "actions: postdeploy check failed for ${{ github.sha }}" || echo "Откат НЕ прошёл — откатить вручную: pnpm exec wrangler rollback"
+            exit 1
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
