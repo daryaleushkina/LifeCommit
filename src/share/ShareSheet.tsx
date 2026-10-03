@@ -56,6 +56,8 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
     return () => {
       alive = false;
     };
+    // signature и есть templates (массив новый на каждой отрисовке экрана под шторкой); s.bot не меняется.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- зависимость по содержимому, см. выше
   }, [signature]);
 
   /** Картинка шаблона в Telegram (через бота). Не вышло — забываем, чтобы следующая попытка пошла заново. */
@@ -73,6 +75,9 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
     if (!drawn) return;
     const id = window.setTimeout(() => void prepare(index).catch(() => {}), PREPARE_AFTER_MS);
     return () => window.clearTimeout(id);
+    // prepare — новая функция на каждой отрисовке (а работает через uploads.current): с ней в зависимостях таймер
+    // сбрасывался бы при любой перерисовке и картинка не готовилась бы заранее. Шаблоны сменились — сбросит drawn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- намеренно, см. выше
   }, [drawn, index]);
 
   const step = () => {

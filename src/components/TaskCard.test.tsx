@@ -39,7 +39,7 @@ describe('карточка «Бросить»', () => {
     await expect.element(page.getByText('Получилось?')).toBeVisible();
     await page.getByRole('button', { name: 'Да, получилось' }).click();
     expect(onLog).toHaveBeenLastCalledWith({ value: null, status: 'clean' });
-    rerender(<TaskCard task={{ ...task, status: 'clean' } as TodayTask} onLog={onLog} onOpen={() => {}} />);
+    await rerender(<TaskCard task={{ ...task, status: 'clean' } as TodayTask} onLog={onLog} onOpen={() => {}} />);
     await page.getByRole('button', { name: 'Да, получилось' }).click();
     expect(onLog).toHaveBeenLastCalledWith({ value: null, status: null });
   });

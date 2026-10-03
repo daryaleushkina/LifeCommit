@@ -46,7 +46,7 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
   };
   useEffect(() => {
     void load();
-    if (googleUrl === null) void loadUrl();
+    if (googleUrlFresh() === null) void loadUrl();
     // Вернулись из браузера после входа Google — показать, что подключилось (и обновить ссылку: она живёт 15 минут).
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
@@ -183,6 +183,12 @@ function AccountSettings({ account, name, isDestination, setAccounts, onChanged 
     onChanged();
   };
 
+  const setDestination = async (url: string) => {
+    setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, default_url: url } : a)) ?? list);
+    await api.setDefaultCalendar(account.id, url).catch(() => {});
+    onChanged();
+  };
+
   return (
     <>
       {isDestination && writable.length > 0 && (
@@ -191,11 +197,7 @@ function AccountSettings({ account, name, isDestination, setAccounts, onChanged 
             label={t.cal.writeTo}
             value={account.default_url ?? ''}
             options={writable.map((c) => ({ value: c.url, label: c.name }))}
-            onChange={async (url) => {
-              setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, default_url: url } : a)) ?? list);
-              await api.setDefaultCalendar(account.id, url).catch(() => {});
-              onChanged();
-            }}
+            onChange={(url) => void setDestination(url)}
           />
         </div>
       )}

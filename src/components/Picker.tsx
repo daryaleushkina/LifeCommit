@@ -177,7 +177,8 @@ function Wheel({ items, index, onChange, label }: { items: string[]; index: numb
   // Ставим начальное положение до первой отрисовки, без анимации.
   useLayoutEffect(() => {
     if (ref.current) ref.current.scrollTop = index * WHEEL_ROW;
-    // Только при открытии: дальше положением управляет сама прокрутка.
+    // Только при открытии: дальше положением управляет сама прокрутка (с index в зависимостях барабан дёргался бы к строке).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- намеренно один раз, см. выше
   }, []);
   useEffect(() => () => window.clearTimeout(timer.current), []);
 

@@ -98,13 +98,15 @@ export function RemovalHost(): ReactNode {
   useSyncExternalStore(subscribe, () => version);
   // Плашка уезжает плавно: держим текст, пока идёт исчезновение.
   const [shown, setShown] = useState<string | null>(null);
+  // Снимок на эту отрисовку: сама переменная модуля меняется без перерисовки, зависимостью эффекта быть не может.
+  const pendingKey = pending?.key;
   useEffect(() => {
     if (pending) setShown(pending.text);
     else {
       const id = window.setTimeout(() => setShown(null), 200);
       return () => window.clearTimeout(id);
     }
-  }, [pending?.key]);
+  }, [pendingKey]);
 
   return (
     <>

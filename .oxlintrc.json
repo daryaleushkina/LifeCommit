@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // Линтер в гейте (pnpm lint → хук перед пушем и GitHub Actions) — только то, чего не ловит tsc:
+  // правила хуков React и потерянные промисы (ошибка действия молча пропадает). Стиль не проверяем.
+  // Проверка по типам — oxlint-tsgolint на typescript-go: typescript-eslint (8.71) поддерживает только TypeScript < 6.1, а у нас 7.
+  "plugins": ["react", "typescript"],
+  "categories": { "correctness": "off" },
+  "options": { "typeAware": true },
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error"
+  },
+  "overrides": [
+    // Сквозные тесты — не React: use(...) в фикстурах Playwright линтер принимает за хук.
+    { "files": ["e2e/**"], "rules": { "react/rules-of-hooks": "off", "react/exhaustive-deps": "off" } }
+  ]
+}

@@ -17,9 +17,18 @@ function fakeDb(accounts: Partial<AccountRow>[], users: { id: number; timezone: 
       select: () => q,
       order: () => q,
       maybeSingle: () => q,
-      limit: (n: number) => ((limit = n), q),
-      eq: (k: string, v: unknown) => ((filters[k] = v), q),
-      update: (v: unknown) => ((values = v), q),
+      limit: (n: number) => {
+        limit = n;
+        return q;
+      },
+      eq: (k: string, v: unknown) => {
+        filters[k] = v;
+        return q;
+      },
+      update: (v: unknown) => {
+        values = v;
+        return q;
+      },
       then: (ok: (r: unknown) => unknown, fail: (e: unknown) => unknown) => {
         if (values) writes.push({ table, values, filters });
         else asked.push({ table, filters, limit });

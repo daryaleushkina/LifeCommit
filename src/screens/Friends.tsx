@@ -90,6 +90,15 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
     await reloadFriends();
   };
 
+  const closeShow = async (ids: number[] | null) => {
+    setShowing(false);
+    if (ids) {
+      await api.setShown(ids).catch(() => {});
+      onShown();
+    } else await api.promptSeen().catch(() => {});
+    await reloadFriends();
+  };
+
   if (!data) return null;
   const q = query.trim().toLowerCase();
   const shown = q ? data.friends.filter((f) => f.first_name.toLowerCase().includes(q) || f.username?.toLowerCase().includes(q.replace(/^@/, ''))) : data.friends;
@@ -150,17 +159,7 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
       {inviting && <AddFriendSheet onClose={() => setInviting(false)} />}
 
       {showing && (
-        <ShowSheet
-          habits={habits}
-          onClose={async (ids) => {
-            setShowing(false);
-            if (ids) {
-              await api.setShown(ids).catch(() => {});
-              onShown();
-            } else await api.promptSeen().catch(() => {});
-            await reloadFriends();
-          }}
-        />
+        <ShowSheet habits={habits} onClose={(ids) => void closeShow(ids)} />
       )}
     </>
   );
@@ -210,7 +209,7 @@ export function AddFriendSheet({ onClose }: { onClose: () => void }): ReactNode 
       api.findPerson(clean).then(setFound, (e) => setProblem(e instanceof ApiError && e.code === 'bad_username' ? fr.badUsername : fr.notFound));
     }, 400);
     return () => clearTimeout(timer);
-  }, [name]);
+  }, [name, fr.badUsername, fr.notFound]);
 
   const sendLink = () => {
     const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(fr.shareText)}`;
