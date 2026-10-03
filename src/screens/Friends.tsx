@@ -14,8 +14,6 @@ import { useT } from '../i18n';
 import { useBackButton } from '../telegram/hooks';
 
 const EMPTY: FriendsResponse = { friends: [], incoming: [], outgoing: [], link: '', prompt: false };
-/** С какого числа друзей появляется поиск по ним: короткий список и так виден целиком. */
-const SEARCH_FROM = 6;
 
 const asMember = (p: Person) => ({ id: p.id, name: p.first_name, photo: p.photo_url });
 
@@ -70,6 +68,7 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
   const [data, setData] = useState<FriendsResponse | null>(caches.friends);
   const [query, setQuery] = useState('');
   const [showing, setShowing] = useState(false);
+  const [inviting, setInviting] = useState(false);
   // Шторку «Что показать» — не больше раза за открытие, даже если сервер ещё не узнал, что её закрыли.
   const asked = useRef(false);
   useEffect(() => {
@@ -97,6 +96,22 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
 
   return (
     <>
+      {/* 27F: поиск по друзьям и «Позвать друга» — одной строкой под переключателем. */}
+      <div className="friend-tools">
+        <label className="friend-search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="M16 16l4.5 4.5" />
+          </svg>
+          <input type="search" placeholder={fr.search} aria-label={fr.search} value={query} onChange={(e) => setQuery(e.target.value)} />
+        </label>
+        <button className="invite-btn" aria-label={fr.invite} onClick={() => setInviting(true)}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </div>
+
       {data.incoming.length > 0 && (
         <button className="card requests-row" onClick={onRequests}>
           <span className="avatar-stack" aria-hidden>
@@ -107,10 +122,6 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
           <b>{fr.requests(data.incoming.length)}</b>
           <Chevron />
         </button>
-      )}
-
-      {data.friends.length >= SEARCH_FROM && (
-        <input className="sheet-input friend-search" type="search" placeholder={fr.search} aria-label={fr.search} value={query} onChange={(e) => setQuery(e.target.value)} />
       )}
 
       {data.friends.length === 0 && data.outgoing.length === 0 && <p className="empty">{fr.empty}</p>}
@@ -134,6 +145,9 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
             </div>
           ))}
       </div>
+
+      {/* Позвали кого-то — список обновится сам (там появится «ждём ответа»). */}
+      {inviting && <AddFriendSheet onClose={() => setInviting(false)} />}
 
       {showing && (
         <ShowSheet

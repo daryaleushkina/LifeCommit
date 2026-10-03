@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 
 describe('«Группы · Друзья»', () => {
-  it('выбор раздела запоминается; плюс в шапке — «Позвать друга», закрывается', async () => {
+  it('выбор раздела запоминается; «Позвать друга» — только в «Друзьях», открывается и закрывается', async () => {
     m.api.friends.mockResolvedValue({ friends: [], incoming: [], outgoing: [], link: 'https://t.me/x?startapp=f_a', prompt: false });
     await renderApp(<Groups {...friendsProps} me={ME} initial={[]} onOpen={() => {}} />);
     expect(page.getByRole('button', { name: 'Позвать друга' }).elements()).toEqual([]);
