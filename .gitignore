@@ -36,3 +36,6 @@ coverage-e2e-raw/
 
 # Черновые проверки агента lc-explorer: падающие сценарии, снимки, вывод прогонов (см. .claude/agents/lc-explorer.md)
 e2e/_explore/
+
+# Журналы браузерного MCP (Playwright) — их пишут сессии Claude, в git не нужны
+.playwright-mcp/
