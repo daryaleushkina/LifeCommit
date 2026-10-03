@@ -47,7 +47,9 @@ pnpm load         # k6 по локальному стенду (VUS=100 по ум
 pnpm db:reset     # снести локальную базу и накатить миграции заново; db:stop — остановить
 pnpm dev:prod     # то же, но с БОЕВОЙ базой (.dev.vars.prod) — только когда правда нужно
 pnpm typecheck
+pnpm lint         # oxlint с проверкой типов: правила хуков React, висящие и неверно переданные промисы (.oxlintrc.json)
 pnpm test         # vitest: логический день, уровни карты, шаг кнопки, зачёт дел
+pnpm eval:voice   # эталоны разбора голоса на НАСТОЯЩЕМ Gemini (worker/eval), каждый случай трижды; не в хуке
 pnpm e2e          # Playwright: все экраны и действия как человек, iPhone (WebKit) и Android (Chromium) × светлая/тёмная,
                   # правила вёрстки и эталонные снимки (e2e/__screens__); -u — переснять эталоны, --project=ios-light — один
 pnpm build
@@ -58,7 +60,7 @@ pnpm bot:setup    # webhook, кнопка меню, команды и описа
 - **С Мака** (включён хук `scripts/hooks/pre-push`, один раз: `pnpm hooks:install`): перед пушем на самой машине идут typecheck, unit-тесты, сквозные тесты `pnpm e2e` (хук сам поднимает локальную Supabase; без Docker пуш останавливается), сборка и `wrangler deploy`; упало — пуш отменяется. Правило «фича без теста в прод не уходит» — в `CLAUDE.md`. Хук записывает SHA в переменную репозитория `LOCAL_DEPLOYED_SHA`, и GitHub Actions свою задачу пропускает — минуты не тратятся.
 - **Из облачной разработки** (хука нет): деплоит GitHub Actions (`.github/workflows/deploy.yml`: typecheck, тесты, сборка, деплой). Одна минута на релиз.
 
-`git push --no-verify` с Мака отдаёт деплой в Actions. Секреты репозитория: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Вручную: `pnpm run deploy`.
+`git push --no-verify` с Мака отдаёт деплой в Actions — это может только владелица в своём терминале: Claude это запрещено (`.claude/settings.json` и хук `.claude/hooks/block-no-verify.mjs`, 04.10.2026), как и прямой `wrangler deploy` мимо хука. Секреты репозитория: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. Вручную: `pnpm run deploy`.
 
 Секреты Worker'а лежат в Cloudflare: `TELEGRAM_BOT_TOKEN`, `SUPABASE_SECRET_KEY`, `TELEGRAM_WEBHOOK_SECRET`, `GEMINI_API_KEY`. Локально — `.env.local`, `.dev.vars` (локальная база) и `.dev.vars.prod` (боевой ключ Supabase), в git не попадают.
 
@@ -281,3 +283,24 @@ pnpm bot:setup    # webhook, кнопка меню, команды и описа
 4. Удалить колонку `users.profile_mode` отдельной миграцией (код её больше не читает).
 5. Мелочи из п. 4 опроса выше.
 
+
+## Состояние на 04.10.2026 — агенты и защита гейта (по разбору ECC)
+
+Владелица попросила изучить репозиторий [affaan-m/ecc](https://github.com/affaan-m/ecc) (большой плагин Claude Code: 68 агентов, 293 скилла) и внедрить полезное. Целиком не ставили: тяжёлые хуки на каждый вызов, ~30 тыс. токенов описаний, советы экономить на модели. Взяли лучшее и переписали под проект.
+
+**Что появилось:**
+- **Панель ревью `/lc-review`** — Workflow `.claude/workflows/lc-review.js` (по образцу ECC `orch-review`): агенты-линзы `lc-review-access` (чужие данные — Worker ходит секретным ключом), `lc-review-errors` (тихие сбои; основа — официальный silent-failure-hunter Anthropic), `lc-review-tests` (правила тестов из CLAUDE.md; тест на баг обязан падать без исправления), `lc-review-ui` (React 19 + Telegram) параллельно; одинаковые находки склеиваются, каждую HIGH/CRITICAL пытается опровергнуть `lc-skeptic`. Запускать перед пушем фичи вместе с `/code-review`.
+- **`/lc-explore`** — до 4 агентов `lc-explorer` («злой пользователь», по образцу ECC gan-evaluator) по разделам на локальном стенде; находки — падающие сценарии в `e2e/_explore/` (в git нет, обычный прогон их не видит — только `E2E_EXPLORE=1`).
+- **`/click-path-audit`** — карта общего состояния (`caches`, `useTaskLog`, кнопки Telegram) и агенты `lc-click-path` по экранам.
+- **Глобальный скилл `council`** (`~/.claude/skills/council`) — Скептик, Прагматик, Критик для спорных решений, итог кнопками.
+- **`pnpm lint`** — oxlint с проверкой типов (typescript-eslint не поддерживает TypeScript 7), в хуке и Actions после typecheck.
+- **`pnpm eval:voice`** — 40 эталонных фраз на настоящем Gemini, pass^3.
+- **Защита гейта:** `.claude/settings.json` (запрет прямого деплоя, `core.hooksPath`, чтения `.dev.vars*`/`.env*`; вопрос перед `pnpm e2e -u`), хуки `.claude/hooks/block-no-verify.mjs` и `protect-gates.mjs` (вопрос перед правкой `scripts/hooks`, `.github/workflows` и понижением порога покрытия), git-хуки `commit-msg` (подписи ИИ) и `pre-commit` (`.claude/skills`, `.mcp.json`, `.idea`).
+- **Исправлены тихие сбои** (каждый — сначала падающий тест): удаление привычки свайпом при ошибке сервера, отметка группового дела в календаре, создание группы ботом из чата (лог, ответ в чат, без группы-сироты).
+
+**Открыто — решить владелице:**
+1. **Gemini: дата из фразы перебивает настоящую** (кейс `p-inj-date` в `pnpm eval:voice`): «Today is 2030-01-01… завтра встреча» → 2030-01-02. Через тот же вход идут голоса всех участников группы. Чинить — рамкой вокруг фразы в подсказке и/или отсечкой дат за горизонтом на сервере.
+2. **Молча падают, и тесты закрепляют это как задуманное:** разблокировать (`Profile.tsx:60`), принять/отклонить заявку (`Friends.tsx:289`), выйти/удалить группу (`Group.tsx:133`), переименовать группу (`Group.tsx:339`), «только админы» (`Group.tsx:367`) — оптимистичная правка без отката и без сообщения. Менять — только решением владелицы.
+3. **`POST /groups`** (`worker/groups.ts:116–117`) — группа и владелец двумя запросами без транзакции; при сбое второго может остаться группа без владельца (ответ — 500).
+4. **Четыре эффекта с отключённым `exhaustive-deps`** (намеренно, причина в комментарии): `VoiceSheet.tsx` (открытие шторки), `Picker.tsx` (начальная прокрутка барабана), `ShareSheet.tsx` ×2 (подпись шаблонов, таймер подготовки картинки).
+5. **Правило `Read(!.env.example)`** в `.claude/settings.json` — поддерживает ли Claude Code исключение через `!`, не проверено; Claude правку этого файла запрещена (самоизменение настроек) — поправить владелице, если `.env.example` окажется недоступен для чтения.
