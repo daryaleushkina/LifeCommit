@@ -92,6 +92,18 @@ test('редактор: переименовать, «Отложить» и ве
   await expect(card(page, 'Медитация утром')).toHaveCount(0);
 });
 
+test('свайп по привычке: сервер не удалил — привычка на месте и сказано, что не вышло', async ({ app: page, me }) => {
+  await me.api('POST', '/tasks', { title: 'Йога', kind: 'check', target: 1, schedule: 'daily' });
+  await page.reload();
+  // Обрыв связи на удалении (5xx роняет тест сам по себе — фикстура app): привычка не должна пропасть молча.
+  await page.route('**/api/tasks/*', (r) => (r.request().method() === 'DELETE' ? r.abort('failed') : r.fallback()));
+  await swipeLeft(page, page.locator('.swipe-card', { hasText: 'Йога' }).locator('.swipe-body'));
+  await expect(card(page, 'Йога')).toHaveCount(0);
+  await expect(page.locator('.undo-toast')).toHaveCount(0, { timeout: 8_000 });
+  await expect(card(page, 'Йога')).toHaveCount(1);
+  await expect(page.locator('p.error')).toHaveText('Что-то пошло не так. Попробуй ещё раз.');
+});
+
 test('свайп по карточке привычки: «Вернуть» возвращает', async ({ app: page, me }) => {
   await me.api('POST', '/tasks', { title: 'Йога', kind: 'check', target: 1, schedule: 'daily' });
   await page.reload();

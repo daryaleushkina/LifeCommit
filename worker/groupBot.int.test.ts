@@ -212,6 +212,49 @@ describe.skipIf(!ready)('бота добавили или убрали (my_chat_
     expect(texts(chatId)[1]).toContain('На сегодня дел нет.');
   });
 
+  /** Запросы к базе с этими методом и путём (пары подряд: 'POST', '/rest/v1/groups', …) отвечают ошибкой, как будто PostgREST упал. */
+  const failDb = (...pairs: string[]) => {
+    const real = globalThis.fetch;
+    const failing = new Set(pairs.flatMap((p, i) => (i % 2 ? [] : [`${p} ${pairs[i + 1]}`])));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const req = new Request(input as RequestInfo, init);
+      if (req.url.startsWith(env.SUPABASE_URL) && failing.has(`${req.method} ${new URL(req.url).pathname}`)) return Response.json({ message: 'boom' }, { status: 500 });
+      return real(req);
+    });
+  };
+
+  it('группу завести не вышло — в лог и в чат «не получилось», молча не пропадаем', async () => {
+    const owner = await user();
+    const chatId = newChat();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    failDb('POST', '/rest/v1/groups');
+    await botStatus(chatId, owner.id, 'member', { title: 'Дача' });
+    expect((await sb.from('groups').select('id').eq('owner_id', owner.id)).data).toEqual([]);
+    expect(log).toHaveBeenCalledWith('group from chat: create failed', chatId, owner.id, expect.anything());
+    expect(texts(chatId)).toEqual(['Не получилось подключить этот чат. Уберите бота из чата и добавьте ещё раз чуть позже.']);
+  });
+
+  it('владельца в группу записать не вышло — группа без владельца не остаётся', async () => {
+    const owner = await user({ lang: 'en' });
+    const chatId = newChat();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    failDb('POST', '/rest/v1/group_members');
+    await botStatus(chatId, owner.id, 'member', { title: 'Dacha', lang: 'en' });
+    expect((await sb.from('groups').select('id').eq('owner_id', owner.id)).data).toEqual([]);
+    expect(log).toHaveBeenCalledWith('group from chat: owner not added', expect.any(Number), owner.id, expect.anything());
+    expect(texts(chatId)).toEqual(['Could not connect this chat. Remove the bot from the chat and add it again a bit later.']);
+  });
+
+  it('и убрать такую группу не вышло — это тоже в лог', async () => {
+    const owner = await user();
+    const chatId = newChat();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    failDb('POST', '/rest/v1/group_members', 'DELETE', '/rest/v1/groups');
+    await botStatus(chatId, owner.id, 'member');
+    expect(log).toHaveBeenCalledWith('group from chat: orphan not removed', expect.any(Number), expect.anything());
+    await sb.from('groups').delete().eq('owner_id', owner.id);
+  });
+
   it('длинное название чата обрезается до 60 знаков, без названия — «Группа»', async () => {
     const owner = await user();
     await botStatus(newChat(), owner.id, 'member', { title: 'Очень длинное название семейного чата '.repeat(3) });
@@ -255,12 +298,11 @@ describe.skipIf(!ready)('бота добавили или убрали (my_chat_
     expect(inChat('sendMessage', chatId)[0]!.body.reply_markup).toEqual({ inline_keyboard: [[{ text: 'Открыть LifeCommit', url: 'https://t.me/LifeCommit_bot?start=app' }]] });
   });
 
-  it('у чата нет названия — группу не завести, бот молчит', async () => {
+  it('название чата пустое или из пробелов — как без названия: «Группа»', async () => {
     const owner = await user();
-    const chatId = newChat();
-    await botStatus(chatId, owner.id, 'member', { title: '' });
-    expect((await sb.from('groups').select('id').eq('owner_id', owner.id)).data).toEqual([]);
-    expect(tg.sent('sendMessage')).toEqual([]);
+    for (const title of ['', '   ']) await botStatus(newChat(), owner.id, 'member', { title });
+    const { data } = await sb.from('groups').select('title').eq('owner_id', owner.id);
+    expect(data).toEqual([{ title: 'Группа' }, { title: 'Группа' }]);
   });
 
   it('в личке это не про группы — разбирает обычный бот', async () => {

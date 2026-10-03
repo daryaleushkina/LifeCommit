@@ -127,6 +127,8 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
     },
     errorText: t.error,
   });
+  // Отметка группового дела не дошла до сервера — сказать, а не молча оставить как было.
+  const [markError, setMarkError] = useState<string | null>(null);
 
   const shift = (n: number) => setSelected(mode === 'day' ? addDays(selected, n) : `${shiftMonth(monthOf(selected), n)}-01`);
   const ofDay = (day: string) => (todos ?? []).filter((d) => d.day === day);
@@ -258,9 +260,15 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
       </div>
       )}
 
-      {actions.error && (
-        <p className="error" onClick={actions.clearError}>
-          {actions.error}
+      {(actions.error ?? markError) && (
+        <p
+          className="error"
+          onClick={() => {
+            actions.clearError();
+            setMarkError(null);
+          }}
+        >
+          {actions.error ?? markError}
         </p>
       )}
 
@@ -301,7 +309,7 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
                   members={b.group.members}
                   me={me}
                   onToggle={async () => {
-                    await api.markItem(b.group.id, it.id, !it.done, selected).catch(() => null);
+                    await api.markItem(b.group.id, it.id, !it.done, selected).catch(() => setMarkError(t.error));
                     await load();
                     onChanged();
                   }}

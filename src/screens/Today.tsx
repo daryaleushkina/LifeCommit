@@ -1,4 +1,4 @@
-import { useContext, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { api } from '../api';
 import { isDone, TaskCard } from '../components/TaskCard';
 import { GroupBlocks } from '../components/GroupBlocks';
@@ -32,6 +32,8 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onD
   const { log, error, clearError } = useTaskLog(setCache, t.error);
   const todos = useTodos(setCache, t.error);
   const isRemoved = useRemoved();
+  // Сервер не удалил привычку: она снова на экране после перечитывания — сказать, что не вышло.
+  const [removeError, setRemoveError] = useState<string | null>(null);
   // Удалить привычку свайпом (02.10.2026: раньше — только из редактора, «слишком глубоко»). Как у дел: 5 секунд «Вернуть»,
   // на сервер удаление уходит, когда плашка закрылась.
   const swipe = (task: TodayTask): SwipeAction[] => [
@@ -39,7 +41,13 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onD
       label: t.swipe.remove,
       tone: 'danger',
       icon: 'trash',
-      run: () => removeWithUndo(`task:${task.id}`, t.swipe.removed(task.title), () => api.deleteTask(task.id).catch(() => {}).then(onDeleted)),
+      run: () =>
+        removeWithUndo(`task:${task.id}`, t.swipe.removed(task.title), () =>
+          api
+            .deleteTask(task.id)
+            .catch(() => setRemoveError(t.error))
+            .then(onDeleted),
+        ),
     },
   ];
 
@@ -74,15 +82,16 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onD
       </header>
 
       {/* Полосы карты здесь больше нет (01.10.2026): на «Сегодня» она лишняя, карта — во вкладке «Я». */}
-      {(error ?? todos.error) && (
+      {(error ?? todos.error ?? removeError) && (
         <p
           className="error"
           onClick={() => {
             clearError();
             todos.clearError();
+            setRemoveError(null);
           }}
         >
-          {error ?? todos.error}
+          {error ?? todos.error ?? removeError}
         </p>
       )}
 

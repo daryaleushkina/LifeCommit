@@ -205,6 +205,18 @@ describe('«Сегодня»', () => {
     minimize();
     await expect.poll(() => onDeleted.mock.calls.length).toBe(1);
     expect(m.api.deleteTask).toHaveBeenCalledWith(7);
+    // Сервер не удалил — привычка снова на экране, и человеку сказано, что не вышло (раньше — молча).
+    await expect.element(page.getByRole('heading', { name: 'Йога' })).toBeVisible();
+    await page.getByText('Что-то пошло не так. Попробуй ещё раз.').click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
+  });
+
+  it('свайп по привычке: сервер удалил — ошибки нет', async () => {
+    await renderApp(<Screen today={response({ tasks: [task({ id: 7, title: 'Йога' })] })} />);
+    swipeAway(page.getByRole('heading', { name: 'Йога' }).element());
+    minimize();
+    await expect.poll(() => m.api.deleteTask.mock.calls.length).toBe(1);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
   });
 
   it('группы — под личным, заголовок открывает группу', async () => {
