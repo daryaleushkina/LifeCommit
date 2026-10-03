@@ -2,7 +2,7 @@
 // Фразы идут через тот же код, что в проде (parseHabits, routeVoice, parseGroupItems) — подсказка не дублируется.
 // Каждый кейс — EVAL_RUNS прогонов (по умолчанию 3); зелёный, только если зелёные все (pass^3).
 // Не входит в pnpm test и в хук перед пушем: это настоящие запросы к модели, бесплатная квота Gemini общая с продом
-// (40 кейсов × 3 ≈ 125 запросов). Запускать после каждой правки подсказки, примеров или схемы в voice.ts / groupVoice.ts.
+// (49 кейсов × 3 ≈ 150 запросов). Запускать после каждой правки подсказки, примеров или схемы в voice.ts / groupVoice.ts.
 //
 // Ключ — GEMINI_API_KEY из окружения или из .dev.vars; в вывод не попадает.
 // Переменные:
@@ -152,8 +152,7 @@ type Run = Score & { error?: boolean };
 
 async function attempt(c: VoiceCase, today: string): Promise<Run> {
   for (let tryNo = 0; ; tryNo++) {
-    // В мини-аппе фраза про группу — это до двух запросов (группа и личное параллельно).
-    await gate(c.kind === 'route' ? 2 : 1);
+    await gate(1);
     const a: Attempt = { retryable: false, retryAfterMs: 0, warnings: [] };
     try {
       return scoreVoiceCase(expectedOf(c, today), await attemptCtx.run(a, () => runOnce(c, today)));

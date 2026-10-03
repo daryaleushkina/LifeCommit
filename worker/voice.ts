@@ -46,7 +46,8 @@ export async function transcribe(env: Env, audio: ArrayBuffer, lang: 'ru' | 'en'
   throw last;
 }
 
-const SCHEMA = {
+/** Ответ личного разбора; его привычки и дела — часть ответа разбора с группами (worker/voiceRoute.ts). */
+export const OWN_SCHEMA = {
   type: 'object',
   properties: {
     habits: {
@@ -78,8 +79,8 @@ const SCHEMA = {
   required: ['habits', 'todos'],
 };
 
-const SYSTEM = `You turn a person's spoken or typed list into habits and one-off to-dos for a habit tracker. Reply with JSON only.
-A HABIT repeats: something done every day, on some weekdays or N times a week, a daily amount, or something to quit. A TO-DO is a single thing to do once ("buy milk", "call mom", "book a dentist", "tomorrow pay the rent"). When unsure, a plain action with no repetition words is a to-do.
+/** Как понимать привычки и дела человека — общее с разбором из мини-аппа, где есть и группы (worker/voiceRoute.ts). */
+export const OWN_RULES = `A HABIT repeats: something done every day, on some weekdays or N times a week, a daily amount, or something to quit. A TO-DO is a single thing to do once ("buy milk", "call mom", "book a dentist", "tomorrow pay the rent"). When unsure, a plain action with no repetition words is a to-do.
 Every to-do has ALL of these fields:
 - title: short, in the SAME language as the input, capitalised, the action itself without date words ("Купить молоко", "Позвонить маме").
 - day: the date it is for as YYYY-MM-DD, counted from the "Today is" line at the start of the input ("завтра"/"tomorrow" = the next day, "в пятницу"/"on Friday" = the nearest coming Friday); "" when no day is said (it means today).
@@ -93,8 +94,10 @@ Every habit has ALL of these fields:
 - unit: the unit word for "count" in the input language ("страниц", "стаканов", "минут"), otherwise "".
 - schedule: "weekdays" when specific days of the week are named; "per_week" when it is N times a week on any days; otherwise "daily". "abstain" is always "daily".
 - weekdays: for "weekdays" the day numbers, 1 = Monday … 7 = Sunday; otherwise [].
-- per_week: for "per_week" the number N (1-6); otherwise 0.
-If the input starts with a "Groups:" line, the person also gives tasks to those groups: anything said for a group («в группу Семья», «в семью», «нам всем») or for one of its listed people («Алёне погулять с собакой») is NOT personal — leave it out. Keep only what the person takes for themselves («себе», «мне», «лично»).
+- per_week: for "per_week" the number N (1-6); otherwise 0.`;
+
+const SYSTEM = `You turn a person's spoken or typed list into habits and one-off to-dos for a habit tracker. Reply with JSON only.
+${OWN_RULES}
 Each separate wish becomes its own habit or to-do. Ignore greetings and small talk. If there is nothing to add, return {"habits": [], "todos": []}. Never invent anything that was not mentioned.`;
 
 // Два разобранных примера: без них модель теряет числа и расписание.
@@ -218,15 +221,17 @@ function geminiSchema(node: unknown): unknown {
   return out;
 }
 
-/** Чему учим модель: системная подсказка, примеры и схема ответа. Личный разбор — по умолчанию; групповой — worker/groupVoice.ts. */
+/** Чему учим модель: системная подсказка, примеры и схема ответа. Личный разбор — здесь, групповой — worker/groupVoice.ts, с группами — worker/voiceRoute.ts. */
 export interface ModelSpec {
   system: string;
   shots: [string, object][];
   schema: object;
+  /** Длина ответа; по умолчанию 1500 токенов. */
+  maxTokens?: number;
 }
-const PERSONAL: ModelSpec = { system: SYSTEM, shots: SHOTS, schema: SCHEMA };
+const PERSONAL: ModelSpec = { system: SYSTEM, shots: SHOTS, schema: OWN_SCHEMA };
 
-async function parseWithGemini(key: string, text: string, spec: ModelSpec = PERSONAL): Promise<unknown> {
+async function parseWithGemini(key: string, text: string, spec: ModelSpec): Promise<unknown> {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
@@ -240,7 +245,7 @@ async function parseWithGemini(key: string, text: string, spec: ModelSpec = PERS
         ]),
         { role: 'user', parts: [{ text }] },
       ],
-      generationConfig: { temperature: 0, maxOutputTokens: 1500, responseMimeType: 'application/json', responseSchema: geminiSchema(spec.schema) },
+      generationConfig: { temperature: 0, maxOutputTokens: spec.maxTokens ?? 1500, responseMimeType: 'application/json', responseSchema: geminiSchema(spec.schema) },
     }),
   });
   if (!res.ok) throw new Error(`gemini ${res.status}`);
@@ -250,7 +255,7 @@ async function parseWithGemini(key: string, text: string, spec: ModelSpec = PERS
   return JSON.parse(out);
 }
 
-async function parseWithWorkersAi(env: Env, text: string, spec: ModelSpec = PERSONAL): Promise<unknown> {
+async function parseWithWorkersAi(env: Env, text: string, spec: ModelSpec): Promise<unknown> {
   const res = (await env.AI.run(
     LLM as never,
     {
@@ -264,7 +269,7 @@ async function parseWithWorkersAi(env: Env, text: string, spec: ModelSpec = PERS
       ],
       response_format: { type: 'json_schema', json_schema: spec.schema },
       temperature: 0,
-      max_tokens: 1500,
+      max_tokens: spec.maxTokens ?? 1500,
     } as never,
   )) as { response?: unknown };
   return typeof res.response === 'string' ? safeJson(res.response) : res.response;
@@ -273,30 +278,17 @@ async function parseWithWorkersAi(env: Env, text: string, spec: ModelSpec = PERS
 export interface Parsed {
   habits: TaskInput[];
   todos: TodoInput[];
-  by: 'gemini' | 'workers-ai';
+  by: Answer['by'];
 }
 
 /**
  * Разобрать фразу на привычки и разовые дела. Пустые списки — добавлять нечего.
  * today — логический день человека: от него модель считает «завтра» и «в пятницу».
- * Сначала Gemini (если есть ключ); не ответил вовремя или упал — та же задача уходит в Workers AI.
+ * Только личное; фразу человека, у которого есть группы, разбирает worker/voiceRoute.ts.
  */
-/**
- * groups — группы, о которых шла речь: сказанное для них (и их участникам) — не личное, разбор его не берёт
- * (это забирает групповой разбор, worker/voiceRoute.ts).
- */
-export async function parseHabits(env: Env, text: string, today: string, groups: { title: string; members: string[] }[] = []): Promise<Parsed> {
-  const groupLine = groups.length ? `Groups: ${groups.map((g) => `${g.title} (${g.members.join(', ') || '—'})`).join('; ')}\n` : '';
-  const input = `${groupLine}${todayLine(today)}\n${text.slice(0, 2000)}`;
-  const read = (raw: unknown, by: Parsed['by']): Parsed => ({ habits: toTaskInputs(raw), todos: toTodoInputs(raw), by });
-  if (env.GEMINI_API_KEY) {
-    try {
-      return read(await parseWithGemini(env.GEMINI_API_KEY, input), 'gemini');
-    } catch (e) {
-      console.warn('gemini failed, falling back to Workers AI', e);
-    }
-  }
-  return read(await parseWithWorkersAi(env, input), 'workers-ai');
+export async function parseHabits(env: Env, text: string, today: string): Promise<Parsed> {
+  const { raw, by } = await askModel(env, `${todayLine(today)}\n${text.slice(0, 2000)}`, PERSONAL);
+  return { habits: toTaskInputs(raw), todos: toTodoInputs(raw), by };
 }
 
 function safeJson(s: string): unknown {
@@ -307,16 +299,22 @@ function safeJson(s: string): unknown {
   }
 }
 
-/** Спросить модель по своей подсказке и схеме: сначала Gemini, не вышло — Workers AI. */
-export async function askModel(env: Env, input: string, spec: ModelSpec): Promise<unknown> {
+/** Ответ модели (ещё не проверенный) и кто ответил. */
+export interface Answer {
+  raw: unknown;
+  by: 'gemini' | 'workers-ai';
+}
+
+/** Спросить модель по своей подсказке и схеме: сначала Gemini (если есть ключ); не ответил вовремя или упал — Workers AI. */
+export async function askModel(env: Env, input: string, spec: ModelSpec): Promise<Answer> {
   if (env.GEMINI_API_KEY) {
     try {
-      return await parseWithGemini(env.GEMINI_API_KEY, input, spec);
+      return { raw: await parseWithGemini(env.GEMINI_API_KEY, input, spec), by: 'gemini' };
     } catch (e) {
       console.warn('gemini failed, falling back to Workers AI', e);
     }
   }
-  return parseWithWorkersAi(env, input, spec);
+  return { raw: await parseWithWorkersAi(env, input, spec), by: 'workers-ai' };
 }
 
 export { todayLine };

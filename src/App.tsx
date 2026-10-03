@@ -292,6 +292,8 @@ export function App(): ReactNode {
             onEdit={(index) => setRoute({ name: 'draft', index, back: currentTab })}
             today={cache.today.day}
             groupId={route.name === 'group' ? route.id : null}
+            // Список с вкладки «Вместе» свежее: новую группу он знает сразу, «Сегодня» — после перечитывания.
+            groups={caches.groupList ?? cache.today.groups}
             onAdd={async (todos, habits, groupItems) => {
               await Promise.all([
                 todos.length ? api.createTodos(todos) : null,

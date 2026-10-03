@@ -58,6 +58,37 @@ const MY_GROUPS = [
   },
 ];
 
+/** Группы владелицы на 03.10.2026: имя в Telegram латиницей, в названии эмодзи. */
+const OWNER_GROUPS = [
+  {
+    id: 2,
+    title: 'Семья ❤️',
+    members: [
+      { id: 1, name: 'Dasha' },
+      { id: 2, name: 'Алёна' },
+    ],
+  },
+];
+
+/** Микрофон в мини-аппе: группы и личное в одной фразе. */
+const route = (
+  id: string,
+  text: string,
+  expect: Omit<ExpectedVoice, 'today'>,
+  extra: { note?: string; screenGroup?: number; groups?: Extract<VoiceCase, { kind: 'route' }>['groups']; lang?: 'ru' | 'en' } = {},
+): VoiceCase => ({
+  id,
+  lang: extra.lang ?? 'ru',
+  kind: 'route',
+  text,
+  when: T,
+  me: 1,
+  groups: extra.groups ?? MY_GROUPS,
+  screenGroup: extra.screenGroup ?? null,
+  expect,
+  ...(extra.note && { note: extra.note }),
+});
+
 const personal = (id: string, text: string, expect: { habits?: ExpectedHabit[]; todos?: ExpectedTodo[] }, extra: Partial<Base> = {}): VoiceCase => ({
   id,
   lang: 'ru',
@@ -211,6 +242,125 @@ export const CASES: VoiceCase[] = [
     },
     note: 'микрофон с экрана группы — всё туда',
   },
+
+  route(
+    'r-noutbuk',
+    'настроить камеру и микрофон, настроить ноутбук Алёне, настроить агента для поиска постов, написать пробник JRE',
+    {
+      habits: [],
+      todos: [{ title: 'камер' }, { title: 'ноутбук' }, { title: 'агент' }, { title: 'пробник' }],
+      groups: [],
+    },
+    { groups: OWNER_GROUPS, note: '03.10.2026: Алёна — дополнение, а не исполнитель; всё своё, в «Семью» ничего' },
+  ),
+  route(
+    'r-imena-ne-gruppa',
+    'позвонить Алёне, в пятницу в шесть вечера встреча с Костей, купить Пете подарок на день рождения',
+    {
+      habits: [],
+      todos: [{ title: /ал[её]н/i }, { title: 'кост', day: D.fri, time: '18:00' }, { title: 'подарок' }],
+      groups: [],
+    },
+    { note: 'участники групп упомянуты, но всё делает говорящий' },
+  ),
+  route(
+    'r-vse-srazu',
+    'читать двадцать страниц каждый день, завтра записаться к стоматологу, а в группу Семья: Пете вынести мусор в четверг и в субботу в семь вечера ужинаем всей семьёй',
+    {
+      habits: [{ title: /чит|чтен/i, kind: 'count', target: 20, schedule: 'daily' }],
+      todos: [{ title: 'стоматолог', day: D.tomorrow }],
+      groups: [
+        {
+          title: 'Семья',
+          items: [
+            { title: 'мусор', mode: 'assign', people: ['Петя'], day: D.thu },
+            { title: 'ужин', mode: 'event', all: true, day: D.sat, time: '19:00' },
+          ],
+        },
+      ],
+    },
+    { note: 'привычка, дело и два дела группе — одной фразой' },
+  ),
+  route(
+    'r-dve-gruppy',
+    'в группу Семья купить продукты на неделю, в группу Бег по утрам каждый бегает по пять километров по субботам, а себе завтра купить витамины',
+    {
+      habits: [],
+      todos: [{ title: 'витамин', day: D.tomorrow }],
+      groups: [
+        { title: 'Семья', items: [{ title: 'продукт', mode: 'one' }] },
+        { title: 'Бег по утрам', items: [{ title: /бег|беж/i, mode: 'assign', all: true, rrule: 'FREQ=WEEKLY;BYDAY=SA' }] },
+      ],
+    },
+  ),
+  route(
+    'r-ekran-i-sebe',
+    'каждый бегает по пять километров по субботам, а себе купить новые кроссовки',
+    {
+      habits: [],
+      todos: [{ title: 'кроссовк' }],
+      groups: [{ title: 'Бег по утрам', items: [{ title: /бег|беж/i, mode: 'assign', all: true, rrule: 'FREQ=WEEKLY;BYDAY=SA' }] }],
+    },
+    { screenGroup: 20, note: 'с экрана группы — туда, но «себе» — себе' },
+  ),
+  route(
+    'r-vsey-semyey',
+    'в субботу в семь вечера идём всей семьёй в кино',
+    { habits: [], todos: [], groups: [{ title: 'Семья', items: [{ title: 'кино', mode: 'event', all: true, day: D.sat, time: '19:00' }] }] },
+    { note: 'группа не названа, но «всей семьёй» — это «Семья»' },
+  ),
+  route(
+    'r-ya-v-gruppe',
+    'в группу Семья: я завтра забираю посылку, а Алёна моет посуду каждый вечер',
+    {
+      habits: [],
+      todos: [],
+      groups: [
+        {
+          title: 'Семья',
+          items: [
+            { title: 'посылк', mode: 'assign', people: ['Даша'], day: D.tomorrow },
+            { title: 'посуд', mode: 'assign', people: ['Алёна'], rrule: 'FREQ=DAILY' },
+          ],
+        },
+      ],
+    },
+    { note: '«я» после названной группы — дело в группе на говорящего, не личное' },
+  ),
+  route(
+    'r-semya-emoji',
+    'в семью: завтра купить продукты, а себе позвонить в банк',
+    {
+      habits: [],
+      todos: [{ title: 'банк' }],
+      groups: [{ title: 'Семья ❤️', items: [{ title: 'продукт', day: D.tomorrow }] }],
+    },
+    { groups: OWNER_GROUPS, note: 'название с эмодзи, сказано «в семью»' },
+  ),
+  route(
+    'e-flatmates',
+    'add to Flatmates: Tom takes out the trash this thursday, and for me book a haircut tomorrow',
+    {
+      habits: [],
+      todos: [{ title: 'haircut', day: D.tomorrow }],
+      groups: [{ title: 'Flatmates', items: [{ title: 'trash', mode: 'assign', people: ['Tom'], day: D.thu }] }],
+    },
+    {
+      lang: 'en',
+      // «on thursday» модель законно понимает как «по четвергам» — здесь проверяем, куда, а не повтор.
+      note: 'по-английски: группа названа, «for me» — себе',
+      groups: [
+        {
+          id: 30,
+          title: 'Flatmates',
+          members: [
+            { id: 1, name: 'Sam' },
+            { id: 5, name: 'Tom' },
+          ],
+        },
+      ],
+    },
+  ),
 
   // Сообщение в групповом чате
   chat('g-ochered', 'посуду моют по очереди Алёна и Петя каждый вечер', [
