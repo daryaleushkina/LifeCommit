@@ -41,6 +41,8 @@ jobs:
           EOF
       - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm typecheck
+      # правила хуков React и потерянные промисы (.oxlintrc.json)
+      - run: pnpm lint
       # тесты vitest и порог покрытия (vitest.config.ts → thresholds)
       - run: pnpm coverage
       - run: pnpm e2e

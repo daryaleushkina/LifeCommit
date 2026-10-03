@@ -62,7 +62,7 @@ export function SwipeRow({ actions, className, variant = 'row', children }: Prop
   const close = useCallback(() => setX(0), []);
   useEffect(() => () => {
     if (closeOpen === close) closeOpen = null;
-  }, []);
+  }, [close]);
 
   const Tag = variant === 'card' ? 'div' : 'li';
   if (!actions.length) return variant === 'card' ? <>{children}</> : <li className={className}>{children}</li>;

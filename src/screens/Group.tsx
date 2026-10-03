@@ -95,7 +95,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
     } catch (e) {
       setNote(e instanceof ApiError && e.code === 'not_yours' ? g.notYours : t.error);
     }
-    changed();
+    void changed();
   };
 
   const invite = async () => {
@@ -262,7 +262,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
           item={editing === 'new' ? undefined : editing}
           onSaved={() => {
             setEditing(null);
-            changed();
+            void changed();
           }}
           onClose={() => setEditing(null)}
         />
@@ -275,7 +275,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
           onPut={async (amount) => {
             await api.addEntry(group.id, putting.id, amount).catch(() => setNote(t.error));
             setPutting(null);
-            changed();
+            void changed();
           }}
         />
       )}
@@ -298,9 +298,9 @@ function PutSheet({ item, groupTitle, onClose, onPut }: { item: GroupDayItem; gr
       <button
         className="act primary wide"
         disabled={busy || !(n > 0)}
-        onClick={async () => {
+        onClick={() => {
           setBusy(true);
-          await onPut(n);
+          void onPut(n);
         }}
       >
         {g.put}

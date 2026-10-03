@@ -123,7 +123,8 @@ export function TaskEditor({ task, day, kind, onClose, onBack, onSaved, draft, o
   const valid = form.title.trim().length > 0 && (!numeric || form.target > 0) && (form.schedule !== 'weekdays' || form.weekdays > 0);
   const state: SubmitState = busy ? 'submitting' : valid ? 'idle' : 'blocked';
 
-  useMainButton(isDraft ? t.done : isNew ? t.add : t.save, state, async () => {
+  // Ошибки ловит сама (сообщение под формой), поэтому кнопке её промис не нужен.
+  const save = async () => {
     if (!isDraft) setBusy(true);
     try {
       const input: TaskInput = {
@@ -157,7 +158,8 @@ export function TaskEditor({ task, day, kind, onClose, onBack, onSaved, draft, o
       setMessage(e instanceof ApiError && e.code === 'task_limit' ? t.limitReached(5) : t.error);
       setBusy(false);
     }
-  });
+  };
+  useMainButton(isDraft ? t.done : isNew ? t.add : t.save, state, () => void save());
 
   const postpone = async () => {
     if (id === null) return;

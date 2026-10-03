@@ -59,8 +59,8 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onD
     if (Date.now() - loadedAt < FRESH_MS) return;
     const seq = currentChange();
     api.today().then((today) => seq === currentChange() && setCache((c) => ({ ...c, today, loadedAt: Date.now() })), () => {});
-    // Только при открытии экрана: loadedAt нужен как значение на этот момент.
-  }, [setCache]);
+    // По сути — при открытии экрана: loadedAt меняется только на «сейчас», и повторный запуск сразу выходит.
+  }, [loadedAt, setCache]);
 
   // Несделанные сверху, сделанные тихо опускаются вниз.
   const shown = data.tasks.filter((x) => !isRemoved(`task:${x.id}`));

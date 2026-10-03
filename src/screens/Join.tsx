@@ -23,7 +23,7 @@ export function Join({ code, onJoined, onClose }: Props): ReactNode {
 
   useEffect(() => {
     fetchInto.invitation(code).then(setInv, (e) => setProblem(e instanceof ApiError && e.code === 'invite_expired' ? j.expired : j.notFound));
-  }, [code]);
+  }, [code, j.expired, j.notFound]);
 
   if (problem) {
     return (

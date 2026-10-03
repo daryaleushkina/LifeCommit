@@ -144,7 +144,9 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, o
       recorder.current?.cancel();
       recorder.current = null;
     };
-    // Только при открытии шторки.
+    // Только при открытии шторки: повторную запись (t.voice.again) кнопка начинает сама, а перезапуск эффекта по preview/record
+    // отменял бы только что начатую запись в своей очистке.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- намеренно один раз, см. выше
   }, []);
 
   // Таймер записи; на пределе останавливаемся сами.

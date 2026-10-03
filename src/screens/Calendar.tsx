@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { GroupDayItem } from '../../shared/groups';
 import { sortTodos, type Todo } from '../../shared/types';
 import { api, type CalendarAccount } from '../api';
 import { caches, load as fetchInto, warm } from '../caches';
@@ -57,6 +58,7 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
   const from = days[0]!;
   const to = days[days.length - 1]!;
   const key = `${from}:${to}`;
+  const month = monthOf(selected);
   // Что на экране — прямо из кэша, ещё до первой отрисовки: уже виденный (или подтянутый заранее) день открывается сразу.
   // Правки «на месте» (отметили — галочка сразу, сервер догоняет) пишутся в тот же кэш.
   const [, rerender] = useState(0);
@@ -76,20 +78,30 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
     if (await fetchInto.range(from, to).catch(() => null)) rerender((n) => n + 1);
   }, [from, to]);
 
+  // Отметка группового дела не дошла до сервера — сказать, а не молча оставить как было.
+  const [markError, setMarkError] = useState<string | null>(null);
+  const markGroupItem = async (groupId: number, it: GroupDayItem) => {
+    await api.markItem(groupId, it.id, !it.done, selected).catch(() => setMarkError(t.error));
+    await load();
+    onChanged();
+  };
+
+  // Запускается, только когда сменился промежуток на экране: в «Месяце» выбор другого дня того же месяца ничего не грузит.
+  // Поэтому — from и month, а не selected (в «Дне» from и есть выбранный день).
   useEffect(() => {
     void load();
     // Соседние дни (или месяцы) — заранее: листать стрелками без пустых кадров.
     for (const n of [1, -1]) {
-      const next = mode === 'day' ? addDays(selected, n) : `${shiftMonth(monthOf(selected), n)}-01`;
+      const next = mode === 'day' ? addDays(from, n) : `${shiftMonth(month, n)}-01`;
       const [a, b] = keyOf(mode, next);
       if (!caches.days.has(`${a}:${b}`)) warm(fetchInto.range(a, b));
     }
     // И месяц — чтобы «Месяц» открылся сразу.
     if (mode === 'day') {
-      const [a, b] = keyOf('month', selected);
+      const [a, b] = keyOf('month', from);
       if (!caches.days.has(`${a}:${b}`)) warm(fetchInto.range(a, b));
     }
-  }, [load]);
+  }, [load, mode, from, month]);
 
   // Подключённые календари. Синхронизация — при запуске приложения и по кнопке «Обновить» (решение владелицы 02.10.2026),
   // при открытии вкладки — нет: вкладка должна открываться сразу.
@@ -127,9 +139,6 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
     },
     errorText: t.error,
   });
-  // Отметка группового дела не дошла до сервера — сказать, а не молча оставить как было.
-  const [markError, setMarkError] = useState<string | null>(null);
-
   const shift = (n: number) => setSelected(mode === 'day' ? addDays(selected, n) : `${shiftMonth(monthOf(selected), n)}-01`);
   const ofDay = (day: string) => (todos ?? []).filter((d) => d.day === day);
   const dayTodos = sortTodos(ofDay(selected));
@@ -308,11 +317,7 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
                   item={selected > today ? { ...it, can_mark: false } : it}
                   members={b.group.members}
                   me={me}
-                  onToggle={async () => {
-                    await api.markItem(b.group.id, it.id, !it.done, selected).catch(() => setMarkError(t.error));
-                    await load();
-                    onChanged();
-                  }}
+                  onToggle={() => void markGroupItem(b.group.id, it)}
                   onOpen={() => onOpenGroup(b.group.id)}
                   swipe={{
                     groupId: b.group.id,
