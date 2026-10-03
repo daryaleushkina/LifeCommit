@@ -1,0 +1,18 @@
+#!/bin/sh
+# Сообщение коммита — без подписей ИИ-ассистента (CLAUDE.md: «В коммитах, PR и файлах — никаких подписей
+# ИИ-ассистента»). Включается вместе с остальными хуками: pnpm hooks:install. Тест: scripts/hooks/git-hooks.test.ts.
+
+msg="$1"
+[ -f "$msg" ] || exit 0
+
+# Строки-комментарии и всё ниже «ножниц» (git commit -v) в коммит не попадают — их не проверяем.
+bad="$(awk '/^# -+ >8 -+$/ { exit } !/^#/ { print NR ": " $0 }' "$msg" |
+  grep -iE 'co-authored-by:.*(claude|anthropic)|generated (with|by).*claude|claude\.ai/code|claude\.com/claude-code|claude-session:')"
+[ -z "$bad" ] && exit 0
+
+{
+  echo "commit-msg: в сообщении коммита подпись ИИ-ассистента — убери эти строки:"
+  printf '%s\n' "$bad" | sed 's/^/  /'
+  echo "Правило проекта (CLAUDE.md): в коммитах, PR и файлах — никаких подписей ИИ-ассистента."
+} >&2
+exit 1

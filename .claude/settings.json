@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(wrangler deploy *)",
+      "Bash(wrangler versions deploy *)",
+      "Bash(pnpm exec wrangler deploy *)",
+      "Bash(pnpm exec wrangler versions deploy *)",
+      "Bash(pnpm wrangler deploy *)",
+      "Bash(pnpm dlx wrangler deploy *)",
+      "Bash(npx wrangler deploy *)",
+      "Bash(npx wrangler versions deploy *)",
+      "Bash(./node_modules/.bin/wrangler deploy *)",
+      "Bash(node_modules/.bin/wrangler deploy *)",
+      "Bash(pnpm deploy *)",
+      "Bash(pnpm run deploy *)",
+      "Bash(npm run deploy *)",
+      "Bash(git config core.hooksPath *)",
+      "Bash(git config core.hookspath *)",
+      "Bash(git config * core.hooksPath *)",
+      "Bash(git config * core.hookspath *)",
+      "Bash(git config * core.hooksPath)",
+      "Bash(git config * core.hookspath)",
+      "Read(.dev.vars*)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(!.env.example)"
+    ],
+    "ask": [
+      "Bash(pnpm e2e -u*)",
+      "Bash(pnpm e2e * -u*)",
+      "Bash(playwright test -u*)",
+      "Bash(playwright test * -u*)",
+      "Bash(* playwright test -u*)",
+      "Bash(* playwright test * -u*)",
+      "Bash(* --update-snapshots*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-no-verify.mjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-gates.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+// git-хуки commit-msg (без подписей ИИ) и pre-commit (файлы владелицы не уезжают в коммит) — во временном репозитории.
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const HOOKS = path.dirname(fileURLToPath(import.meta.url));
+const ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+
+function repo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lc-git-hooks-'));
+  const git = (...args: string[]) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: dir, encoding: 'utf8', env: ENV });
+  git('init', '-q', '-b', 'main');
+  git('config', 'core.hooksPath', HOOKS);
+  const write = (file: string, text = 'x') => {
+    fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+    fs.writeFileSync(path.join(dir, file), text);
+  };
+  return { dir, git, write };
+}
+
+describe('commit-msg', () => {
+  const check = (message: string) => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lc-msg-')), 'MSG');
+    fs.writeFileSync(file, message);
+    return spawnSync(path.join(HOOKS, 'commit-msg'), [file], { encoding: 'utf8' });
+  };
+
+  it.each([
+    'Друзья: заявки\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>',
+    'Fix\n\nco-authored-by: Someone <noreply@anthropic.com>',
+    'Fix\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)',
+    'Fix\n\nClaude-Session: https://claude.ai/code/session_1',
+    'Fix\n\nсм. claude.ai/code',
+  ])('отклоняет подпись: %s', (message) => {
+    const r = check(message);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('подпись ИИ-ассистента');
+    expect(r.stderr).toMatch(/^ {2}\d+: /m);
+  });
+
+  it.each([
+    'Друзья: заявки по @username',
+    'Fix\n\nCo-Authored-By: Darya <darya@example.com>',
+    'Сгенерировано скриптом\n\nGenerated with pnpm bot:setup',
+    // Комментарии git и всё ниже «ножниц» в коммит не попадают.
+    'Fix\n# Co-Authored-By: Claude <noreply@anthropic.com>',
+    'Fix\n# ------------------------ >8 ------------------------\n+Co-Authored-By: Claude <noreply@anthropic.com>',
+  ])('пропускает: %s', (message) => {
+    expect(check(message).status).toBe(0);
+  });
+
+  it('нет файла сообщения — не мешает', () => {
+    expect(spawnSync(path.join(HOOKS, 'commit-msg'), ['/nonexistent/MSG']).status).toBe(0);
+  });
+});
+
+describe('git commit с хуками проекта', () => {
+  it('обычный коммит проходит', () => {
+    const { git, write } = repo();
+    write('src/a.ts');
+    git('add', '.');
+    const r = git('commit', '-q', '-m', 'Обычная правка');
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it('подпись ИИ в сообщении — коммит отклонён', () => {
+    const { git, write } = repo();
+    write('src/a.ts');
+    git('add', '.');
+    const r = git('commit', '-q', '-m', 'Правка\n\nCo-Authored-By: Claude <noreply@anthropic.com>');
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('подпись ИИ-ассистента');
+  });
+
+  it.each(['.claude/skills/x/SKILL.md', '.mcp.json', '.idea/misc.xml'])('файл владелицы %s — коммит отклонён с подсказкой', (file) => {
+    const { git, write } = repo();
+    write('src/a.ts');
+    write(file);
+    git('add', '.');
+    const r = git('commit', '-q', '-m', 'Правка');
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(`  ${file}`);
+    expect(r.stderr).toContain('git restore --staged');
+  });
+
+  it('удаление файла владелицы и прочие .claude/* не мешают', () => {
+    const { dir, git, write } = repo();
+    write('.mcp.json');
+    write('.claude/hooks/a.mjs');
+    git('add', '.');
+    expect(git('commit', '-q', '--no-verify', '-m', 'Исходное состояние').status).toBe(0);
+    fs.rmSync(path.join(dir, '.mcp.json'));
+    write('.claude/hooks/a.mjs', 'y');
+    git('add', '-A');
+    const r = git('commit', '-q', '-m', 'Убрали .mcp.json');
+    expect(r.status, r.stderr).toBe(0);
+  });
+});
