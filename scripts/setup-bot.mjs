@@ -38,6 +38,9 @@ if (!process.argv.includes('--texts')) {
   });
 }
 
+// Имя бота — одним словом, без «трекер привычек» и прочих приписок (решение владелицы 03.10.2026).
+await call('setMyName', { name: 'LifeCommit' });
+
 for (const [lang, cmds, description, short] of [
   [
     'ru',
