@@ -17,6 +17,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
+    "eval:voice": "vitest run --config vitest.eval.config.ts",
     "check:tma": "bash .claude/skills/telegram-mini-app/scripts/check.sh src",
     "bot:setup": "node scripts/setup-bot.mjs",
     "hooks:install": "git config core.hooksPath scripts/hooks"
