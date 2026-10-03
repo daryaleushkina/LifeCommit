@@ -1,5 +1,6 @@
 // Настройка бота через Bot API: webhook, кнопка меню с мини-аппом, команды, описания.
 // Запуск: pnpm bot:setup  (берёт TELEGRAM_BOT_TOKEN и WEBHOOK_SECRET из .env.local)
+// Только тексты (описания и команды), не трогая webhook и кнопку меню: pnpm bot:setup --texts
 import { readFileSync } from 'node:fs';
 
 const env = Object.fromEntries(
@@ -24,29 +25,31 @@ async function call(method, payload) {
   if (!body.ok) process.exitCode = 1;
 }
 
-await call('setWebhook', {
-  url: `${APP_URL}/bot/webhook`,
-  secret_token: SECRET,
-  allowed_updates: ['message', 'my_chat_member', 'callback_query'],
-  drop_pending_updates: true,
-});
+if (!process.argv.includes('--texts')) {
+  await call('setWebhook', {
+    url: `${APP_URL}/bot/webhook`,
+    secret_token: SECRET,
+    allowed_updates: ['message', 'my_chat_member', 'callback_query'],
+    drop_pending_updates: true,
+  });
 
-await call('setChatMenuButton', {
-  menu_button: { type: 'web_app', text: 'LifeCommit', web_app: { url: APP_URL } },
-});
+  await call('setChatMenuButton', {
+    menu_button: { type: 'web_app', text: 'LifeCommit', web_app: { url: APP_URL } },
+  });
+}
 
 for (const [lang, cmds, description, short] of [
   [
     'ru',
     [{ command: 'start', description: 'Открыть LifeCommit' }],
-    'LifeCommit — привычки, дела на день и карта активности, как в GitHub.\n\n✅ Отмечай, что успел — даже чуть-чуть засчитывается\n🎤 Говори голосом — дела и привычки разберутся сами\n📅 Дела и встречи — вместе с Google и Apple Календарём\n🤝 Вместе с семьёй и друзьями: общие дела, цели и бот в чате группы\n🟩 Смотри, как зеленеет твоя карта',
-    'Привычки, дела и карта активности. Голосом, с календарём и вместе с близкими.',
+    'LifeCommit — привычки, цели и дела на каждый день.\n\n✅ Отмечай привычки и цели\n🎤 Говори голосом — дела и привычки разберутся сами\n📅 Дела и встречи — вместе с Google и Apple Календарём\n🤝 Вместе с семьёй и друзьями: общие дела, цели и бот в чате группы',
+    'Привычки, цели и дела на день. Голосом, с календарём и вместе с близкими.',
   ],
   [
     '',
     [{ command: 'start', description: 'Open LifeCommit' }],
-    'LifeCommit — habits, daily to-dos and a GitHub-style activity map.\n\n✅ Log what you did — even a little counts\n🎤 Just say it — to-dos and habits sort themselves out\n📅 To-dos and meetings in sync with Google and Apple Calendar\n🤝 Together with family and friends: shared to-dos, goals and a bot in your group chat\n🟩 Watch your map turn green',
-    'Habits, to-dos and an activity map. By voice, with your calendar and together.',
+    'LifeCommit — habits, goals and to-dos for every day.\n\n✅ Track your habits and goals\n🎤 Just say it — to-dos and habits sort themselves out\n📅 To-dos and meetings in sync with Google and Apple Calendar\n🤝 Together with family and friends: shared to-dos, goals and a bot in your group chat',
+    'Habits, goals and daily to-dos. By voice, with your calendar and together.',
   ],
 ]) {
   const language_code = lang || undefined;

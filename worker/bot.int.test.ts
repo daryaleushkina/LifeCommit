@@ -136,6 +136,9 @@ describe.skipIf(!ready)('/start', () => {
     expect(data).toEqual({ first_name: 'Даша', last_name: 'Л', username: `u${id}`, bot_chat_ok: true });
     const [msg] = replies(id);
     expect(textOf(msg)).toMatch(/^Привет, Даша! 🌱/);
+    // Текст — нейтральный (03.10.2026): без «как в GitHub», «даже чуть-чуть» и «как зеленеет карта».
+    expect(textOf(msg)).toContain('привычки, цели и дела на каждый день');
+    expect(textOf(msg)).not.toMatch(/зеленеет|GitHub|понемногу|чуть-чуть/);
     expect(buttons(msg)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: APP } }]);
   });
 
