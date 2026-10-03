@@ -690,7 +690,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 /* ── Друзья (03.10.2026: 24B′, 25H, 25L, 25M) ── */
 .act.small { height: 40px; min-width: 0; padding: 0 14px; font-size: 15px; background: var(--accent-soft); color: var(--accent); }
 .act.primary.small { background: var(--accent); color: var(--accent-text); font-size: 15px; }
-.together-switch { margin-top: 18px; }
+/* Отступ от шапки с «+»: общее .segmented.two обнуляет margin-top — перебиваем точнее (03.10.2026: плюс касался вкладок). */
+.segmented.two.together-switch { margin-top: 18px; }
 .requests-row { margin-top: 16px; min-height: 60px; padding: 0 14px; display: flex; align-items: center; gap: 12px; color: inherit; text-align: left; }
 .requests-row b { flex: 1; font-size: 16px; }
 .friend-search { margin-top: 16px; background: var(--glass); box-shadow: var(--glass-edge); }
