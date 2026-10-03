@@ -1,5 +1,5 @@
 // Вкладка «Вместе» (дизайн 16A, друзья — 24B′): «Группы · Друзья». Группы — с прогрессом дня и «Новая группа» (16Q),
-// друзья — списком (Friends.tsx), «Позвать друга» — плюсом в шапке. Последний выбор помним на устройстве.
+// друзья — списком (Friends.tsx; «Позвать друга» — плюс рядом с поиском, 27F). Последний выбор помним на устройстве.
 import { useEffect, useState, type ReactNode } from 'react';
 import type { GroupToday } from '../../shared/groups';
 import type { TodayTask } from '../../shared/types';
@@ -8,7 +8,7 @@ import { caches, load as fetchInto } from '../caches';
 import { AvatarStack, GroupBadge } from '../components/groupUi';
 import { Sheet } from '../components/Picker';
 import { useT } from '../i18n';
-import { AddFriendSheet, FriendsPanel } from './Friends';
+import { FriendsPanel } from './Friends';
 
 export type Section = 'groups' | 'friends';
 const SECTION_KEY = 'lc-together';
@@ -39,7 +39,6 @@ export function Groups({ me, initial, onOpen, habits, onOpenFriend, onRequests, 
   const t = useT();
   const g = t.gr;
   const [section, setSection] = useState<Section>(start ?? savedSection);
-  const [inviting, setInviting] = useState(false);
   const choose = (next: Section) => {
     setSection(next);
     try {
@@ -58,15 +57,8 @@ export function Groups({ me, initial, onOpen, habits, onOpenFriend, onRequests, 
 
   return (
     <>
-      <header className="page-head with-action">
+      <header className="page-head">
         <h1>{t.groups}</h1>
-        {section === 'friends' && (
-          <button className="icon-btn" aria-label={t.fr.invite} onClick={() => setInviting(true)}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
-        )}
       </header>
 
       <div className="segmented two together-switch" role="radiogroup">
@@ -121,9 +113,6 @@ export function Groups({ me, initial, onOpen, habits, onOpenFriend, onRequests, 
           </div>
         </>
       )}
-
-      {/* Позвали кого-то — список друзей обновится сам (там появится «ждём ответа»). */}
-      {inviting && <AddFriendSheet onClose={() => setInviting(false)} />}
 
       {creating && (
         <NewGroupSheet

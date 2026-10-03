@@ -692,11 +692,17 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .act.primary.small { background: var(--accent); color: var(--accent-text); font-size: 15px; }
 /* Отступ от шапки с «+»: общее .segmented.two обнуляет margin-top — перебиваем точнее (03.10.2026: плюс касался вкладок). */
 .segmented.two.together-switch { margin-top: 18px; }
-.requests-row { margin-top: 16px; min-height: 60px; padding: 0 14px; display: flex; align-items: center; gap: 12px; color: inherit; text-align: left; }
+.requests-row { margin-top: 12px; min-height: 60px; padding: 0 14px; display: flex; align-items: center; gap: 12px; color: inherit; text-align: left; }
 .requests-row b { flex: 1; font-size: 16px; }
-.friend-search { margin-top: 16px; background: var(--glass); box-shadow: var(--glass-edge); }
+.friend-tools { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
+.friend-search { flex: 1; min-width: 0; height: 48px; padding: 0 14px; border-radius: 16px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); display: flex; align-items: center; gap: 10px; color: var(--muted); }
+/* 16px — иначе iOS приближает страницу при фокусе. */
+.friend-search input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; font-size: 16px; color: var(--text); outline: none; }
+.friend-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.invite-btn { flex: none; width: 48px; height: 48px; border-radius: 16px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; transition: transform 160ms var(--ease-out); }
+.invite-btn:active { transform: scale(0.94); }
 .friend-list { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
-.requests-row + .friend-list, .friend-search + .friend-list { margin-top: 10px; }
+.requests-row + .friend-list, .friend-tools + .friend-list { margin-top: 12px; }
 .friend-card { margin-top: 0; padding: 12px 14px; display: flex; align-items: center; gap: 12px; text-align: left; color: inherit; }
 .friend-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .friend-text b { font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -111,12 +111,18 @@ test('«Что показать друзьям?»: плитки, «Выбрат�
   await expect.poll(async () => (await masha.api<{ habits: { title: string }[] }>('GET', `/friends/${me.id}`)).habits.map((h) => h.title)).toEqual(['Чтение']);
 });
 
-test('шапка «Вместе» с плюсом не наезжает на «Группы · Друзья»', async ({ app: page }) => {
+test('«Позвать друга» — плюс в одной строке с поиском, под переключателем, ничего не задевает (27F)', async ({ app: page }) => {
   await openFriends(page);
-  const head = await page.locator('.page-head').boundingBox();
-  const plus = await page.getByRole('button', { name: 'Позвать друга' }).boundingBox();
-  const tabs = await page.locator('.together-switch').boundingBox();
-  // Между низом шапки (и кнопки «+») и переключателем — заметный зазор (03.10.2026: плюс почти касался вкладок).
-  expect(tabs!.y - (head!.y + head!.height)).toBeGreaterThanOrEqual(12);
-  expect(tabs!.y - (plus!.y + plus!.height)).toBeGreaterThanOrEqual(12);
+  const tabs = (await page.locator('.together-switch').boundingBox())!;
+  const head = (await page.locator('.page-head').boundingBox())!;
+  const plus = (await page.getByRole('button', { name: 'Позвать друга' }).boundingBox())!;
+  const search = (await page.getByRole('searchbox', { name: 'Найти среди друзей' }).boundingBox())!;
+  // Шапка — только заголовок; переключатель отступает от неё (03.10.2026: «+» в шапке касался вкладок).
+  expect(tabs.y - (head.y + head.height)).toBeGreaterThanOrEqual(12);
+  expect(plus.y).toBeGreaterThanOrEqual(tabs.y + tabs.height + 8);
+  // Плюс — справа от поиска, на той же строке.
+  expect(Math.abs(plus.y + plus.height / 2 - (search.y + search.height / 2))).toBeLessThan(4);
+  expect(plus.x).toBeGreaterThan(search.x + search.width);
+  await page.getByRole('button', { name: 'Позвать друга' }).click();
+  await expect(page.getByRole('dialog', { name: 'Позвать друга' })).toBeVisible();
 });
