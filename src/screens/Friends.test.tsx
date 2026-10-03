@@ -220,11 +220,15 @@ describe('заявки: ответ, ушедший до нажатия', () => {
 describe('сеть подвела', () => {
   it('отменить, выбрать, закрыть, принять, убрать — ошибки сервера не роняют экраны', async () => {
     for (const fn of [m.api.dropRequest, m.api.setShown, m.api.promptSeen, m.api.acceptFriend, m.api.removeFriend, m.api.block]) fn.mockRejectedValue(new Error('сеть'));
-    // Отменить свою заявку (и перечитать список не вышло — остаётся старый).
+    // Отменить свою заявку не вышло (04.10.2026: раньше молча): заявка на месте и строка ошибки; тап её убирает.
     m.api.friends.mockResolvedValueOnce(list({ outgoing: [{ id: 7, first_name: 'Аня', username: null, photo_url: null }] })).mockRejectedValue(new Error('сеть'));
     const one = await panel();
     await page.getByRole('button', { name: 'Отменить' }).click();
     expect(m.api.dropRequest).toHaveBeenCalledWith(7);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('ждём ответа')).toBeVisible();
+    await page.getByText('Что-то пошло не так. Попробуй ещё раз.').click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
     await one.unmount();
 
     // «Что показать»: «Готово» — сервер не сохранил выбор (04.10.2026: раньше шторка молча закрывалась). Шторка снова
@@ -273,13 +277,23 @@ describe('сеть подвела', () => {
     await expect.element(page.getByRole('button', { name: 'Отправить ссылку в Telegram' })).toBeDisabled();
   });
 
-  it('убрать из друзей не вышло — всё равно назад', async () => {
+  // 04.10.2026: раньше экран закрывался, будто друга убрали, а на сервере он оставался — и снова появлялся в списке.
+  it('убрать из друзей или заблокировать не вышло — остаёмся на экране друга, строка ошибки', async () => {
     m.api.friend.mockResolvedValue(profile());
     m.api.removeFriend.mockRejectedValue(new Error('сеть'));
+    m.api.block.mockRejectedValue(new Error('сеть'));
     const onBack = vi.fn();
     await renderApp(<FriendScreen id={2} onBack={onBack} />);
     await page.getByRole('button', { name: 'Убрать из друзей' }).click();
-    await expect.poll(() => onBack.mock.calls.length).toBe(1);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByRole('heading', { name: 'Маша' })).toBeVisible();
+    expect(caches.friendProfiles.has(2)).toBe(true);
+    await page.getByText('Что-то пошло не так. Попробуй ещё раз.').click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
+    await page.getByRole('button', { name: 'Заблокировать' }).click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    expect(m.api.block).toHaveBeenCalledWith(2);
+    expect(onBack).not.toHaveBeenCalled();
   });
 });
 
