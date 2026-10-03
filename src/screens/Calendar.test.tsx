@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import type { GroupDayBlock, GroupDayItem } from '../../shared/groups';
 import type { Todo } from '../../shared/types';
-import type { CalendarAccount } from '../api';
+import { ApiError, type CalendarAccount } from '../api';
 import { caches } from '../caches';
 import { renderApp } from '../test/render';
 import { Calendar } from './Calendar';
@@ -199,6 +199,8 @@ describe('день', () => {
     await page.getByRole('button', { name: 'Сделано: Вынести мусор' }).click();
     await expect.poll(() => onChanged.mock.calls.length).toBe(1);
     expect(m.api.markItem).toHaveBeenCalledWith(10, 1, true, TODAY);
+    // Отметка удалась — строки ошибки нет.
+    expect(page.getByText('Что-то пошло не так. Попробуй ещё раз.').elements()).toEqual([]);
     m.api.markItem.mockRejectedValueOnce(new Error('сеть'));
     await page.getByRole('button', { name: 'Сделано: Вынести мусор' }).click();
     await expect.poll(() => onChanged.mock.calls.length).toBe(2);
@@ -208,6 +210,15 @@ describe('день', () => {
     await page.getByRole('button', { name: /^Семья/ }).click();
     await title('Вынести мусор').click();
     expect(onOpenGroup.mock.calls).toEqual([[10], [10]]);
+  });
+
+  it('групповое дело уже не на мне (очередь сменилась) — «Это дело сегодня не на тебе», а не «попробуй ещё раз»', async () => {
+    const { onChanged } = await setup();
+    m.api.markItem.mockRejectedValueOnce(new ApiError(403, 'not_yours'));
+    await page.getByRole('button', { name: 'Сделано: Вынести мусор' }).click();
+    await expect.poll(() => onChanged.mock.calls.length).toBe(1);
+    await expect.element(page.getByText('Это дело сегодня не на тебе')).toBeVisible();
+    expect(page.getByText('Что-то пошло не так. Попробуй ещё раз.').elements()).toEqual([]);
   });
 
   it('групповое дело в будущем — только посмотреть, без галочки', async () => {

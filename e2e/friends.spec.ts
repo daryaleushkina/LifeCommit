@@ -126,3 +126,31 @@ test('«Позвать друга» — плюс в одной строке с �
   await page.getByRole('button', { name: 'Позвать друга' }).click();
   await expect(page.getByRole('dialog', { name: 'Позвать друга' })).toBeVisible();
 });
+
+test('сеть подвела: принять заявку и сохранить «Что показать» не вышло — всё на месте и сказано', async ({ app: page, me, people }) => {
+  const { link } = await me.api<{ link: string }>('GET', '/friends');
+  const anya = await people('Аня');
+  await anya.api('POST', '/friends/requests', { code: link.split('startapp=f_')[1] });
+
+  await openFriends(page);
+  await page.getByRole('button', { name: /Заявки · 1/ }).click();
+  await page.route('**/api/friends/requests/*/accept', (r) => r.abort('failed'));
+  await page.getByRole('button', { name: 'Принять' }).click();
+  await expect(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+  await expect(page.getByText('Аня')).toBeVisible();
+  await page.unroute('**/api/friends/requests/*/accept');
+  await page.getByRole('button', { name: 'Принять' }).click();
+  await expect(page.getByText('Аня')).toBeHidden();
+
+  // Первый друг — «Что показать друзьям?»: сохранить не вышло — шторка снова открыта с ошибкой.
+  await me.api('POST', '/tasks', { title: 'Чтение', kind: 'check', target: 1 });
+  await page.keyboard.press('Escape');
+  const show = page.getByRole('dialog', { name: 'Что показать друзьям?' });
+  await expect(show).toBeVisible();
+  await page.route('**/api/friends/shown', (r) => r.abort('failed'));
+  await show.getByRole('button', { name: 'Готово' }).click();
+  await expect(show.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+  await page.unroute('**/api/friends/shown');
+  await show.getByRole('button', { name: 'Готово' }).click();
+  await expect(show).toBeHidden();
+});

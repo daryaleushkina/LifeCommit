@@ -134,3 +134,28 @@ test.describe('голос с группами', () => {
     await expect(page.locator('.sheet-backdrop')).toHaveCount(0);
   });
 });
+
+test('настройки группы: сервер не сохранил — имя и «только админы» как были, выйти не вышло — остаёмся', async ({ app: page }) => {
+  await goTab(page, 'Вместе');
+  await page.getByRole('button', { name: 'Новая группа' }).click();
+  await page.getByPlaceholder(/Как назовём/).fill('Дача');
+  await page.getByRole('button', { name: 'Создать группу' }).click();
+  await expect(page.getByText('Дача').first()).toBeVisible();
+
+  await page.route('**/api/groups/*', (r) => (r.request().method() === 'PATCH' ? r.abort('failed') : r.fallback()));
+  await page.getByRole('button', { name: 'Настройки группы' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Настройки группы' });
+  await sheet.locator('input.sheet-input').fill('Дача у озера');
+  await sheet.locator('input.sheet-input').press('Enter');
+  await expect(sheet.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+  await expect(sheet.locator('input.sheet-input')).toHaveValue('Дача');
+  const toggle = sheet.locator('input.switch');
+  await toggle.click();
+  await expect(toggle).not.toBeChecked();
+
+  // Удалить группу не вышло — экран группы на месте, подсказка поверх.
+  await page.route('**/api/groups/*', (r) => (r.request().method() === 'DELETE' ? r.abort('failed') : r.fallback()));
+  await sheet.getByRole('button', { name: 'Удалить группу' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Что-то пошло не так. Попробуй ещё раз.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Дача' })).toBeVisible();
+});

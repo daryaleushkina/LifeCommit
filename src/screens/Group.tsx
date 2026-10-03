@@ -130,7 +130,14 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
       const answer = await popup.show({ message: remove ? g.removeConfirm : g.leaveConfirm, buttons: [{ id: 'ok', type: 'destructive', text: remove ? g.remove_group : g.leave }, { type: 'cancel' }] });
       if (answer !== 'ok') return;
     }
-    await (remove ? api.deleteGroup(group.id) : api.leaveGroup(group.id)).catch(() => {});
+    try {
+      await (remove ? api.deleteGroup(group.id) : api.leaveGroup(group.id));
+    } catch {
+      // Сервер не выпустил — остаёмся на экране группы, подсказка поверх (шторку настроек закрываем, чтобы её было видно).
+      setSettingsOpen(false);
+      setNote(t.error);
+      return;
+    }
     caches.groups.delete(group.id);
     caches.groupList = caches.groupList?.filter((x) => x.id !== group.id) ?? null;
     onChanged();
@@ -248,6 +255,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
             onChanged();
           }}
           onAdminsOnly={(on) => setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, admins_only_edit: on } })}
+          onFailed={() => setNote(t.error)}
           onConnectChat={() => void connectChat()}
           onDisconnectChat={() => void disconnectChat()}
           onLeave={() => void leave(false)}
@@ -319,11 +327,14 @@ function GroupSettingsSheet({
   onDisconnectChat,
   onLeave,
   onDelete,
+  onFailed,
 }: {
   group: GroupDetail;
   onClose: () => void;
   onRenamed: (title: string) => void;
   onAdminsOnly: (on: boolean) => void;
+  /** Сервер не сохранил настройку — подсказка на экране группы (видна, когда шторка закрыта). */
+  onFailed: () => void;
   onConnectChat: () => void;
   onDisconnectChat: () => void;
   onLeave: () => void;
@@ -333,11 +344,34 @@ function GroupSettingsSheet({
   const g = t.gr;
   const canManage = group.role !== 'member';
   const [title, setTitle] = useState(group.title);
+  // Сервер не сохранил имя или «только админы» — вернуть как было и сказать: в шторке, а если она уже закрыта — на экране группы.
+  const [error, setError] = useState(false);
+  const failed = () => {
+    setError(true);
+    onFailed();
+  };
   const save = async () => {
     const next = title.trim();
     if (!next || next === group.title) return;
-    await api.updateGroup(group.id, { title: next }).catch(() => {});
+    setError(false);
+    try {
+      await api.updateGroup(group.id, { title: next });
+    } catch {
+      setTitle(group.title);
+      failed();
+      return;
+    }
     onRenamed(next);
+  };
+  const setAdminsOnly = async (on: boolean) => {
+    setError(false);
+    onAdminsOnly(on);
+    try {
+      await api.updateGroup(group.id, { admins_only_edit: on });
+    } catch {
+      onAdminsOnly(!on);
+      failed();
+    }
   };
   return (
     <Sheet title={g.settings} onClose={() => { void save(); onClose(); }}>
@@ -354,6 +388,7 @@ function GroupSettingsSheet({
       ) : (
         <p className="sheet-note first">{group.title}</p>
       )}
+      {error && <p className="error">{t.error}</p>}
       {canManage && (
         <div className="card flat">
           <label className="row toggle-row">
@@ -362,10 +397,7 @@ function GroupSettingsSheet({
               type="checkbox"
               className="switch"
               checked={group.settings.admins_only_edit}
-              onChange={(e) => {
-                onAdminsOnly(e.target.checked);
-                void api.updateGroup(group.id, { admins_only_edit: e.target.checked }).catch(() => {});
-              }}
+              onChange={(e) => void setAdminsOnly(e.target.checked)}
             />
           </label>
         </div>

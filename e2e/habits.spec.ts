@@ -99,9 +99,21 @@ test('свайп по привычке: сервер не удалил — пр�
   await page.route('**/api/tasks/*', (r) => (r.request().method() === 'DELETE' ? r.abort('failed') : r.fallback()));
   await swipeLeft(page, page.locator('.swipe-card', { hasText: 'Йога' }).locator('.swipe-body'));
   await expect(card(page, 'Йога')).toHaveCount(0);
-  await expect(page.locator('.undo-toast')).toHaveCount(0, { timeout: 8_000 });
+  // Через 5 секунд «Вернуть» удаление уходит на сервер, не проходит — плашка «что-то пошло не так», привычка снова на месте.
+  await expect(page.getByRole('status').filter({ hasText: 'Что-то пошло не так. Попробуй ещё раз.' })).toBeVisible({ timeout: 8_000 });
   await expect(card(page, 'Йога')).toHaveCount(1);
-  await expect(page.locator('p.error')).toHaveText('Что-то пошло не так. Попробуй ещё раз.');
+});
+
+test('свайп по привычке и сразу в «Календарь»: сервер не удалил — сказано и там, привычка вернулась', async ({ app: page, me }) => {
+  await me.api('POST', '/tasks', { title: 'Растяжка', kind: 'check', target: 1, schedule: 'daily' });
+  await page.reload();
+  await page.route('**/api/tasks/*', (r) => (r.request().method() === 'DELETE' ? r.abort('failed') : r.fallback()));
+  await swipeLeft(page, page.locator('.swipe-card', { hasText: 'Растяжка' }).locator('.swipe-body'));
+  await expect(card(page, 'Растяжка')).toHaveCount(0);
+  await goTab(page, 'Календарь');
+  await expect(page.getByRole('status').filter({ hasText: 'Что-то пошло не так. Попробуй ещё раз.' })).toBeVisible({ timeout: 8_000 });
+  await goTab(page, 'Сегодня');
+  await expect(card(page, 'Растяжка')).toHaveCount(1);
 });
 
 test('свайп по карточке привычки: «Вернуть» возвращает', async ({ app: page, me }) => {

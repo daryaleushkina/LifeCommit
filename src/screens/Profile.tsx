@@ -52,12 +52,22 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   // Заблокированные (друзья, 03.10.2026): строка видна, только если кто-то есть; там же — «Разблокировать».
   const [blocked, setBlocked] = useState<Person[]>([]);
   const [blockedOpen, setBlockedOpen] = useState(false);
+  // Сервер не разблокировал — человек возвращается в список, в шторке строка ошибки.
+  const [unblockError, setUnblockError] = useState(false);
   useEffect(() => {
     api.blocks().then(setBlocked, () => {});
   }, []);
   const unblock = async (p: Person) => {
+    setUnblockError(false);
+    const at = blocked.findIndex((x) => x.id === p.id);
     setBlocked((cur) => cur.filter((x) => x.id !== p.id));
-    await api.unblock(p.id).catch(() => {});
+    try {
+      await api.unblock(p.id);
+    } catch {
+      // На прежнее место в списке.
+      setBlocked((cur) => [...cur.slice(0, at), p, ...cur.slice(at)]);
+      setUnblockError(true);
+    }
   };
 
   const save = async (patch: Partial<UserSettings>) => {
@@ -226,6 +236,11 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
 
       {blockedOpen && (
         <Sheet title={t.fr.blocked} onClose={() => setBlockedOpen(false)}>
+          {unblockError && (
+            <p className="error" onClick={() => setUnblockError(false)}>
+              {t.error}
+            </p>
+          )}
           {blocked.map((p) => (
             <div key={p.id} className="person-row">
               <Avatar member={{ id: p.id, name: p.first_name, photo: p.photo_url }} size={40} />

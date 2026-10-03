@@ -324,13 +324,40 @@ describe('настройки группы', () => {
     await expect.element(settings()).not.toBeInTheDocument();
   });
 
-  it('закрыли шторку с новым именем — сохраняется; не сохранилось на сервере — имя всё равно на экране', async () => {
-    m.api.updateGroup.mockRejectedValue(new Error('сеть'));
+  it('закрыли шторку с новым именем — сохраняется', async () => {
     await setup();
     await openSettings();
     await settings().getByRole('textbox').fill('Дача');
     settings().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await expect.element(page.getByRole('heading', { name: 'Дача' })).toBeVisible();
+    expect(m.api.updateGroup).toHaveBeenCalledWith(10, { title: 'Дача' });
+  });
+
+  // 04.10.2026: раньше новое имя оставалось на экране, хотя сервер его не сохранил.
+  it('имя не сохранилось на сервере — на экране прежнее и подсказка «что-то пошло не так»', async () => {
+    m.api.updateGroup.mockRejectedValue(new Error('сеть'));
+    const { onChanged } = await setup();
+    await openSettings();
+    const name = settings().getByRole('textbox');
+    await name.fill('Дача');
+    name.element().closest('form')!.requestSubmit();
+    // Шторка открыта — ошибка в ней, в поле снова прежнее имя.
+    await expect.element(settings().getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(name).toHaveValue('Семья');
+    settings().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect.element(settings()).not.toBeInTheDocument();
+    await expect.element(page.getByRole('heading', { name: 'Семья' })).toBeVisible();
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it('закрыли шторку с новым именем, а сервер не сохранил — прежнее имя и подсказка на экране группы', async () => {
+    m.api.updateGroup.mockRejectedValue(new Error('сеть'));
+    await setup();
+    await openSettings();
+    await settings().getByRole('textbox').fill('Дача');
+    settings().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect.element(toast()).toHaveTextContent('Что-то пошло не так. Попробуй ещё раз.');
+    await expect.element(page.getByRole('heading', { name: 'Семья' })).toBeVisible();
   });
 
   it('пустое имя не сохраняется', async () => {
@@ -343,13 +370,24 @@ describe('настройки группы', () => {
   });
 
   it('«Дела заводят только админы» — сразу на экране и на сервер', async () => {
-    m.api.updateGroup.mockRejectedValue(new Error('сеть'));
     await setup();
     await openSettings();
     const box = settings().getByRole('checkbox', { name: 'Дела заводят только админы' });
     await box.click();
     await expect.element(box).toBeChecked();
     expect(m.api.updateGroup).toHaveBeenCalledWith(10, { admins_only_edit: true });
+    expect(settings().getByText('Что-то пошло не так. Попробуй ещё раз.').elements()).toEqual([]);
+  });
+
+  // 04.10.2026: раньше переключатель оставался включённым, хотя сервер настройку не сохранил.
+  it('«только админы» не сохранилось — переключатель возвращается, в шторке ошибка', async () => {
+    m.api.updateGroup.mockRejectedValue(new Error('сеть'));
+    await setup();
+    await openSettings();
+    const box = settings().getByRole('checkbox', { name: 'Дела заводят только админы' });
+    await box.click();
+    await expect.element(settings().getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(box).not.toBeChecked();
   });
 
   it('без чата — «Подключить чат Telegram»: ссылка добавить бота в группу', async () => {
@@ -448,11 +486,13 @@ describe('настройки группы', () => {
     expect(caches.groupList!.map((g) => g.id)).toEqual([11]);
   });
 
-  it('«Удалить группу» в Telegram — с подтверждением; «Отмена» — остаёмся; ошибка не держит на экране', async () => {
+  // 04.10.2026: раньше при ошибке сервера экран всё равно закрывался, а группа пропадала из кэшей — и возвращалась потом.
+  it('«Удалить группу» в Telegram — с подтверждением; «Отмена» — остаёмся; выйти не вышло — остаёмся с подсказкой', async () => {
     m.tg.popup = true;
     m.tg.answer = null;
     m.api.leaveGroup.mockRejectedValue(new Error('сеть'));
-    const { onBack } = await setup();
+    caches.groupList = [detail(), detail({ id: 11 })];
+    const { onBack, onChanged } = await setup();
     await openSettings();
     await settings().getByRole('button', { name: 'Удалить группу' }).click();
     await expect.poll(() => m.tg.popups.length).toBe(1);
@@ -460,9 +500,14 @@ describe('настройки группы', () => {
     expect(m.api.deleteGroup).not.toHaveBeenCalled();
     m.tg.answer = 'ok';
     await settings().getByRole('button', { name: 'Выйти из группы' }).click();
-    await expect.poll(() => onBack.mock.calls.length).toBe(1);
     expect(m.tg.popups[1]).toMatchObject({ message: 'Выйти из группы? Её дела пропадут у тебя с «Сегодня».' });
-    expect(caches.groupList).toBeNull();
+    await expect.element(toast()).toHaveTextContent('Что-то пошло не так. Попробуй ещё раз.');
+    await expect.element(settings()).not.toBeInTheDocument();
+    await expect.element(page.getByRole('heading', { name: 'Семья' })).toBeVisible();
+    expect(onBack).not.toHaveBeenCalled();
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(caches.groups.has(10)).toBe(true);
+    expect(caches.groupList!.map((g) => g.id)).toEqual([10, 11]);
   });
 
   it('«Удалить группу» подтвердили — удаляется', async () => {

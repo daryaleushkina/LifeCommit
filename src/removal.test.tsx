@@ -84,6 +84,40 @@ describe('удаление с «Вернуть»', () => {
     await expect.element(page.getByText('todo:1')).toBeVisible();
   });
 
+  // 04.10.2026: ошибка отложенного удаления живёт здесь, а не на экране: за 5 секунд «Вернуть» человек мог уйти на другую вкладку.
+  it('сервер не удалил, а экрана уже нет — строка ошибки поверх любого экрана; тап убирает', async () => {
+    const commit = vi.fn(() => Promise.reject(new Error('сеть')));
+    await renderApp(<RemovalHost />);
+    removeWithUndo('todo:1', '«Молоко» удалено', commit);
+    vi.advanceTimersByTime(5000);
+    expect(commit).toHaveBeenCalledTimes(1);
+    const error = page.getByText('Что-то пошло не так. Попробуй ещё раз.');
+    await expect.element(error).toBeVisible();
+    await error.click();
+    await expect.element(error).not.toBeInTheDocument();
+  });
+
+  it('строка ошибки уходит сама через 5 секунд; новое удаление её сразу убирает', async () => {
+    const commit = vi.fn(() => Promise.reject(new Error('сеть')));
+    await renderApp(<Screen />);
+    removeWithUndo('todo:1', '«Молоко» удалено', commit);
+    vi.advanceTimersByTime(5000);
+    const error = page.getByText('Что-то пошло не так. Попробуй ещё раз.');
+    await expect.element(error).toBeVisible();
+    // Строка снова на месте: ключ больше не прячется.
+    await expect.element(page.getByText('todo:1')).toBeVisible();
+    vi.advanceTimersByTime(5000);
+    await expect.element(error).not.toBeInTheDocument();
+
+    removeWithUndo('todo:2', '«Хлеб» удалено', commit);
+    vi.advanceTimersByTime(5000);
+    await expect.element(error).toBeVisible();
+    removeWithUndo('todo:1', '«Молоко» удалено', vi.fn(async () => {}));
+    await expect.element(error).not.toBeInTheDocument();
+    await expect.element(toast.getByText('«Молоко» удалено')).toBeVisible();
+    await undoButton.click();
+  });
+
   it('«Вернуть» — строка на месте, сервер ничего не узнаёт', async () => {
     const commit = vi.fn(async () => {});
     await renderApp(<Screen />);
