@@ -26,6 +26,9 @@ const ANDROID = {
 
 export default defineConfig<TgOptions>({
   testDir: 'e2e',
+  // e2e/_explore — черновые проверки агента lc-explorer (в git не попадают, нарочно падают на найденном).
+  // Обычный прогон и хук перед пушем их не видят; агент запускает их с E2E_EXPLORE=1.
+  testIgnore: process.env.E2E_EXPLORE ? [] : ['**/_explore/**'],
   fullyParallel: true,
   workers: process.env.CI ? 2 : 6,
   retries: 1,
