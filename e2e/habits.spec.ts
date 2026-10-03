@@ -83,6 +83,8 @@ test('редактор: переименовать, «Отложить» и ве
   await expect(card(page, 'Медитация утром')).toHaveCount(0);
   await page.getByRole('button', { name: /Отложенные/ }).click();
   await page.getByRole('button', { name: 'Вернуть' }).first().click();
+  // Строка уходит из «Отложенных» только после ответа сервера: без этого перезагрузка под нагрузкой обрывала запрос.
+  await expect(page.getByRole('button', { name: 'Вернуть' })).toHaveCount(0);
   await page.reload();
   await expect(card(page, 'Медитация утром')).toHaveCount(1);
   await openHabit(page, 'Медитация утром');
