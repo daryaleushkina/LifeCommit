@@ -107,7 +107,10 @@ function describeTodo(d: TodoInput, day: string, t: Texts): string {
 const lang = (code?: string) => (code?.startsWith('ru') ? texts.ru : texts.en);
 
 bot.post('/webhook', async (c) => {
-  if (c.req.header('x-telegram-bot-api-secret-token') !== c.env.TELEGRAM_WEBHOOK_SECRET) {
+  // Секрет не задан (забыли wrangler secret) — не пускаем никого: иначе пустой заголовок совпал бы с пустым секретом
+  // и кто угодно прислал бы апдейт от чужого имени (например, «Отменить» с чужими привычками).
+  const secret = c.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!secret || c.req.header('x-telegram-bot-api-secret-token') !== secret) {
     return c.text('forbidden', 403);
   }
   const update = await c.req.json<Update>();

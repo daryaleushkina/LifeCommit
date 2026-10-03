@@ -132,9 +132,11 @@ export function QuitButtons({ task, onLog }: { task: TodayTask; onLog: (change: 
 
 /** Галочка «сделано целиком»: повторный тап снимает отметку. */
 export function DoneButton({ task, onLog }: { task: TodayTask; onLog: (change: LogChange) => void }): ReactNode {
+  const t = useT();
   const done = isDone(task);
   const full = task.kind === 'count' ? task.target : 1;
-  return <RoundBtn kind="ok" state={done ? 'on' : undefined} label={task.title} onClick={() => onLog({ value: done ? null : full })} />;
+  // Подпись не просто название: рядом кнопка-название (открыть привычку), диктору их не различить.
+  return <RoundBtn kind="ok" state={done ? 'on' : undefined} label={`${task.title} — ${t.markDone.toLowerCase()}`} onClick={() => onLog({ value: done ? null : full })} />;
 }
 
 interface Props {

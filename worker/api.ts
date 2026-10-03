@@ -34,7 +34,7 @@ import { confirmGoogle, connectApple, deleteRemote, disconnect, moveOwnEvents, p
 import { DavError, isAuthError } from './caldav';
 import { authUrl } from './gcal';
 import { signState } from './secret';
-import { groups, groupsRange, groupsToday } from './groups';
+import { groups, groupsRange, groupsToday, handOver } from './groups';
 import { shareApi } from './share';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
@@ -152,7 +152,8 @@ api.use('*', async (c, next) => {
 
 api.get('/templates', async (c) => {
   const lang = c.get('user').language_code === 'ru' ? 'ru' : 'en';
-  const rows = must(await c.get('sb').from('task_templates').select('*').order('position'));
+  // Вида «Лимит» в приложении больше нет (такую привычку не создать) — его шаблон не предлагаем.
+  const rows = must(await c.get('sb').from('task_templates').select('*').neq('kind', 'limit').order('position'));
   const templates: TaskTemplate[] = (rows as Record<string, unknown>[]).map((r) => ({
     slug: r.slug as string,
     emoji: r.emoji as string,
@@ -243,11 +244,17 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
 /** Дата последнего срыва: не позже сегодняшнего логического дня. */
 function cleanSlipDate(value: string | null | undefined, day: string): string | null {
   if (!value) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
-    throw new HTTPException(400, { message: 'bad_date' });
-  }
+  if (!isDay(value)) throw new HTTPException(400, { message: 'bad_date' });
   return value > day ? day : value;
 }
+
+/** Значение из известного списка; другое — 400 (а не 500 от проверки в базе). */
+function known<T extends string>(value: T, list: readonly string[], error: string): T {
+  if (!list.includes(value)) throw new HTTPException(400, { message: error });
+  return value;
+}
+const SCHEDULES = ['daily', 'weekdays', 'per_week'];
+const VISIBILITIES = ['private', 'followers', 'public'];
 
 function cleanTask(input: TaskInput, day: string) {
   const title = String(input.title ?? '').trim().slice(0, 80);
@@ -256,7 +263,7 @@ function cleanTask(input: TaskInput, day: string) {
   const binary = input.kind === 'check' || input.kind === 'abstain';
   const target = binary ? 1 : Number(input.target);
   if (!(target > 0)) throw new HTTPException(400, { message: 'bad_target' });
-  const schedule = input.schedule ?? 'daily';
+  const schedule = known(input.schedule ?? 'daily', SCHEDULES, 'bad_schedule');
   return {
     row: {
       title,
@@ -267,7 +274,7 @@ function cleanTask(input: TaskInput, day: string) {
       schedule,
       weekdays: schedule === 'weekdays' ? Math.min(127, Math.max(1, input.weekdays ?? 127)) : 127,
       per_week: schedule === 'per_week' ? Math.min(7, Math.max(1, input.per_week ?? 3)) : null,
-      visibility: input.visibility ?? 'private',
+      visibility: known(input.visibility ?? 'private', VISIBILITIES, 'bad_visibility'),
       last_slip_on: input.kind === 'abstain' ? cleanSlipDate(input.last_slip_on, day) : null,
     },
     target,
@@ -376,7 +383,19 @@ const TODO_MAX_DAYS_AHEAD = 366;
 /** Сколько дней можно запросить для вкладки «Календарь» за раз (месяц с хвостами недель). */
 const CALENDAR_MAX_DAYS = 62;
 
-const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+/** id из адреса: не целое положительное — 404 (иначе база ответит ошибкой разбора, и было бы 500). */
+function idOf(raw: string | undefined): number {
+  const id = Number(raw);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new HTTPException(404, { message: 'not_found' });
+  return id;
+}
+
+/** YYYY-MM-DD, и такой день есть в календаре: «30 февраля» V8 молча считает 2 марта, а база его не примет (500). */
+const isDay = (v: unknown): v is string => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
+};
 
 /** Дата дела: не раньше сегодня и не позже чем через год; нет или битая — сегодня. */
 function todoDay(value: string | null | undefined, today: string): string {
@@ -475,7 +494,7 @@ api.post('/todos/batch', async (c) => {
 // Правка: название, дата, время, «сделано». У повторяющегося дела «сделано» ставится на конкретный день (on);
 // у разового — на сегодняшний логический день.
 api.patch('/todos/:id', async (c) => {
-  const id = Number(c.req.param('id'));
+  const id = idOf(c.req.param('id'));
   const user = c.get('user');
   const sb = c.get('sb');
   const body = await c.req.json<{ title?: string; day?: string; time?: string | null; done?: boolean; on?: string; location?: string | null; hidden?: boolean }>();
@@ -515,7 +534,7 @@ api.patch('/todos/:id', async (c) => {
 });
 
 api.delete('/todos/:id', async (c) => {
-  const id = Number(c.req.param('id'));
+  const id = idOf(c.req.param('id'));
   const user = c.get('user');
   const sb = c.get('sb');
   // Связь с событием читаем до удаления: потом её уже не будет.
@@ -671,7 +690,7 @@ api.post('/tasks/from-templates', async (c) => {
   if (!picked.length) throw new HTTPException(400, { message: 'no_templates' });
   await assertCanAdd(sb, user, picked.length);
   const lang = user.language_code === 'ru' ? 'ru' : 'en';
-  const rows = must(await sb.from('task_templates').select('*').in('slug', picked)) as Record<string, unknown>[];
+  const rows = must(await sb.from('task_templates').select('*').in('slug', picked).neq('kind', 'limit')) as Record<string, unknown>[];
   const ids = await insertTasks(
     sb,
     user,
@@ -690,7 +709,7 @@ api.post('/tasks/from-templates', async (c) => {
 // Правка задачи. Цель: «сложнее» — сразу сегодня, «легче» — с завтрашнего дня
 // (защита от накрутки рейтинга снижением цели вечером).
 api.patch('/tasks/:id', async (c) => {
-  const id = Number(c.req.param('id'));
+  const id = idOf(c.req.param('id'));
   const user = c.get('user');
   const sb = c.get('sb');
   const patch = await c.req.json<Partial<TaskInput>>();
@@ -705,10 +724,10 @@ api.patch('/tasks/:id', async (c) => {
   }
   if (patch.emoji !== undefined) fields.emoji = patch.emoji?.slice(0, 16) || null;
   if (patch.unit !== undefined) fields.unit = patch.unit?.trim().slice(0, 20) || null;
-  if (patch.visibility !== undefined) fields.visibility = patch.visibility;
+  if (patch.visibility !== undefined) fields.visibility = known(patch.visibility, VISIBILITIES, 'bad_visibility');
   if (patch.last_slip_on !== undefined && task.kind === 'abstain') fields.last_slip_on = cleanSlipDate(patch.last_slip_on, today(user));
   if (patch.schedule !== undefined) {
-    fields.schedule = patch.schedule;
+    fields.schedule = known(patch.schedule, SCHEDULES, 'bad_schedule');
     fields.weekdays = patch.schedule === 'weekdays' ? Math.min(127, Math.max(1, patch.weekdays ?? task.weekdays)) : 127;
     fields.per_week = patch.schedule === 'per_week' ? Math.min(7, Math.max(1, patch.per_week ?? task.per_week ?? 3)) : null;
   }
@@ -735,7 +754,7 @@ api.patch('/tasks/:id', async (c) => {
 
 // «Отложить» = архив: дело пропадает из «Сегодня», история остаётся на карте.
 api.post('/tasks/:id/archive', async (c) => {
-  const id = Number(c.req.param('id'));
+  const id = idOf(c.req.param('id'));
   must(
     await c.get('sb').from('tasks').update({ archived_at: new Date().toISOString() }).eq('id', id).eq('user_id', c.get('user').id),
   );
@@ -743,7 +762,7 @@ api.post('/tasks/:id/archive', async (c) => {
 });
 
 api.post('/tasks/:id/restore', async (c) => {
-  const id = Number(c.req.param('id'));
+  const id = idOf(c.req.param('id'));
   const user = c.get('user');
   const sb = c.get('sb');
   await assertCanAdd(sb, user, 1);
@@ -753,7 +772,7 @@ api.post('/tasks/:id/restore', async (c) => {
 
 // Удалить совсем, вместе с историей: из редактора дела или из отложенных.
 api.delete('/tasks/:id', async (c) => {
-  const id = Number(c.req.param('id'));
+  const id = idOf(c.req.param('id'));
   must(
     await c.get('sb').from('tasks').delete().eq('id', id).eq('user_id', c.get('user').id),
   );
@@ -775,6 +794,8 @@ api.put('/logs', async (c) => {
   const now = today(user);
   if (dayIn !== undefined && (!isDay(dayIn) || dayIn > now || dayIn < addDays(now, -PAST_LOG_DAYS))) throw new HTTPException(400, { message: 'bad_day' });
   const day = dayIn ?? now;
+  // У отказа статус — «чисто», «срыв» или пусто; другое база отвергла бы с 500.
+  if (task.kind === 'abstain' && status != null && status !== 'clean' && status !== 'slip') throw new HTTPException(400, { message: 'bad_status' });
 
   let clearing =
     task.kind === 'abstain' ? status == null : !(Number(value) > 0);
@@ -798,7 +819,7 @@ api.put('/logs', async (c) => {
 
 // История одной привычки для её экрана: все отметки, история целей и первый день.
 api.get('/tasks/:id/history', async (c) => {
-  const id = Number(c.req.param('id'));
+  const id = idOf(c.req.param('id'));
   const user = c.get('user');
   const sb = c.get('sb');
   const task = must(await sb.from('tasks').select('id').eq('id', id).eq('user_id', user.id).maybeSingle<{ id: number }>());
@@ -817,7 +838,8 @@ api.get('/tasks/:id/history', async (c) => {
 
 api.get('/heatmap', async (c) => {
   const user = c.get('user');
-  const days = Math.min(Number(c.req.query('days') ?? 365), 371);
+  // Не число — год (иначе addDays(NaN) падает с 500).
+  const days = Math.min(Number(c.req.query('days') ?? 365) || 365, 371);
   const to = today(user);
   const rows = must(await c.get('sb').rpc('user_heatmap', { p_user: user.id, p_from: addDays(to, -days + 1), p_to: to })) as {
     day: string;
@@ -834,7 +856,6 @@ api.get('/summary', async (c) => {
   const sb = c.get('sb');
   const from = c.req.query('from') ?? '';
   const to = c.req.query('to') ?? '';
-  const isDay = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
   if (!isDay(from) || !isDay(to) || from > to || Date.parse(to) - Date.parse(from) > 366 * 86_400_000) throw new HTTPException(400, { message: 'bad_range' });
   const tasks = must(await sb.from('tasks').select('id, title, kind, unit').eq('user_id', user.id).order('position').order('id')) as SummaryTask[];
   const logs: SummaryLog[] = [];
@@ -852,15 +873,19 @@ api.get('/me', (c) => c.json(toSettings(c.get('user'))));
 
 api.patch('/settings', async (c) => {
   const body = await c.req.json<Partial<UserSettings>>();
-  const time = (v: unknown) => (v === null ? null : typeof v === 'string' && /^\d{2}:\d{2}$/.test(v) ? v : undefined);
+  // Время — настоящее «ЧЧ:ММ»: «25:00» база не примет (500).
+  const time = (v: unknown) => (v === null ? null : typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : undefined);
   const fields: Record<string, unknown> = {};
   if (body.language_code === 'ru' || body.language_code === 'en') fields.language_code = body.language_code;
   if (body.timezone && isValidTimeZone(body.timezone)) fields.timezone = body.timezone;
-  if (body.day_start_hour !== undefined) fields.day_start_hour = Math.min(12, Math.max(0, Math.floor(body.day_start_hour)));
+  if (body.day_start_hour !== undefined && Number.isFinite(Number(body.day_start_hour))) fields.day_start_hour = Math.min(12, Math.max(0, Math.floor(body.day_start_hour)));
   if (body.profile_mode === 'open' || body.profile_mode === 'closed') fields.profile_mode = body.profile_mode;
   if (time(body.remind_morning) !== undefined) fields.remind_morning = time(body.remind_morning);
   if (time(body.remind_evening) !== undefined) fields.remind_evening = time(body.remind_evening);
-  const user = must(await c.get('sb').from('users').update(fields).eq('id', c.get('user').id).select(USER_COLS).single<UserRow>());
+  // Менять нечего — база на пустую правку не вернёт строку (и было бы 500): отдаём как есть.
+  const user = Object.keys(fields).length
+    ? must(await c.get('sb').from('users').update(fields).eq('id', c.get('user').id).select(USER_COLS).single<UserRow>())
+    : c.get('user');
   return c.json(toSettings(user));
 });
 
@@ -874,7 +899,11 @@ api.post('/write-access', async (c) => {
 api.delete('/account', async (c) => {
   // Со связанного аккаунта удалить общего пользователя нельзя — только с основного.
   if (c.get('user').id !== c.get('tgUser').id) throw new HTTPException(403, { message: 'linked_account' });
-  must(await c.get('sb').from('users').delete().eq('id', c.get('user').id));
+  // Свои группы — дальше участникам (или в архив), иначе они остаются без владельца и ломаются.
+  const sb = c.get('sb');
+  const owned = must(await sb.from('groups').select('id').eq('owner_id', c.get('user').id).is('archived_at', null)) as { id: number }[];
+  for (const g of owned) await handOver(sb, g.id, c.get('user').id);
+  must(await sb.from('users').delete().eq('id', c.get('user').id));
   return c.json({ ok: true });
 });
 

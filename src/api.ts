@@ -29,6 +29,18 @@ export class ApiError extends Error {
 
 const auth = () => `tma ${retrieveRawInitData() ?? ''}`;
 
+/**
+ * Тело ответа как JSON. Не JSON или оборвалось (страницу перезагрузили, связь пропала посреди ответа) — ошибка
+ * даже при 200: раньше приходил {}, и экран падал на нём (data.tasks.filter, 03.10.2026).
+ */
+async function read<T>(res: Response): Promise<T> {
+  // «Нет содержимого» — законный успех без тела.
+  if (res.status === 204) return {} as T;
+  const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+  if (!res.ok || data === null) throw new ApiError(res.status, data?.error ?? 'network');
+  return data;
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
@@ -38,17 +50,13 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new ApiError(res.status, data.error ?? 'network');
-  return data;
+  return read<T>(res);
 }
 
 /** Картинка «Поделиться» — в Telegram через бота; в ответ ссылка (для сторис и «Сохранить») и file_id. */
 async function share(image: Blob): Promise<{ url: string; file_id: string }> {
   const res = await fetch('/api/share', { method: 'POST', headers: { Authorization: auth(), 'content-type': image.type || 'image/jpeg' }, body: image });
-  const data = (await res.json().catch(() => ({}))) as { url: string; file_id: string; error?: string };
-  if (!res.ok) throw new ApiError(res.status, data.error ?? 'network');
-  return data;
+  return read<{ url: string; file_id: string }>(res);
 }
 
 export const api = {

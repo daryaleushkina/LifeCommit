@@ -219,14 +219,14 @@ export function toCalEvent(e: GoogleEvent, uid: string, userTz: string): CalEven
   };
 }
 
-const nextDay = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+const shiftDay = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
-/** Начало и конец для записи: весь день — датами, со временем — местным временем и поясом человека. */
-function when(day: string, time: string | null, durationMin: number | null, tz: string): { start: When; end: When } {
-  if (!time) return { start: { date: day }, end: { date: nextDay(day) } };
+/** Начало и конец для записи: весь день — датами (spanDays дней), со временем — местным временем и поясом человека. */
+function when(day: string, time: string | null, durationMin: number | null, tz: string, spanDays = 1): { start: When; end: When } {
+  if (!time) return { start: { date: day }, end: { date: shiftDay(day, spanDays) } };
   const [h = 0, m = 0] = time.split(':').map(Number);
   const total = h * 60 + m + (durationMin ?? 30);
-  const endDay = total >= 1440 ? nextDay(day) : day;
+  const endDay = total >= 1440 ? shiftDay(day, 1) : day;
   const rest = total % 1440;
   const pad = (n: number) => String(n).padStart(2, '0');
   return {
@@ -268,7 +268,13 @@ export async function putOwnEvent(token: string, calUrl: string, href: string | 
  * в какие дни событие бывает; приглашённые, напоминания, повтор остаются как были (PATCH меняет только переданное).
  */
 export async function patchForeignEvent(token: string, href: string, change: { title: string; day: string; time: string | null; durationMin: number | null; tz: string }): Promise<string | null> {
-  const saved = await call<GoogleEvent>(token, 'PATCH', href, { summary: change.title, ...when(change.day, change.time, change.durationMin, change.tz) });
+  // Событие на весь день может длиться неделю (отпуск) — сколько дней, знает только сам календарь.
+  let span = 1;
+  if (!change.time) {
+    const current = await call<GoogleEvent>(token, 'GET', href);
+    if (current.start?.date && current.end?.date) span = Math.max(1, Math.round((Date.parse(current.end.date) - Date.parse(current.start.date)) / 86_400_000));
+  }
+  const saved = await call<GoogleEvent>(token, 'PATCH', href, { summary: change.title, ...when(change.day, change.time, change.durationMin, change.tz, span) });
   return saved.etag ?? null;
 }
 

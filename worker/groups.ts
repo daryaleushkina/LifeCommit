@@ -22,7 +22,12 @@ function must<T>(res: { data: T | null; error: { message: string } | null }): T 
 }
 
 const todayOf = (u: UserRow) => logicalDay(u.timezone, u.day_start_hour);
-const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+/** YYYY-MM-DD, и такой день есть в календаре: «30 февраля» V8 молча считает 2 марта, а база его не примет (500). */
+const isDay = (v: unknown): v is string => {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
+};
 const isTime = (v: unknown): v is string => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
 const bad = (message: string) => new HTTPException(400, { message });
 
@@ -180,15 +185,22 @@ groups.post('/groups/:id/leave', async (c) => {
   const user = c.get('user');
   const { role } = await membership(sb, id, user.id);
   must(await sb.from('group_members').delete().eq('group_id', id).eq('user_id', user.id));
-  if (role === 'owner') {
-    const next = must(await sb.from('group_members').select('user_id').eq('group_id', id).order('joined_at').limit(1).maybeSingle()) as { user_id: number } | null;
-    if (next) {
-      must(await sb.from('group_members').update({ role: 'owner' }).eq('group_id', id).eq('user_id', next.user_id));
-      must(await sb.from('groups').update({ owner_id: next.user_id }).eq('id', id));
-    } else must(await sb.from('groups').update({ archived_at: new Date().toISOString() }).eq('id', id));
-  }
+  if (role === 'owner') await handOver(sb, id, user.id);
   return c.json({ ok: true });
 });
+
+/**
+ * Создатель уходит (вышел из группы или удалил аккаунт): группа переходит самому давнему из остальных
+ * участников; никого нет — в архив. Иначе группа оставалась без владельца и ломалась: пустой список в чате,
+ * ни утреннего списка, ни итога (03.10.2026, нашёл тест).
+ */
+export async function handOver(sb: SupabaseClient, id: number, leaving: number) {
+  const next = must(await sb.from('group_members').select('user_id').eq('group_id', id).neq('user_id', leaving).order('joined_at').limit(1).maybeSingle()) as { user_id: number } | null;
+  if (next) {
+    must(await sb.from('group_members').update({ role: 'owner' }).eq('group_id', id).eq('user_id', next.user_id));
+    must(await sb.from('groups').update({ owner_id: next.user_id }).eq('id', id));
+  } else must(await sb.from('groups').update({ archived_at: new Date().toISOString() }).eq('id', id));
+}
 
 // ── Приглашения ──
 
@@ -314,7 +326,13 @@ groups.patch('/groups/:id/items/:item', async (c) => {
   const { canEdit } = await membership(sb, id, user.id);
   if (!canEdit) throw new HTTPException(403, { message: 'admins_only' });
   const fields = cleanItem(await c.req.json<ItemInput>(), todayOf(user), await memberIds(sb, id), true);
-  if (Object.keys(fields).length) must(await sb.from('group_items').update(fields).eq('id', itemId).eq('group_id', id));
+  if (Object.keys(fields).length) {
+    const res = await sb.from('group_items').update(fields).eq('id', itemId).eq('group_id', id);
+    // Остальные поля cleanItem уже проверил — нарушить проверку базы может только цель без числа
+    // (сняли число у цели или сделали целью дело без числа): это ошибка ввода, 400, как при создании, а не 500.
+    if (res.error?.code === '23514') throw bad('no_target');
+    must(res);
+  }
   return c.json({ ok: true });
 });
 

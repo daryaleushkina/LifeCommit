@@ -214,7 +214,7 @@ export function parseEvents(ics: string, userTz: string, selfEmail = ''): CalEve
 // ── Сборка ──
 const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 const dateValue = (day: string) => day.replace(/-/g, '');
-const nextDay = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+const shiftDay = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 /** Свёртка длинных строк по 75 байт, как требует формат. */
 function fold(line: string): string {
@@ -230,9 +230,9 @@ function fold(line: string): string {
   return out.join('\r\n');
 }
 
-/** Строки начала и конца события: весь день — датами, со временем — моментом UTC. */
-function whenLines(day: string, time: string | null, durationMin: number | null, tz: string): string[] {
-  if (!time) return [`DTSTART;VALUE=DATE:${dateValue(day)}`, `DTEND;VALUE=DATE:${dateValue(nextDay(day))}`];
+/** Строки начала и конца события: весь день — датами (spanDays дней), со временем — моментом UTC. */
+function whenLines(day: string, time: string | null, durationMin: number | null, tz: string, spanDays = 1): string[] {
+  if (!time) return [`DTSTART;VALUE=DATE:${dateValue(day)}`, `DTEND;VALUE=DATE:${dateValue(shiftDay(day, spanDays))}`];
   return [`DTSTART:${stamp(zonedToUtc(day, time, tz))}`, `DURATION:PT${durationMin ?? 30}M`];
 }
 
@@ -266,6 +266,21 @@ export function buildEvent(e: OwnEvent, now = Date.now()): string {
   ]
     .map(fold)
     .join('\r\n');
+}
+
+/** Сколько дней длится событие на весь день (отпуск на неделю) — правка названия не должна сжать его до одного дня. */
+function allDaySpan(block: string[]): number {
+  const prop = (name: string) => {
+    const line = block.find((l) => l.toUpperCase().startsWith(`${name};`) || l.toUpperCase().startsWith(`${name}:`));
+    return line ? parseLine(line) : null;
+  };
+  const start = prop('DTSTART');
+  const from = start && readMoment(start, 'UTC');
+  if (!from || from.time) return 1;
+  const end = prop('DTEND');
+  const to = end && readMoment(end, 'UTC');
+  const days = to ? (Date.parse(to.day) - Date.parse(from.day)) / 86_400_000 : (durationMinutes(prop('DURATION')?.value ?? '') ?? 0) / 1440;
+  return Math.max(1, Math.round(days));
 }
 
 /**
@@ -303,7 +318,8 @@ export function patchEvent(ics: string, change: { title: string; day: string; ti
       const startDay = startLine ? (/(\d{4})(\d{2})(\d{2})/.exec(startLine.split(':').pop() ?? '') ?? []).slice(1, 4).join('-') : change.day;
       const day = change.recurring ? startDay || change.day : change.day;
       const kept = block.filter((l) => !/^(SUMMARY|DTSTART|DTEND|DURATION|DTSTAMP)[;:]/i.test(l) && !/^(BEGIN|END):VEVENT$/i.test(l));
-      out.push('BEGIN:VEVENT', `DTSTAMP:${stamp(now)}`, `SUMMARY:${escapeText(change.title)}`, ...whenLines(day, change.time, change.durationMin, change.tz), ...kept, 'END:VEVENT');
+      const span = change.time ? 1 : allDaySpan(block);
+      out.push('BEGIN:VEVENT', `DTSTAMP:${stamp(now)}`, `SUMMARY:${escapeText(change.title)}`, ...whenLines(day, change.time, change.durationMin, change.tz, span), ...kept, 'END:VEVENT');
     }
   }
   return out.filter((l, i, a) => l || i < a.length - 1).map(fold).join('\r\n');

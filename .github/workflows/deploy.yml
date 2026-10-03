@@ -15,6 +15,7 @@ jobs:
     # (пропущенная задача не тратит минуты). Ручной запуск деплоит всегда.
     if: github.event_name == 'workflow_dispatch' || vars.LOCAL_DEPLOYED_SHA != github.sha
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -23,8 +24,34 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Та же проверка, что в scripts/hooks/pre-push (решение владелицы 03.10.2026: пуш из облака
+      # деплоится, только если всё зелёное): локальная Supabase, тесты сервера и фронта, сквозные.
+      - run: pnpm db:start
+      - name: .dev.vars для локального Worker (токен бота ненастоящий — в Telegram тесты не пишут)
+        run: |
+          eval "$(pnpm exec supabase status -o env)"
+          cat > .dev.vars <<EOF
+          TELEGRAM_BOT_TOKEN=7000000001:CI-TOKEN
+          SUPABASE_URL=$API_URL
+          SUPABASE_SECRET_KEY=$SECRET_KEY
+          TELEGRAM_WEBHOOK_SECRET=ci-webhook-secret
+          DEV_AUTH_BYPASS=1
+          APP_URL=http://localhost:5173
+          CALENDAR_KEY=$(openssl rand -base64 32)
+          EOF
+      - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm typecheck
-      - run: pnpm test
+      # тесты vitest и порог покрытия (vitest.config.ts → thresholds)
+      - run: pnpm coverage
+      - run: pnpm e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-report
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
       - run: pnpm build
       # Секреты Worker'а (токен бота, ключ Supabase) живут в Cloudflare и деплоем не затрагиваются.
       - run: pnpm exec wrangler deploy

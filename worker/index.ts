@@ -21,6 +21,8 @@ app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
+  // Тело запроса — не JSON (c.req.json() бросает SyntaxError): это ошибка запроса, а не сервера.
+  if (err instanceof SyntaxError) return c.json({ error: 'bad_json' }, 400);
   console.error(err);
   return c.json({ error: 'internal' }, 500);
 });
