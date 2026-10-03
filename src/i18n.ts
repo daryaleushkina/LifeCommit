@@ -220,6 +220,10 @@ const ru = {
     mic: 'Сказать голосом',
     listening: 'Говори — я слушаю',
     example: 'Например: «завтра купить молоко, читать двадцать страниц каждый день и бросить курить»',
+    /** Есть группы: как сказать в одной фразе и группе, и себе. */
+    groupTip: (title: string) => `Для группы назови её: «в группу ${title}: в субботу уборка, а себе — купить молоко»`,
+    /** Микрофон нажали на экране группы. */
+    screenTip: (title: string) => `Сказанное пойдёт в группу «${title}». Своё — после слова «себе»`,
     stop: 'Готово, разобрать',
     cancel: 'Отмена',
     parsing: 'Разбираю…',
@@ -510,6 +514,8 @@ const en: Dict = {
     mic: 'Say it',
     listening: "Go ahead — I'm listening",
     example: 'For example: "tomorrow buy milk, read twenty pages every day and quit smoking"',
+    groupTip: (title) => `For a group, name it: "to ${title}: cleaning on Saturday, and for me — buy milk"`,
+    screenTip: (title) => `This goes to “${title}”. For yourself, start with “for me”`,
     stop: 'Done, parse it',
     cancel: 'Cancel',
     parsing: 'Parsing…',

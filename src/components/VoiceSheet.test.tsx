@@ -58,7 +58,7 @@ const draft = (p: Partial<GroupItemDraft>): GroupItemDraft => ({
 const gi = (item: Partial<GroupItemDraft>, names: string[] = [], group = { id: 10, title: 'Семья' }): GroupVoiceItem => ({ type: 'create_group_item', group, item: draft(item), names });
 
 let latest: VoicePreview | null;
-function setup(opts: { preview?: VoicePreview; room?: number | null; groupId?: number | null } = {}) {
+function setup(opts: { preview?: VoicePreview; room?: number | null; groupId?: number | null; groups?: { id: number; title: string }[] } = {}) {
   const cb = { setPreview: vi.fn(), onEdit: vi.fn(), onAdd: vi.fn(async () => {}), onManual: vi.fn(), onClose: vi.fn() };
   latest = opts.preview ?? null;
   function Host() {
@@ -74,6 +74,7 @@ function setup(opts: { preview?: VoicePreview; room?: number | null; groupId?: n
         room={opts.room === undefined ? null : opts.room}
         today={TODAY}
         groupId={opts.groupId}
+        groups={opts.groups}
         onEdit={cb.onEdit}
         onAdd={cb.onAdd}
         onManual={cb.onManual}
@@ -143,6 +144,35 @@ describe('запись', () => {
     await page.getByRole('button', { name: 'Отмена' }).click();
     expect(onClose).toHaveBeenCalledOnce();
     expect(mic.made[0]!.cancel).toHaveBeenCalled();
+  });
+
+  // Одной фразой — и в группу, и себе (просьба владелицы 04.10.2026): пока человек говорит, видно, как назвать группу.
+  it('групп нет — только общий пример', async () => {
+    await setup().r;
+    await expect.element(page.getByText(/^Например:/)).toBeVisible();
+    expect(document.querySelector('.voice-tip')).toBeNull();
+  });
+
+  it('есть группы — как назвать группу голосом и вернуться к своему; эмодзи из названия не произносят', async () => {
+    await setup({ groups: [{ id: 2, title: 'Семья ❤️' }, { id: 3, title: 'Тестим бота' }] }).r;
+    await expect.element(page.getByText('Для группы назови её: «в группу Семья: в субботу уборка, а себе — купить молоко»')).toBeVisible();
+  });
+
+  it('с экрана группы — сказанное пойдёт в неё, своё — после «себе»', async () => {
+    await setup({ groupId: 3, groups: [{ id: 2, title: 'Семья ❤️' }, { id: 3, title: 'Тестим бота' }] }).r;
+    await expect.element(page.getByText('Сказанное пойдёт в группу «Тестим бота». Своё — после слова «себе»')).toBeVisible();
+  });
+
+  it('с экрана группы, которой ещё нет в списке, — без подсказки про другую группу', async () => {
+    await setup({ groupId: 9, groups: [{ id: 2, title: 'Семья ❤️' }] }).r;
+    await expect.element(page.getByText(/^Например:/)).toBeVisible();
+    expect(document.querySelector('.voice-tip')).toBeNull();
+  });
+
+  it('название из одних эмодзи — как есть', async () => {
+    await setup({ groups: [{ id: 4, title: ' 🏃‍♀️ ' }] }).r;
+    await expect.element(page.getByText(/^Для группы назови её/)).toBeVisible();
+    expect(document.querySelector('.voice-tip')!.textContent).toContain('«в группу 🏃‍♀️: в субботу');
   });
 
   it('без анализатора волна просто дышит', async () => {

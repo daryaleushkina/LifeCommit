@@ -290,7 +290,7 @@ bot.post('/dev-group', async (c) => {
   if (c.req.query('raw') === '1') {
     const { askModel, todayLine } = await import('./voice');
     const { GROUP_SPEC } = await import('./groupVoice');
-    return c.json(await askModel(c.env, `Members: ${names.join(', ')}\nSpeaker: ${names[speaker - 1]}\n${todayLine(day)}\n${await c.req.text()}`, GROUP_SPEC));
+    return c.json((await askModel(c.env, `Members: ${names.join(', ')}\nSpeaker: ${names[speaker - 1]}\n${todayLine(day)}\n${await c.req.text()}`, GROUP_SPEC)).raw);
   }
   return c.json(await parseGroupItems(c.env, await c.req.text(), day, members, speaker));
 });

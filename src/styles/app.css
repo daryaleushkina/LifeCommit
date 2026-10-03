@@ -342,6 +342,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .voice-stop:active { transform: scale(0.95); }
 @keyframes halo { 50% { box-shadow: 0 0 0 18px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 0 34px color-mix(in srgb, var(--accent) 5%, transparent); } }
 .voice-example { margin-top: 50px; max-width: 320px; color: var(--muted); font-size: 14px; line-height: 20px; }
+.voice-tip { margin-top: 10px; max-width: 320px; color: var(--muted); font-size: 14px; line-height: 20px; }
 .voice-link { align-self: center; min-height: var(--tap); margin-top: 6px; padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 16px; font-weight: 500; }
 .voice-quote { margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: var(--bg); font-size: 16px; line-height: 22px; }
 .voice-quote small { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }

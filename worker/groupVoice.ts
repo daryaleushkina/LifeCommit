@@ -9,45 +9,44 @@ import { askModel, todayLine, type ModelSpec } from './voice';
 const REPEATS = ['once', 'daily', 'weekdays', 'weekends', 'weekly', 'days'] as const;
 const WD = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const;
 
-const SCHEMA = {
+/** Одно групповое дело в ответе модели — общее с разбором из мини-аппа (worker/voiceRoute.ts). */
+export const GROUP_ITEM = {
   type: 'object',
   properties: {
-    items: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          title: { type: 'string' },
-          mode: { type: 'string', enum: ['one', 'assign', 'event', 'goal'] },
-          people: { type: 'array', items: { type: 'string' } },
-          rotate: { type: 'boolean' },
-          repeat: { type: 'string', enum: [...REPEATS] },
-          weekdays: { type: 'array', items: { type: 'string', enum: [...WD] } },
-          day: { type: 'string', nullable: true },
-          time: { type: 'string', nullable: true },
-          duration: { type: 'number', nullable: true },
-          target: { type: 'number', nullable: true },
-          unit: { type: 'string', nullable: true },
-          currency: { type: 'string', nullable: true },
-        },
-        // Все поля обязательны (пустые — null): иначе модель от раза к разу пропускает дату, время и даже целые пункты.
-        required: ['title', 'mode', 'people', 'rotate', 'repeat', 'weekdays', 'day', 'time', 'duration', 'target', 'unit', 'currency'],
-      },
-    },
+    title: { type: 'string' },
+    mode: { type: 'string', enum: ['one', 'assign', 'event', 'goal'] },
+    people: { type: 'array', items: { type: 'string' } },
+    rotate: { type: 'boolean' },
+    repeat: { type: 'string', enum: [...REPEATS] },
+    weekdays: { type: 'array', items: { type: 'string', enum: [...WD] } },
+    day: { type: 'string', nullable: true },
+    time: { type: 'string', nullable: true },
+    duration: { type: 'number', nullable: true },
+    target: { type: 'number', nullable: true },
+    unit: { type: 'string', nullable: true },
+    currency: { type: 'string', nullable: true },
   },
-  required: ['items'],
+  // Все поля обязательны (пустые — null): иначе модель от раза к разу пропускает дату, время и даже целые пункты.
+  required: ['title', 'mode', 'people', 'rotate', 'repeat', 'weekdays', 'day', 'time', 'duration', 'target', 'unit', 'currency'],
 };
 
-const SYSTEM = `You turn a message from a group chat (family, sports team, friends, colleagues) into shared to-dos for a group task tracker. Reply with JSON only.
-The message starts with "Members:" (the group members' names), "Speaker:" (who is talking) and "Today is …". It may start with an "Only for group:" line — then the speaker talks in the app, may also mention other groups or their own personal things: take only what that line allows. Words like «добавь в группу X» are not a to-do.
-For each thing to do, pick a mode:
+const SCHEMA = { type: 'object', properties: { items: { type: 'array', items: GROUP_ITEM } }, required: ['items'] };
+
+/** «Кто делает», расписание и цель — общее с разбором из мини-аппа (worker/voiceRoute.ts). */
+export const GROUP_RULES = `For each thing to do, pick a mode:
 - "one": anyone in the group can do it, once is enough (wash the floor, buy cat food, give the cat its inhaler). Default when nobody is named.
 - "assign": specific people do it. people = their names exactly as in Members (convert inflected forms: «Алёне», «Алёной» → «Алёна»). «я», «мне», «сама», «сам» = the Speaker. «все», «каждый», «каждому», «everyone», «each» → people ["all"]. «по очереди», «take turns» → rotate true (people are the ones taking turns; nobody named → ["all"]).
 - "event": something people attend rather than check off (family dinner, trip, birthday, meeting). people ["all"] unless names are given.
 - "goal": a shared number to accumulate together (save 150 000 for a vacation, run 500 km as a team, read 50 books). target = the number (150 тысяч → 150000), unit = the word as said («рублей», «км», «книг»), currency = ISO code only if money and the currency was said (RUB, USD, EUR…), otherwise omit.
-Schedule: repeat = once | daily | weekdays (Mon–Fri) | weekends | weekly | days (then weekdays = MO…SU; «по субботам» = days + ["SA"]). For "once" ALWAYS give day as YYYY-MM-DD counted from Today («завтра» = Today + 1, «в пятницу» = the next Friday); today → Today's date. time = HH:MM in 24h if a time was said («в шесть вечера» → 18:00, «в восемь» about dinner → 20:00), else null. duration = minutes if said («на 3 часа» = 180, «полтора часа» = 90), else null. Fill every field; use null or [] when it does not apply.
+Schedule: repeat = once | daily | weekdays (Mon–Fri) | weekends | weekly | days (then weekdays = MO…SU; «по субботам» = days + ["SA"]). For "once" ALWAYS give day as YYYY-MM-DD counted from Today («завтра» = Today + 1, «в пятницу» = the next Friday); today → Today's date. time = HH:MM in 24h if a time was said («в шесть вечера» → 18:00, «в восемь» about dinner → 20:00), else null. duration = minutes if said («на 3 часа» = 180, «полтора часа» = 90), else null. Fill every field; use null or [] when it does not apply.`;
+/** Название группового дела — общее с разбором из мини-аппа. */
+export const GROUP_TITLE = `title: short, in the speaker's language, without names, time or schedule («Мыть посуду», not «Алёна моет посуду каждый вечер»).`;
+
+const SYSTEM = `You turn a message from a group chat (family, sports team, friends, colleagues) into shared to-dos for a group task tracker. Reply with JSON only.
+The message starts with "Members:" (the group members' names), "Speaker:" (who is talking) and "Today is …". Words like «добавь в группу X» are not a to-do.
+${GROUP_RULES}
 Every thing mentioned becomes its own item — never drop one.
-title: short, in the speaker's language, without names, time or schedule («Мыть посуду», not «Алёна моет посуду каждый вечер»). Skip greetings and chatter. If there is nothing to add, return {"items": []}.`;
+${GROUP_TITLE} Skip greetings and chatter. If there is nothing to add, return {"items": []}.`;
 
 const SHOTS: [string, object][] = [
   [
@@ -183,20 +182,9 @@ export function toGroupDrafts(raw: unknown, today: string, members: { id: number
   return out;
 }
 
-/** Из мини-аппа: фраза может быть не только про эту группу — про другие группы и про личное говорящего. */
-export interface GroupFocus {
-  group: string;
-  otherGroups: string[];
-  /** Во фразе есть и личное — его не брать. */
-  personalToo: boolean;
-}
-
-/** Разобрать фразу для группы: участники и говорящий — в подсказке. */
-export async function parseGroupItems(env: Env, text: string, today: string, members: { id: number; name: string }[], speakerId: number, focus?: GroupFocus): Promise<GroupDraft[]> {
+/** Разобрать фразу из группового чата: участники и говорящий — в подсказке. */
+export async function parseGroupItems(env: Env, text: string, today: string, members: { id: number; name: string }[], speakerId: number): Promise<GroupDraft[]> {
   const speaker = members.find((m) => m.id === speakerId)?.name ?? '';
-  const only = focus
-    ? `Only for group: ${focus.group}. Take only what is meant for this group${focus.otherGroups.length ? ` — not for ${focus.otherGroups.join(', ')}` : ''}${focus.personalToo ? '; skip what the speaker keeps for themselves outside the group («себе», «лично», «в мои дела»)' : ''}.\n`
-    : '';
-  const input = `${only}Members: ${members.map((m) => m.name).join(', ')}\nSpeaker: ${speaker}\n${todayLine(today)}\n${text.slice(0, 2000)}`;
-  return toGroupDrafts(await askModel(env, input, GROUP_SPEC), today, members, speakerId, text);
+  const input = `Members: ${members.map((m) => m.name).join(', ')}\nSpeaker: ${speaker}\n${todayLine(today)}\n${text.slice(0, 2000)}`;
+  return toGroupDrafts((await askModel(env, input, GROUP_SPEC)).raw, today, members, speakerId, text);
 }

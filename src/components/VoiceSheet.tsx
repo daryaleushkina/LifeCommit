@@ -40,6 +40,8 @@ interface Props {
   onAdd: (todos: TodoInput[], habits: TaskInput[], groupItems: GroupVoiceItem[]) => Promise<void>;
   /** Микрофон нажали на экране группы — сказанное без названия группы пойдёт в неё. */
   groupId?: number | null;
+  /** Группы человека: есть — подсказываем, как сказать в одной фразе и группе, и себе. */
+  groups?: { id: number; title: string }[];
   onManual: () => void;
   onClose: () => void;
 }
@@ -63,7 +65,7 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60))
  * Голос в мини-аппе: запись → «Разбираю…» с расслышанной фразой → список дел и привычек → «Добавить».
  * В базу до нажатия «Добавить» ничего не пишется. Нет записи в WebView — ведём в чат с ботом.
  */
-export function VoiceSheet({ preview, setPreview, room, today, groupId = null, onEdit, onAdd, onManual, onClose }: Props): ReactNode {
+export function VoiceSheet({ preview, setPreview, room, today, groupId = null, groups = [], onEdit, onAdd, onManual, onClose }: Props): ReactNode {
   const t = useT();
   const locale = useContext(LangContext) === 'ru' ? 'ru-RU' : 'en-US';
   // Дело из списка правится в маленькой шторке поверх этой; привычка — в полном редакторе.
@@ -280,6 +282,9 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, o
       </>
     );
   } else if (phase === 'recording') {
+    const screen = groups.find((g) => g.id === groupId);
+    // С экрана группы, которой нет в списке, про другую группу не подсказываем: сказанное уйдёт в эту.
+    const tip = screen ? t.voice.screenTip(screen.title) : groups[0] && groupId === null ? t.voice.groupTip(spokenTitle(groups[0].title)) : null;
     body = (
       <div className="voice-rec">
         <p className="voice-listening">{t.voice.listening}</p>
@@ -289,6 +294,7 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, o
           <i />
         </button>
         <p className="voice-example">{t.voice.example}</p>
+        {tip && <p className="voice-tip">{tip}</p>}
         <button className="voice-link" onClick={close}>
           {t.voice.cancel}
         </button>
@@ -364,6 +370,11 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, o
 }
 
 const BOT = 'LifeCommit_bot';
+
+/** Название группы так, как его говорят: без эмодзи и знаков («Семья ❤️» → «Семья»). */
+export function spokenTitle(title: string): string {
+  return title.replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, ' ').trim() || title.trim();
+}
 
 /** Строка под названием: «20 страниц в день · каждый день», «3 раза в неделю», «бросить». */
 /** «Алёне · завтра 18:00», «каждому · будни», «кто-то один · сегодня». */

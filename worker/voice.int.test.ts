@@ -7,7 +7,7 @@ const ready = await dbReady();
 if (!ready) console.warn('voice-тесты пропущены: нет локальной Supabase (pnpm db:start)');
 
 const GEMINI = 'https://generativelanguage.googleapis.com/';
-const GROUP_SYSTEM = 'You turn a message from a group chat';
+const ROUTE_SYSTEM = 'You sort what a person said';
 
 beforeEach(() => {
   ai.transcript = 'купить молоко';
@@ -27,27 +27,36 @@ async function group(title: string, people: TestUser[], archived = false): Promi
 }
 
 interface Prompt {
-  group: boolean;
+  /** Разбор с группами (а не личный). */
+  routed: boolean;
   input: string;
+  /** Какие названия групп модель может вернуть. */
+  labels: string[] | undefined;
+  /** Сколько токенов ответа разрешено. */
+  maxTokens: number;
 }
 
-/**
- * Gemini: личный разбор отвечает personal, групповой — group(строка запроса).
- * Что спрашивали — в prompts.
- */
-function models(personal: object, group: (input: string) => object = () => ({ items: [] })): Prompt[] {
+/** Gemini отвечает answer на любой вопрос; что спрашивали — в prompts. */
+function model(answer: object): Prompt[] {
   const prompts: Prompt[] = [];
   net.on(GEMINI, async (req) => {
-    const body = (await req.json()) as { systemInstruction: { parts: { text: string }[] }; contents: { parts: { text: string }[] }[] };
-    const isGroup = body.systemInstruction.parts[0]!.text.startsWith(GROUP_SYSTEM);
-    const input = body.contents.at(-1)!.parts[0]!.text;
-    prompts.push({ group: isGroup, input });
-    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(isGroup ? group(input) : personal) }] } }] });
+    const body = (await req.json()) as {
+      systemInstruction: { parts: { text: string }[] };
+      contents: { parts: { text: string }[] }[];
+      generationConfig: { maxOutputTokens: number; responseSchema: { properties: { group_items?: { items: { properties: { group: { enum: string[] } } } } } } };
+    };
+    prompts.push({
+      routed: body.systemInstruction.parts[0]!.text.startsWith(ROUTE_SYSTEM),
+      input: body.contents.at(-1)!.parts[0]!.text,
+      labels: body.generationConfig.responseSchema.properties.group_items?.items.properties.group.enum,
+      maxTokens: body.generationConfig.maxOutputTokens,
+    });
+    return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(answer) }] } }] });
   });
   return prompts;
 }
 
-const item = (title: string, more: object = {}) => ({ title, mode: 'one', people: [], rotate: false, repeat: 'once', weekdays: [], day: null, time: null, duration: null, target: null, unit: null, currency: null, ...more });
+const item = (group: string, title: string, more: object = {}) => ({ group, title, mode: 'one', people: [], rotate: false, repeat: 'once', weekdays: [], day: null, time: null, duration: null, target: null, unit: null, currency: null, ...more });
 const todo = (title: string, day = '') => ({ title, day, time: '', duration: 0, location: '' });
 const habit = (title: string) => ({ title, kind: 'check', target: 0, unit: '', schedule: 'daily', weekdays: [], per_week: 0 });
 
@@ -60,18 +69,18 @@ async function speak(u: TestUser, screen?: number) {
 }
 
 describe.skipIf(!ready)('голос: себе или в группу', () => {
-  it('группа названа: дела группе с исполнителями, личное — себе, сказанное группе не дублируется', async () => {
+  it('одна фраза — одним запросом: дела группе с исполнителями, своё — себе', async () => {
     const me = await user({ name: 'Даша' });
     const alena = await user({ name: 'Алёна' });
     const petya = await user({ name: 'Петя' });
     const g = await group('Тестим бота', [me, alena, petya]);
     const day = logicalDay('Europe/Moscow', 4);
-    ai.transcript = 'Добавь в группу Тестим бота: Алёне погулять с Плюшей, мне купить корм. И себе завтра купить молоко';
-    const prompts = models(
-      // личный разбор ошибся и взял дела группы — их отбрасываем
-      { habits: [habit('Купить корм')], todos: [todo('Купить молоко', addDays(day, 1)), todo('Погулять с Плюшей')] },
-      () => ({ items: [item('Погулять с Плюшей', { mode: 'assign', people: ['Алёна'] }), item('Купить корм', { mode: 'assign', people: ['Даша'] })] }),
-    );
+    ai.transcript = 'Добавь в группу Тестим бота: Алёне погулять с Плюшей, мне купить корм. И себе завтра купить молоко, читать каждый день';
+    const prompts = model({
+      group_items: [item('Тестим бота', 'Погулять с Плюшей', { mode: 'assign', people: ['Алёна'] }), item('Тестим бота', 'Купить корм', { mode: 'assign', people: ['Даша'] })],
+      habits: [habit('Читать')],
+      todos: [todo('Купить молоко', addDays(day, 1))],
+    });
     const { text, actions } = await speak(me);
     expect(text).toBe(ai.transcript);
     expect(actions).toEqual([
@@ -79,73 +88,84 @@ describe.skipIf(!ready)('голос: себе или в группу', () => {
       // «мне» — сам говорящий: имя пустое
       { type: 'create_group_item', group: { id: g, title: 'Тестим бота' }, item: expect.objectContaining({ title: 'Купить корм', assignees: [me.id] }), names: [''] },
       { type: 'create_todo', todo: expect.objectContaining({ title: 'Купить молоко', day: addDays(day, 1) }) },
+      { type: 'create_habit', habit: expect.objectContaining({ title: 'Читать' }) },
     ]);
-    const personal = prompts.find((p) => !p.group)!.input;
-    expect(personal).toMatch(/^Groups: Тестим бота \((Алёна, Петя|Петя, Алёна)\)\nToday is /);
-    const forGroup = prompts.find((p) => p.group)!.input;
-    expect(forGroup).toMatch(/^Only for group: Тестим бота\. Take only what is meant for this group; skip what the speaker keeps for themselves/);
-    expect(forGroup).toContain('Speaker: Даша');
-    for (const name of ['Даша', 'Алёна', 'Петя']) expect(forGroup).toContain(name);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]!.routed).toBe(true);
+    expect(prompts[0]!.labels).toEqual(['Тестим бота']);
+    // Всё — свои дела, привычки и дела всех групп — в одном ответе: 1500 токенов длинной диктовке мало.
+    expect(prompts[0]!.maxTokens).toBe(4000);
+    expect(prompts[0]!.input).toMatch(/^Today is .+\nSpeaker: Даша\nGroups:\n- Тестим бота: Даша \(speaker\), (Алёна, Петя|Петя, Алёна)\nSpeech: Добавь в группу/);
   });
 
-  it('две группы названы: каждая получает своё, пустая в ответ не попадает', async () => {
+  it('две группы: каждая получает своё, пустая в ответ не попадает; архивные модели не показываем', async () => {
     const me = await user({ name: 'Даша' });
     const alena = await user({ name: 'Алёна' });
     const family = await group('Семья', [me]);
-    await group('Тестим бота', [me, alena]);
-    ai.transcript = 'В семью купить хлеб, а в группу Тестим бота ничего';
-    const prompts = models({ habits: [], todos: [] }, (input) => (input.startsWith('Only for group: Семья') ? { items: [item('Купить хлеб')] } : { items: [] }));
+    const bot = await group('Тестим бота', [me, alena]);
+    await group('Тестим бота', [me, alena], true);
+    await group('Пусто', [me]);
+    ai.transcript = 'В семью купить хлеб, а в группу Тестим бота Алёне погулять';
+    const prompts = model({
+      group_items: [item('Семья', 'Купить хлеб'), item('Тестим бота', 'Погулять', { mode: 'assign', people: ['Алёне'] })],
+      habits: [],
+      todos: [],
+    });
     const { actions } = await speak(me);
-    expect(actions).toEqual([{ type: 'create_group_item', group: { id: family, title: 'Семья' }, item: expect.objectContaining({ title: 'Купить хлеб', mode: 'one' }), names: [] }]);
-    expect(prompts.filter((p) => p.group)).toHaveLength(2);
-    expect(prompts.find((p) => p.input.startsWith('Only for group: Семья'))!.input).toContain(' — not for Тестим бота');
+    expect(actions).toEqual([
+      { type: 'create_group_item', group: { id: family, title: 'Семья' }, item: expect.objectContaining({ title: 'Купить хлеб', mode: 'one' }), names: [] },
+      { type: 'create_group_item', group: { id: bot, title: 'Тестим бота' }, item: expect.objectContaining({ title: 'Погулять', assignees: [alena.id] }), names: ['Алёна'] },
+    ]);
+    // Архивная тёзка не в списке — иначе была бы «Тестим бота (2)».
+    expect([...prompts[0]!.labels!].sort()).toEqual(['Пусто', 'Семья', 'Тестим бота']);
   });
 
-  it('с экрана группы, без названия и без личного — только группе, личный разбор не зовём', async () => {
+  it('с экрана группы — модель знает, откуда нажали микрофон', async () => {
     const me = await user({ name: 'Даша' });
     const mama = await user({ name: 'Мама' });
+    await group('Работа', [me]);
     const g = await group('Семья', [me, mama]);
-    ai.transcript = 'Помыть посуду вечером';
-    const prompts = models({ habits: [habit('Не должно попасть')], todos: [] }, () => ({ items: [item('Помыть посуду')] }));
+    ai.transcript = 'Помыть посуду вечером, а себе купить витамины';
+    const prompts = model({ group_items: [item('Семья', 'Помыть посуду')], habits: [], todos: [todo('Купить витамины')] });
     const { actions } = await speak(me, g);
-    expect(actions).toEqual([{ type: 'create_group_item', group: { id: g, title: 'Семья' }, item: expect.objectContaining({ title: 'Помыть посуду' }), names: [] }]);
-    expect(prompts.map((p) => p.group)).toEqual([true]);
-    expect(prompts[0]!.input).not.toContain('skip what the speaker keeps');
+    expect(actions).toEqual([
+      { type: 'create_group_item', group: { id: g, title: 'Семья' }, item: expect.objectContaining({ title: 'Помыть посуду' }), names: [] },
+      { type: 'create_todo', todo: expect.objectContaining({ title: 'Купить витамины' }) },
+    ]);
+    expect(prompts[0]!.input).toContain('\nOpened from group: Семья\nSpeech: ');
   });
 
-  it('«в группу», а название не расслышали: группа одна — это она; в группе только я — «—» вместо участников', async () => {
+  it('микрофон с экрана чужой группы — строки Opened нет', async () => {
     const me = await user({ name: 'Даша' });
-    await group('Пробежки', [me]);
-    ai.transcript = 'Добавь в группу мне купить кроссовки';
-    const prompts = models({ habits: [], todos: [todo('Купить кроссовки')] });
-    const { actions } = await speak(me);
-    // групповой разбор ничего не нашёл — всё личное
-    expect(actions).toEqual([{ type: 'create_todo', todo: expect.objectContaining({ title: 'Купить кроссовки' }) }]);
-    expect(prompts.find((p) => !p.group)!.input).toMatch(/^Groups: Пробежки \(—\)\n/);
+    const stranger = await user({ name: 'Чужой' });
+    await group('Моя', [me]);
+    const other = await group('Чужая', [stranger]);
+    const prompts = model({ group_items: [], habits: [], todos: [todo('Купить молоко')] });
+    await speak(me, other);
+    expect(prompts[0]!.input).not.toContain('Opened from group');
+    expect(prompts[0]!.input).not.toContain('Чужая');
+    expect(prompts[0]!.labels).toEqual(['Моя']);
   });
 
-  it('по имени участника ровно одной группы — ей; архивные группы не в счёт', async () => {
-    const me = await user({ name: 'Даша' });
+  // 03.10.2026: «…настроить ноутбук Алёне…» — Алёна только в «Семье», и всё легло туда, а личный разбор не спросили вовсе.
+  it('имя участника во фразе — это ещё не группа: личное не теряется', async () => {
+    const me = await user({ name: 'Dasha' });
     const alena = await user({ name: 'Алёна' });
-    const g = await group('Тестим бота', [me, alena]);
-    // в архивной группе Алёна тоже есть — будь она в счёте, имя указывало бы на две группы
-    await group('Старая', [me, alena], true);
-    // название без слов — по названию не выбирается никогда
-    await group('№ 1', [me]);
-    ai.transcript = 'Завтра Алёне погулять с Плюшей';
-    const prompts = models({ habits: [], todos: [] }, () => ({ items: [item('Погулять с Плюшей', { mode: 'assign', people: ['Алёне'] })] }));
+    await group('Семья ❤️', [me, alena]);
+    ai.transcript = 'Настроить камеру и микрофон, настроить ноутбук Алёне, написать пробник JRE';
+    const todos = [todo('Настроить камеру и микрофон'), todo('Настроить ноутбук Алёне'), todo('Написать пробник JRE')];
+    // Модель разложила всё себе — что бы у неё ни спросили.
+    net.on(GEMINI, () => Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ habits: [], todos, group_items: [], items: [] }) }] } }] }));
     const { actions } = await speak(me);
-    expect(actions).toEqual([{ type: 'create_group_item', group: { id: g, title: 'Тестим бота' }, item: expect.objectContaining({ assignees: [alena.id] }), names: ['Алёна'] }]);
-    expect(prompts.map((p) => p.group)).toEqual([true]);
+    expect(actions).toEqual(todos.map((d) => ({ type: 'create_todo', todo: expect.objectContaining({ title: d.title }) })));
   });
 
   it('групп нет — обычный личный разбор', async () => {
     const me = await user();
     ai.transcript = 'читать каждый день';
-    const prompts = models({ habits: [habit('Читать')], todos: [] });
+    const prompts = model({ habits: [habit('Читать')], todos: [] });
     const { actions } = await speak(me);
     expect(actions).toEqual([{ type: 'create_habit', habit: expect.objectContaining({ title: 'Читать', kind: 'check' }) }]);
-    expect(prompts).toHaveLength(1);
-    expect(prompts[0]!.input).toMatch(/^Today is /);
+    expect(prompts).toEqual([{ routed: false, input: expect.stringMatching(/^Today is .+\nчитать каждый день$/), labels: undefined, maxTokens: 1500 }]);
   });
 });

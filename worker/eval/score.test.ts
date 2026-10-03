@@ -235,11 +235,12 @@ describe('итоги', () => {
 });
 
 describe('эталонные фразы', () => {
-  it('40 кейсов: русских 25–40, английских 5–8, id не повторяются', () => {
-    expect(CASES).toHaveLength(40);
+  it('49 кейсов: русских 25–45, английских 5–8, микрофон с группами — не меньше 10, id не повторяются', () => {
+    expect(CASES).toHaveLength(49);
     const ru = CASES.filter((c) => c.lang === 'ru').length;
     expect(ru).toBeGreaterThanOrEqual(25);
-    expect(ru).toBeLessThanOrEqual(40);
+    expect(ru).toBeLessThanOrEqual(45);
+    expect(CASES.filter((c) => c.kind === 'route').length).toBeGreaterThanOrEqual(10);
     expect(CASES.length - ru).toBeGreaterThanOrEqual(5);
     expect(new Set(CASES.map((c) => c.id)).size).toBe(CASES.length);
   });
