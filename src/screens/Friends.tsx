@@ -87,8 +87,11 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
     return () => void listeners.delete(apply);
   }, []);
 
+  // Отменить свою заявку не вышло — она так и остаётся в списке; сказать, а не молчать.
+  const [cancelFailed, setCancelFailed] = useState(false);
   const cancel = async (p: Person) => {
-    await api.dropRequest(p.id).catch(() => {});
+    setCancelFailed(false);
+    await api.dropRequest(p.id).catch(() => setCancelFailed(true));
     await reloadFriends();
   };
 
@@ -142,6 +145,12 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
           <b>{fr.requests(data.incoming.length)}</b>
           <Chevron />
         </button>
+      )}
+
+      {cancelFailed && (
+        <p className="error" onClick={() => setCancelFailed(false)}>
+          {t.error}
+        </p>
       )}
 
       {data.friends.length === 0 && data.outgoing.length === 0 && <p className="empty">{fr.empty}</p>}
@@ -355,6 +364,8 @@ export function FriendScreen({ id, onBack }: { id: number; onBack: () => void })
   const [missing, setMissing] = useState(false);
   const [view, setView] = useState<'month' | 'year'>('month');
   const [offset, setOffset] = useState(0);
+  // Убрать или заблокировать не вышло — остаёмся на экране друга со строкой ошибки (раньше экран закрывался молча).
+  const [leaveFailed, setLeaveFailed] = useState(false);
   useBackButton(onBack);
   useEffect(() => {
     fetchInto.friend(id).then(setF, (e) => {
@@ -369,7 +380,13 @@ export function FriendScreen({ id, onBack }: { id: number; onBack: () => void })
   const leave = async (block: boolean) => {
     const name = f.person.first_name;
     if (!(await confirmed(block ? fr.blockConfirm(name) : fr.removeConfirm(name), block ? fr.block : fr.remove))) return;
-    await (block ? api.block(id) : api.removeFriend(id)).catch(() => {});
+    setLeaveFailed(false);
+    try {
+      await (block ? api.block(id) : api.removeFriend(id));
+    } catch {
+      setLeaveFailed(true);
+      return;
+    }
     caches.friendProfiles.delete(id);
     await reloadFriends();
     onBack();
@@ -419,6 +436,11 @@ export function FriendScreen({ id, onBack }: { id: number; onBack: () => void })
         </ul>
       )}
 
+      {leaveFailed && (
+        <p className="error" onClick={() => setLeaveFailed(false)}>
+          {t.error}
+        </p>
+      )}
       <div className="quiet-links">
         <button className="quiet-link" onClick={() => void leave(false)}>
           {fr.remove}

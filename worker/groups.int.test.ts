@@ -1,7 +1,7 @@
 // Группы из мини-аппа: создать, настроить, пригласить, выйти; дела всех режимов, отметки, цели, календарь, чат.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { addDays } from './day';
-import { dbReady, sb, tg, user, type TestUser } from './test/harness';
+import { dbReady, env, sb, tg, user, type TestUser } from './test/harness';
 
 const ready = await dbReady();
 if (!ready) console.warn('тесты групп пропущены: нет локальной Supabase (pnpm db:start)');
@@ -31,6 +31,44 @@ async function addItem(u: TestUser, gid: number, body: object): Promise<number> 
 const item = async (id: number) => (await sb.from('group_items').select('*').eq('id', id).single()).data!;
 const groupRow = async (id: number) => (await sb.from('groups').select('*').eq('id', id).single()).data!;
 const myGroup = async (u: TestUser, gid: number) => (await u.call('GET', '/groups')).body.find((g: { id: number }) => g.id === gid);
+
+describe.skipIf(!ready)('создать группу: сбой базы', () => {
+  afterEach(() => void vi.restoreAllMocks());
+  /** Запросы к базе с этими методом и путём (пары подряд) отвечают ошибкой, как будто PostgREST упал. */
+  const failDb = (...pairs: string[]) => {
+    const real = globalThis.fetch;
+    const failing = new Set(pairs.flatMap((p, i) => (i % 2 ? [] : [`${p} ${pairs[i + 1]}`])));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const req = new Request(input as RequestInfo, init);
+      if (req.url.startsWith(env.SUPABASE_URL) && failing.has(`${req.method} ${new URL(req.url).pathname}`)) return Response.json({ message: 'boom' }, { status: 500 });
+      return real(req);
+    });
+  };
+
+  // 04.10.2026: группа и создатель — два запроса без транзакции; второй не прошёл — оставалась группа без владельца-участника.
+  it('создателя записать не вышло — группы-сироты нет, в лог, ответ 500', async () => {
+    const u = await user();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    failDb('POST', '/rest/v1/group_members');
+    const res = await u.call('POST', '/groups', { title: 'Дача' });
+    vi.mocked(globalThis.fetch).mockRestore();
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('group_not_created');
+    expect(log).toHaveBeenCalledWith('POST /groups: owner not added', expect.any(Number), u.id, expect.anything());
+    expect((await sb.from('groups').select('id').eq('owner_id', u.id)).data).toEqual([]);
+  });
+
+  it('и убрать такую группу не вышло — это тоже в лог', async () => {
+    const u = await user();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    failDb('POST', '/rest/v1/group_members', 'DELETE', '/rest/v1/groups');
+    const res = await u.call('POST', '/groups', { title: 'Дача' });
+    vi.mocked(globalThis.fetch).mockRestore();
+    expect(res.status).toBe(500);
+    expect(log).toHaveBeenCalledWith('POST /groups: orphan not removed', expect.any(Number), expect.anything());
+    await sb.from('groups').delete().eq('owner_id', u.id);
+  });
+});
 
 describe.skipIf(!ready)('группы', () => {
   it('создать: без названия — 400, неизвестный вид — «другое», длинное название обрезается; в списке я — создатель', async () => {

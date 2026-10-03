@@ -114,7 +114,14 @@ groups.post('/groups', async (c) => {
   const sb = c.get('sb');
   const user = c.get('user');
   const g = must(await sb.from('groups').insert({ title, kind, owner_id: user.id }).select('id').single()) as { id: number };
-  must(await sb.from('group_members').insert({ group_id: g.id, user_id: user.id, role: 'owner' }));
+  // Группа и создатель — два запроса без транзакции: создатель не записался — группу без него не оставляем.
+  const { error } = await sb.from('group_members').insert({ group_id: g.id, user_id: user.id, role: 'owner' });
+  if (error) {
+    console.error('POST /groups: owner not added', g.id, user.id, error);
+    const { error: dropError } = await sb.from('groups').delete().eq('id', g.id);
+    if (dropError) console.error('POST /groups: orphan not removed', g.id, dropError);
+    throw new HTTPException(500, { message: 'group_not_created' });
+  }
   return c.json({ id: g.id }, 201);
 });
 

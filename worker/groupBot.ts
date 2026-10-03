@@ -343,12 +343,20 @@ export async function refreshChat(env: Env, groupId: number): Promise<void> {
   if (data) await postToday(env, sb, data as unknown as ChatGroup).catch((e) => console.error('chat refresh failed', e));
 }
 
-async function bindChat(env: Env, sb: SupabaseClient, groupId: number, chat: TgChat) {
+async function bindChat(env: Env, sb: SupabaseClient, groupId: number, chat: TgChat, t: Texts) {
+  // Привязка — три записи без транзакции: не вышло — в лог и в чат «не получилось», а не привет неподключённому чату.
+  const failed = async (error: unknown) => {
+    console.error('group chat: bind failed', groupId, chat.id, error);
+    await tg(env, 'sendMessage', { chat_id: chat.id, text: t.connectFailed });
+  };
   // Чат мог быть привязан к другой группе — отвязываем (один чат — одна группа).
-  await sb.from('groups').update(NO_CHAT).eq('tg_chat_id', chat.id).neq('id', groupId);
-  const { data: before } = await sb.from('groups').select(GROUP_COLS).eq('id', groupId).single();
+  const { error: unbindError } = await sb.from('groups').update(NO_CHAT).eq('tg_chat_id', chat.id).neq('id', groupId);
+  if (unbindError) return failed(unbindError);
+  const { data: before, error: readError } = await sb.from('groups').select(GROUP_COLS).eq('id', groupId).single();
+  if (!before) return failed(readError);
   const old = before as unknown as ChatGroup;
-  await sb.from('groups').update({ tg_chat_id: chat.id, tg_chat_title: chat.title ?? null, tg_today_msg_id: null, tg_today_day: null }).eq('id', groupId);
+  const { error: bindError } = await sb.from('groups').update({ tg_chat_id: chat.id, tg_chat_title: chat.title ?? null, tg_today_msg_id: null, tg_today_day: null }).eq('id', groupId);
+  if (bindError) return failed(bindError);
   // «Другой чат»: из прежнего бот прощается и выходит — как при «Отключить».
   if (old.tg_chat_id && old.tg_chat_id !== chat.id) await leaveChat(env, old.tg_chat_id, old.title, textsOf(old));
   const { data } = await sb.from('groups').select(GROUP_COLS).eq('id', groupId).single();
@@ -398,7 +406,7 @@ export async function handleGroupUpdate(env: Env, u: GroupUpdate): Promise<boole
       await tg(env, 'sendMessage', { chat_id: chat.id, text: t.connectFailed });
       return true;
     }
-    await bindChat(env, sb, created.id, chat);
+    await bindChat(env, sb, created.id, chat, t);
     return true;
   }
 
@@ -439,7 +447,7 @@ export async function handleGroupUpdate(env: Env, u: GroupUpdate): Promise<boole
         // Подключают чат только создатель и админы группы (решение владелицы 02.10.2026).
         const { data: m } = user ? await sb.from('group_members').select('role').eq('group_id', inv.group_id).eq('user_id', user.id).maybeSingle<{ role: string }>() : { data: null };
         if (m?.role === 'owner' || m?.role === 'admin') {
-          await bindChat(env, sb, inv.group_id, msg.chat);
+          await bindChat(env, sb, inv.group_id, msg.chat, msg.from.language_code?.startsWith('en') ? T.en : T.ru);
         } else {
           const { data: target } = await sb.from('groups').select('title').eq('id', inv.group_id).maybeSingle<{ title: string }>();
           const t = msg.from.language_code?.startsWith('en') ? T.en : T.ru;

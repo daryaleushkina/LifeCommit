@@ -255,6 +255,47 @@ describe.skipIf(!ready)('бота добавили или убрали (my_chat_
     await sb.from('groups').delete().eq('owner_id', owner.id);
   });
 
+  // 04.10.2026: привязка не записалась, а бот всё равно здоровался «этот чат теперь — группа…».
+  it('привязать чат не вышло (/start g_…) — в лог и в чат «не получилось», привета нет, чат не привязан', async () => {
+    const owner = await user({ name: 'Даша' });
+    const id = (await owner.call('POST', '/groups', { title: 'Семья' })).body.id as number;
+    const code = (await owner.call('POST', `/groups/${id}/invite`)).body.code;
+    const chatId = newChat();
+    tg.calls = [];
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    failDb('PATCH', '/rest/v1/groups');
+    await say(chatId, owner.id, `/start@LifeCommit_bot g_${code}`);
+    expect(log).toHaveBeenCalledWith('group chat: bind failed', id, chatId, expect.anything());
+    expect(texts(chatId)).toEqual(['Не получилось подключить этот чат. Уберите бота из чата и добавьте ещё раз чуть позже.']);
+    vi.restoreAllMocks();
+    expect((await groupRow(id)).tg_chat_id).toBeNull();
+  });
+
+  it('привязка: не прочиталась группа или не записался сам чат — тоже «не получилось»', async () => {
+    const owner = await user({ name: 'Даша', lang: 'en' });
+    const id = (await owner.call('POST', '/groups', { title: 'Семья' })).body.id as number;
+    const code = (await owner.call('POST', `/groups/${id}/invite`)).body.code;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const readFails = newChat();
+    failDb('GET', '/rest/v1/groups');
+    await say(readFails, owner.id, `/start g_${code}`, {}, 'en');
+    expect(texts(readFails)).toEqual(['Could not connect this chat. Remove the bot from the chat and add it again a bit later.']);
+    vi.mocked(globalThis.fetch).mockRestore();
+    // Отвязать чат от других групп удалось, а записать его самой группе — нет (запись с этим tg_chat_id).
+    const bindFails = newChat();
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const req = new Request(input as RequestInfo, init);
+      if (req.method === 'PATCH' && req.url.startsWith(`${env.SUPABASE_URL}/rest/v1/groups`) && (await req.clone().text()).includes(`"tg_chat_id":${bindFails}`)) return Response.json({ message: 'boom' }, { status: 500 });
+      return real(req);
+    });
+    await say(bindFails, owner.id, `/start g_${code}`, {}, 'en');
+    expect(log).toHaveBeenCalledWith('group chat: bind failed', id, bindFails, expect.anything());
+    expect(texts(bindFails)).toEqual(['Could not connect this chat. Remove the bot from the chat and add it again a bit later.']);
+    vi.restoreAllMocks();
+    expect((await groupRow(id)).tg_chat_id).toBeNull();
+  });
+
   it('длинное название чата обрезается до 60 знаков, без названия — «Группа»', async () => {
     const owner = await user();
     await botStatus(newChat(), owner.id, 'member', { title: 'Очень длинное название семейного чата '.repeat(3) });
