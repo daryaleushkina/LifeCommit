@@ -15,7 +15,7 @@ argument-hint: "[today|calendar|groups|me|all] [на чём сосредоточ
 Порт 5173 один (`--strictPort`), поэтому сервер поднимается один раз до запуска агентов:
 1. `pnpm exec supabase status >/dev/null 2>&1 || pnpm db:start` (нужен Docker; не поднялась — остановись и скажи об этом).
 2. `curl -sf http://localhost:5173 >/dev/null` — не отвечает: запусти `pnpm dev --port 5173 --strictPort` в фоне (run_in_background) и дождись ответа.
-3. Новый проход начинай с чистой папки: `rm -rf e2e/_explore` (она в `.gitignore`, это черновики). Второй раунд — папку не трогай.
+3. Новый проход начинай со своих чистых черновиков: `rm -rf e2e/_explore/*.spec.ts e2e/_explore/shots e2e/_explore/out` (папка в `.gitignore`; `e2e/_explore/click-path/` не трогай — её ведёт `/click-path-audit`). Второй раунд — ничего не удаляй.
 
 Только локальный стенд: никакого `pnpm dev:prod` и прода.
 
@@ -48,4 +48,4 @@ argument-hint: "[today|calendar|groups|me|all] [на чём сосредоточ
 
 После исправлений перепроверь только затронутые разделы (те же агенты, тот же префикс). Новых подтверждённых Critical/Major нет или находки те же, что были, — стоп: прогресса нет, дальше решает владелица. Третьего раунда не бывает.
 
-В конце — `pnpm typecheck && pnpm coverage && pnpm e2e` (полный прогон без `E2E_EXPLORE`), если что-то чинили.
+В конце — `pnpm typecheck && pnpm lint && pnpm coverage && pnpm e2e` (полный прогон без `E2E_EXPLORE`), если что-то чинили.
