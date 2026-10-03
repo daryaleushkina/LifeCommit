@@ -30,3 +30,6 @@ screenshots/
 test-results/
 playwright-report/
 coverage/
+coverage-e2e/
+coverage-e2e-raw/
+.vitest/

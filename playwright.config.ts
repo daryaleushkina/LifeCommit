@@ -31,6 +31,9 @@ export default defineConfig<TgOptions>({
   retries: 1,
   // Упал и прошёл со второго раза — это не «прошёл»: нестабильный тест надо чинить.
   failOnFlakyTests: !process.env.E2E_ALLOW_FLAKY,
+  // Эталоны сняты на macOS (хук на Маке); на Linux (GitHub Actions) шрифты рисуются иначе — там снимки не
+  // сравниваются, а правила вёрстки в checkScreen, поведение и доступность проверяются как везде.
+  ignoreSnapshots: process.platform !== 'darwin',
   timeout: 60_000,
   expect: {
     timeout: 8_000,

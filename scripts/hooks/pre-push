@@ -48,7 +48,8 @@ if ! pnpm exec supabase status >/dev/null 2>&1; then
 fi
 
 echo "pre-push: проверка и деплой $sha с этой машины…" >&2
-{ pnpm typecheck && pnpm test && pnpm e2e && pnpm build && pnpm exec wrangler deploy; } >&2 || {
+# pnpm coverage — те же тесты vitest, что pnpm test, плюс порог покрытия (vitest.config.ts → thresholds).
+{ pnpm typecheck && pnpm coverage && pnpm e2e && pnpm build && pnpm exec wrangler deploy; } >&2 || {
   echo "pre-push: проверка или деплой не прошли — пуш отменён (отчёт сквозных тестов: test-results/)" >&2
   exit 1
 }

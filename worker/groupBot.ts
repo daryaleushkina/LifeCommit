@@ -526,8 +526,13 @@ async function onCallback(env: Env, sb: SupabaseClient, q: NonNullable<GroupUpda
   if (q.data!.startsWith('gu:')) {
     const ids = q.data!.slice(3).split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0);
     // Удаляет только тот, кто добавил.
-    if (ids.length) await sb.from('group_items').update({ archived_at: new Date().toISOString() }).in('id', ids).eq('group_id', g.id).eq('created_by', user.id);
+    const { data: removed } = ids.length
+      ? await sb.from('group_items').update({ archived_at: new Date().toISOString() }).in('id', ids).eq('group_id', g.id).eq('created_by', user.id).select('id')
+      : { data: [] };
     await answer();
+    // Чужое нажатие ничего не удалило — сообщение не трогаем: иначе «Отменено» соврало бы
+    // и вместе с кнопкой отняло отмену у того, кто добавил.
+    if (!removed?.length) return;
     if (q.message) await tg(env, 'editMessageText', { chat_id: q.message.chat.id, message_id: q.message.message_id, text: t.undoneAll }).catch(() => {});
     await postToday(env, sb, g);
     return;

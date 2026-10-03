@@ -10,6 +10,7 @@
     "db:reset": "supabase db reset",
     "load": "k6 run scripts/load.js",
     "e2e": "playwright test",
+    "e2e:coverage": "E2E_COVERAGE=1 playwright test --project=android-light && node scripts/e2e-coverage.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler deploy",
@@ -30,6 +31,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@cloudflare/vite-plugin": "^1.62.0",
     "@cloudflare/workers-types": "^5.20260928.1",
     "@playwright/test": "1.63.0",
@@ -37,12 +39,16 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/browser-playwright": "5.0.2",
     "@vitest/coverage-v8": "5.0.2",
+    "jsqr": "^1.4.0",
+    "monocart-coverage-reports": "^2.13.0",
     "playwright": "^1.63.0",
     "supabase": "^2.118.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.2",
+    "vitest-browser-react": "2.3.0",
     "wrangler": "^4.143.0"
   },
   "packageManager": "pnpm@11.17.0"

@@ -42,6 +42,9 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
   useEffect(() => {
     let alive = true;
     uploads.current.clear();
+    // Сбрасываем «нарисовано»: таймер подготовки со старыми шаблонами снимается (иначе он загрузил бы старую
+    // картинку под новым номером), а после перерисовки видимая картинка готовится заново.
+    setDrawn(false);
     void fontsReady().then(() => {
       if (!alive) return;
       templates.forEach((tpl, i) => {

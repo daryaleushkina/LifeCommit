@@ -49,7 +49,14 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   }, [note]);
 
   useBackButton(onBack);
-  const load = useCallback(() => fetchInto.group(id).then(setGroup, () => setMissing(true)), [id, setGroup]);
+  const load = useCallback(
+    () =>
+      fetchInto.group(id).then(setGroup, (e) => {
+        // «Не найдено» — только когда группы правда нет (404) или показать нечего; моргнула сеть — экран остаётся как был.
+        if ((e instanceof ApiError && e.status === 404) || !caches.groups.has(id)) setMissing(true);
+      }),
+    [id, setGroup],
+  );
   useEffect(() => {
     void load();
   }, [load]);

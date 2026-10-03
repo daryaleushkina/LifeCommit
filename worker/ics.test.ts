@@ -70,4 +70,19 @@ describe('buildEvent и patchEvent', () => {
     expect(e).toMatchObject({ title: 'Йога дома', day: '2026-10-05', time: '09:30', durationMin: 60, rrule: 'FREQ=WEEKLY;BYDAY=MO' });
     expect(out).toContain('TRIGGER:-PT15M');
   });
+  it('событие на весь день сохраняет длину — по DTEND или DURATION; со временем и без конца — один день', () => {
+    const edit = (...lines: string[]) => patchEvent(wrap('BEGIN:VEVENT', 'UID:v1', 'SUMMARY:Отпуск', ...lines, 'END:VEVENT'), { title: 'Отпуск в Сочи', day: '2026-10-08', time: null, durationMin: null, tz: 'Europe/Moscow', recurring: false }, 0);
+    expect(edit('DTSTART;VALUE=DATE:20261008', 'DTEND;VALUE=DATE:20261015')).toContain('DTEND;VALUE=DATE:20261015');
+    expect(edit('DTSTART;VALUE=DATE:20261008', 'DURATION:P1W')).toContain('DTEND;VALUE=DATE:20261015');
+    expect(edit('DTSTART;VALUE=DATE:20261008', 'DURATION:P3D')).toContain('DTEND;VALUE=DATE:20261011');
+    expect(edit('DTSTART;VALUE=DATE:20261008')).toContain('DTEND;VALUE=DATE:20261009');
+    // было со временем, время убрали — один день
+    expect(edit('DTSTART;TZID=Europe/Moscow:20261008T100000', 'DTEND;TZID=Europe/Moscow:20261008T110000')).toContain('DTEND;VALUE=DATE:20261009');
+    // без начала — тоже один день
+    expect(edit('DTEND;VALUE=DATE:20261015')).toContain('DTEND;VALUE=DATE:20261009');
+    // время поставили — длина в днях больше не нужна
+    const timed = patchEvent(wrap('BEGIN:VEVENT', 'UID:v1', 'DTSTART;VALUE=DATE:20261008', 'DTEND;VALUE=DATE:20261015', 'END:VEVENT'), { title: 'Отпуск', day: '2026-10-08', time: '10:00', durationMin: null, tz: 'Europe/Moscow', recurring: false }, 0);
+    expect(timed).toContain('DURATION:PT30M');
+    expect(timed).not.toContain('DTEND');
+  });
 });

@@ -1,5 +1,6 @@
 // Общее для всех сквозных тестов: свой пользователь на каждый тест, приложение, открытое под ним, помощники
 // и проверка экрана (вёрстка + эталонный снимок).
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test as base, type Locator, type Page } from '@playwright/test';
 import type { TgOptions } from '../playwright.config';
 
@@ -42,7 +43,10 @@ export const test = base.extend<TgOptions & { tgViewportExtra: number; me: Me; a
   },
 
   // Приложение под этим пользователем. Ошибки страницы и ответы сервера 5xx роняют тест.
-  app: async ({ page, me, tgTheme, tgPlatform, tgInsets, tgViewportExtra }, use) => {
+  app: async ({ page, me, tgTheme, tgPlatform, tgInsets, tgViewportExtra, browserName }, use, testInfo) => {
+    // E2E_COVERAGE=1: какие строки фронта выполнились (только Chromium умеет), сводка — pnpm e2e:coverage.
+    const coverage = !!process.env.E2E_COVERAGE && browserName === 'chromium';
+    if (coverage) await page.coverage.startJSCoverage({ resetOnNavigation: false });
     const problems: string[] = [];
     // Обрыв запроса, когда тест перезагружает страницу, — не ошибка приложения (WebKit: «Load failed»,
     // «… due to access control checks»).
@@ -64,6 +68,11 @@ export const test = base.extend<TgOptions & { tgViewportExtra: number; me: Me; a
     if (await skip.isVisible()) await skip.click();
     await expect(page.locator('.page-head h1')).toHaveText('Сегодня');
     await use(page);
+    if (coverage) {
+      const entries = (await page.coverage.stopJSCoverage()).filter((e) => e.url.includes('/src/'));
+      mkdirSync('coverage-e2e-raw', { recursive: true });
+      writeFileSync(`coverage-e2e-raw/${testInfo.testId}-${testInfo.retry}.json`, JSON.stringify(entries));
+    }
     expect(problems, 'ошибки страницы и сервера').toEqual([]);
   },
 });

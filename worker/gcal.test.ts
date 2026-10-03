@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { calendarUrl, isGoogleHref, loginOf, originalDay, toCalEvent, type GoogleCalendar } from './gcal';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Env } from './env';
+import { accessToken, calendarUrl, deleteGoogleEvent, GoogleError, isGoogleAuthError, isGoogleHref, listEvents, loginOf, originalDay, putOwnEvent, toCalEvent, type GoogleCalendar } from './gcal';
 import { readState, signState } from './secret';
 
 describe('события Google → дела', () => {
@@ -58,5 +59,31 @@ describe('state входа Google', () => {
     expect(await readState(key, state.replace(/^42\./, '43.'))).toBeNull();
     expect(await readState(key, await signState(key, 42, -1000))).toBeNull();
     expect(await readState(key, 'мусор')).toBeNull();
+  });
+});
+
+describe('запросы к Google: отказы', () => {
+  const reply = (status: number, body: unknown = {}) => vi.stubGlobal('fetch', vi.fn(async () => (status === 204 ? new Response(null, { status }) : Response.json(body, { status }))));
+  const change = { todoId: 1, title: 'Встреча', day: '2026-10-05', time: '10:00', durationMin: null, tz: 'Europe/Moscow' };
+  const href = `${calendarUrl('a@b.c')}/events/e1`;
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('чужие ошибки не глотаем: запись, удаление, список событий, токен', async () => {
+    reply(500, { error: 'backend' });
+    await expect(putOwnEvent('t', calendarUrl('a@b.c'), href, change)).rejects.toMatchObject({ status: 500 });
+    await expect(deleteGoogleEvent('t', href)).rejects.toMatchObject({ status: 500 });
+    await expect(listEvents('t', calendarUrl('a@b.c'), 'tok')).rejects.toBeInstanceOf(GoogleError);
+    await expect(accessToken({ GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's' } as Env, 'r')).rejects.toMatchObject({ status: 500, message: 'token: backend' });
+    // 200 без access_token — тоже сбой
+    reply(200, {});
+    await expect(accessToken({} as Env, 'r')).rejects.toMatchObject({ status: 200 });
+  });
+
+  it('удалённое событие: удаление проходит, а 401 — это «подключить заново»', async () => {
+    reply(204);
+    await expect(deleteGoogleEvent('t', href)).resolves.toBeUndefined();
+    reply(401, { error: { code: 401 } });
+    const err = await deleteGoogleEvent('t', href).catch((e: unknown) => e);
+    expect(isGoogleAuthError(err)).toBe(true);
   });
 });

@@ -33,16 +33,17 @@ export async function sendReminders(env: Env, appUrl: string): Promise<void> {
     .returns<ReminderUser[]>();
   if (error) throw error;
 
-  const jobs: Promise<void>[] = [];
+  const jobs: (() => Promise<void>)[] = [];
   for (const u of users ?? []) {
     const now = localTime(u.timezone);
     const day = logicalDay(u.timezone, u.day_start_hour);
     const morning = isDue(u.remind_morning, now) && u.last_morning_reminder !== day;
     const evening = isDue(u.remind_evening, now) && u.last_evening_reminder !== day;
-    if (morning || evening) jobs.push(remindOne(env, u, day, morning ? 'morning' : 'evening', appUrl));
+    if (morning || evening) jobs.push(() => remindOne(env, u, day, morning ? 'morning' : 'evening', appUrl));
   }
-  // Параллельно, но пачками — у Bot API лимит ~30 сообщений в секунду.
-  for (let i = 0; i < jobs.length; i += 25) await Promise.allSettled(jobs.slice(i, i + 25));
+  // Параллельно, но пачками — у Bot API лимит ~30 сообщений в секунду. Пачка стартует, когда закончилась прошлая:
+  // раньше в список клали уже запущенные remindOne, и «пачки» ничего не сдерживали — уходило всё разом.
+  for (let i = 0; i < jobs.length; i += 25) await Promise.allSettled(jobs.slice(i, i + 25).map((job) => job()));
 }
 
 async function remindOne(env: Env, u: ReminderUser, day: string, kind: 'morning' | 'evening', appUrl: string) {

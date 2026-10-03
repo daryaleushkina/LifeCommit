@@ -1,7 +1,7 @@
 // Строка списка, которую можно смахнуть влево (круг 21, как в «Почте» iPhone): короткий свайп открывает кнопки,
 // протянул до конца — срабатывает крайняя (обычно «Удалить»). Вертикальная прокрутка работает как обычно:
 // строка ловит только явно горизонтальное движение. Открытой бывает одна строка: открыли другую — эта закрывается.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { hapticFeedback, swipeBehavior } from '@tma.js/sdk-react';
 
 export interface SwipeAction {
@@ -57,7 +57,9 @@ export function SwipeRow({ actions, className, variant = 'row', children }: Prop
   const moved = useRef(false);
   const open = actions.length * BUTTON;
 
-  const close = () => setX(0);
+  // Одна функция на всю жизнь строки: по ней сверяем «открыта эта же строка?». Новая на каждой отрисовке —
+  // и повторный свайп уже открытой строки на миг захлопывал её, а убранная с экрана строка не забывалась (03.10.2026).
+  const close = useCallback(() => setX(0), []);
   useEffect(() => () => {
     if (closeOpen === close) closeOpen = null;
   }, []);
