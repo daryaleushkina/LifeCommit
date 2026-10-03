@@ -62,3 +62,16 @@ test('голос: микрофон открывает шторку, без до�
   else await closeSheet(page);
   await expect(page.locator('.sheet-backdrop')).toHaveCount(0);
 });
+
+test('разблокировать не вышло — человек в списке, в шторке сказано', async ({ app: page, me, people }) => {
+  const timur = await people('Тимур');
+  await me.api('POST', `/friends/${timur.id}/block`);
+  await page.reload();
+  await goTab(page, 'Я');
+  await page.getByRole('button', { name: /Заблокированные/ }).click();
+  const blocked = page.getByRole('dialog', { name: 'Заблокированные' });
+  await page.route('**/api/blocks/*', (r) => (r.request().method() === 'DELETE' ? r.abort('failed') : r.fallback()));
+  await blocked.getByRole('button', { name: 'Разблокировать' }).click();
+  await expect(blocked.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+  await expect(blocked.getByText('Тимур')).toBeVisible();
+});

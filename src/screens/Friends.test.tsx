@@ -227,26 +227,44 @@ describe('сеть подвела', () => {
     expect(m.api.dropRequest).toHaveBeenCalledWith(7);
     await one.unmount();
 
-    // «Что показать»: «Готово» и «назад» — сервер не ответил.
+    // «Что показать»: «Готово» — сервер не сохранил выбор (04.10.2026: раньше шторка молча закрывалась). Шторка снова
+    // открыта с тем же выбором и строкой ошибки, «Сегодня» не перечитывается; повтор удался — закрывается.
     m.api.friends.mockResolvedValue(list({ friends: [friend({})], prompt: true }));
     const onShown = vi.fn();
     const two = await panel({ habits: [habit({})], onShown });
+    await page.getByRole('button', { name: /Чтение/ }).click();
     await page.getByRole('button', { name: 'Готово' }).click();
+    await expect.element(page.getByRole('dialog').getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /Чтение/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(onShown).not.toHaveBeenCalled();
+    m.api.setShown.mockResolvedValue({ ok: true });
+    await page.getByRole('button', { name: 'Готово' }).click();
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+    expect(m.api.setShown).toHaveBeenLastCalledWith([1]);
     expect(onShown).toHaveBeenCalled();
     await two.unmount();
+    // «Назад» — только служебная отметка «спросили»: не дошла — не беда, шторка закрывается.
     await panel({ habits: [habit({})] });
     await expect.element(page.getByRole('dialog')).toBeVisible();
     m.back.current?.();
     await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('заявки: список не перечитался, принять не вышло — строка всё равно уходит', async () => {
+  it('заявки: принять или отклонить не вышло — заявка на месте, строка ошибки', async () => {
     caches.friends = list({ incoming: [{ id: 5, first_name: 'Тимур', username: null, photo_url: null, via: 'username' }] });
     m.api.friends.mockRejectedValue(new Error('сеть'));
     m.api.acceptFriend.mockRejectedValue(new Error('сеть'));
+    m.api.dropRequest.mockRejectedValue(new Error('сеть'));
     await renderApp(<Requests onBack={() => {}} />);
     await page.getByRole('button', { name: 'Принять' }).click();
-    await expect.element(page.getByText('Тимур')).not.toBeInTheDocument();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('Тимур')).toBeVisible();
+    // Тап по ошибке её убирает; «Отклонить» тоже не вышло — заявка снова на месте.
+    await page.getByText('Что-то пошло не так. Попробуй ещё раз.').click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
+    await page.getByRole('button', { name: 'Отклонить' }).click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('Тимур')).toBeVisible();
   });
 
   it('«Позвать друга» без ссылки и без сети — кнопка ссылки неактивна', async () => {

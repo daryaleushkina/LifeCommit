@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { GroupDayItem } from '../../shared/groups';
 import { sortTodos, type Todo } from '../../shared/types';
-import { api, type CalendarAccount } from '../api';
+import { api, ApiError, type CalendarAccount } from '../api';
 import { caches, load as fetchInto, warm } from '../caches';
 import { CalendarsSheet, syncedLabel } from '../components/CalendarsSheet';
 import { addDays, monthOf, shiftMonth } from '../components/Heatmap';
@@ -81,7 +81,8 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
   // Отметка группового дела не дошла до сервера — сказать, а не молча оставить как было.
   const [markError, setMarkError] = useState<string | null>(null);
   const markGroupItem = async (groupId: number, it: GroupDayItem) => {
-    await api.markItem(groupId, it.id, !it.done, selected).catch(() => setMarkError(t.error));
+    // Уже не на мне (очередь сменилась, на экране старое) — так и сказать: повтор не поможет, после перечитывания галочки не будет.
+    await api.markItem(groupId, it.id, !it.done, selected).catch((e: unknown) => setMarkError(e instanceof ApiError && e.code === 'not_yours' ? t.gr.notYours : t.error));
     await load();
     onChanged();
   };

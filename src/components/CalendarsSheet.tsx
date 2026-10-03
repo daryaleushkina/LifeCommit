@@ -37,6 +37,9 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
       return v;
     });
   const [form, setForm] = useState(false);
+  // Сервер не сохранил правку (что забирать, куда писать, отключить) — на экране как было, здесь строка ошибки.
+  const [failed, setFailed] = useState(false);
+  const onFailed = () => setFailed(true);
   // Адрес входа Google: null — ещё грузится, '' — Google на сервере не настроен.
   const [googleUrl, setGoogleUrl] = useState<string | null>(googleUrlFresh());
   const load = () => fetchInto.accounts().then(setAccounts, () => setAccounts((cur) => cur ?? []));
@@ -77,6 +80,7 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
   }
 
   const changed = () => {
+    setFailed(false);
     void load();
     onChanged();
   };
@@ -86,6 +90,11 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
   return (
     <Sheet title={t.cal.sheetTitle} onClose={onClose}>
       <p className="sheet-note first">{t.cal.sheetHint}</p>
+      {failed && (
+        <p className="error" onClick={() => setFailed(false)}>
+          {t.error}
+        </p>
+      )}
       <div className={`provider${!google && googleUrl === '' ? ' off' : ''}`}>
         <span className="provider-logo google">G</span>
         <span className="provider-text">
@@ -112,8 +121,8 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
           )}
         </div>
       )}
-      {google?.status === 'setup' && <GoogleSetup account={google} setAccounts={setAccounts} onDone={changed} />}
-      {google && google.status !== 'setup' && <AccountSettings account={google} name={t.cal.google} isDestination={destination?.id === google.id} setAccounts={setAccounts} onChanged={changed} />}
+      {google?.status === 'setup' && <GoogleSetup account={google} setAccounts={setAccounts} onDone={changed} onFailed={onFailed} />}
+      {google && google.status !== 'setup' && <AccountSettings account={google} name={t.cal.google} isDestination={destination?.id === google.id} setAccounts={setAccounts} onChanged={changed} onFailed={onFailed} />}
 
       <div className="provider">
         <span className="provider-logo apple">A</span>
@@ -138,18 +147,26 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
         </div>
       )}
 
-      {apple && <AccountSettings account={apple} name={t.cal.apple} isDestination={destination?.id === apple.id} setAccounts={setAccounts} onChanged={changed} />}
+      {apple && <AccountSettings account={apple} name={t.cal.apple} isDestination={destination?.id === apple.id} setAccounts={setAccounts} onChanged={changed} onFailed={onFailed} />}
     </Sheet>
   );
 }
 
 type SetAccounts = Dispatch<SetStateAction<CalendarAccount[] | null>>;
 
-/** Включить или выключить календарь: на экране сразу, сервер догоняет. */
-function useToggle(account: CalendarAccount, setAccounts: SetAccounts, onChanged?: () => void) {
-  return async (url: string, enabled: boolean) => {
+/** Включить или выключить календарь: на экране сразу, сервер догоняет; не сохранил — вернуть как было. */
+function useToggle(account: CalendarAccount, setAccounts: SetAccounts, onFailed: () => void, onChanged?: () => void) {
+  const set = (url: string, enabled: boolean) =>
     setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, collections: a.collections.map((x) => (x.url === url ? { ...x, enabled } : x)) } : a)) ?? list);
-    await api.toggleCollection(account.id, url, enabled).catch(() => {});
+  return async (url: string, enabled: boolean) => {
+    set(url, enabled);
+    try {
+      await api.toggleCollection(account.id, url, enabled);
+    } catch {
+      set(url, !enabled);
+      onFailed();
+      return;
+    }
     onChanged?.();
   };
 }
@@ -169,9 +186,23 @@ function CollectionToggles({ account, onToggle }: { account: CalendarAccount; on
 }
 
 /** Подключённый календарь: куда пишем наши дела (только у того, куда пишем сейчас), что забирать, отключить. */
-function AccountSettings({ account, name, isDestination, setAccounts, onChanged }: { account: CalendarAccount; name: string; isDestination: boolean; setAccounts: SetAccounts; onChanged: () => void }): ReactNode {
+function AccountSettings({
+  account,
+  name,
+  isDestination,
+  setAccounts,
+  onChanged,
+  onFailed,
+}: {
+  account: CalendarAccount;
+  name: string;
+  isDestination: boolean;
+  setAccounts: SetAccounts;
+  onChanged: () => void;
+  onFailed: () => void;
+}): ReactNode {
   const t = useT();
-  const toggle = useToggle(account, setAccounts, onChanged);
+  const toggle = useToggle(account, setAccounts, onFailed, onChanged);
   const writable = account.collections.filter((c) => c.writable);
 
   const disconnect = async () => {
@@ -179,13 +210,26 @@ function AccountSettings({ account, name, isDestination, setAccounts, onChanged 
       const answer = await popup.show({ message: t.cal.disconnectConfirm, buttons: [{ id: 'off', type: 'destructive', text: t.cal.disconnect }, { type: 'cancel' }] });
       if (answer !== 'off') return;
     }
-    await api.disconnectCalendar(account.provider).catch(() => {});
+    try {
+      await api.disconnectCalendar(account.provider);
+    } catch {
+      onFailed();
+      return;
+    }
     onChanged();
   };
 
   const setDestination = async (url: string) => {
-    setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, default_url: url } : a)) ?? list);
-    await api.setDefaultCalendar(account.id, url).catch(() => {});
+    const prev = account.default_url;
+    const set = (default_url: string | null) => setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, default_url } : a)) ?? list);
+    set(url);
+    try {
+      await api.setDefaultCalendar(account.id, url);
+    } catch {
+      set(prev);
+      onFailed();
+      return;
+    }
     onChanged();
   };
 
@@ -215,9 +259,9 @@ function AccountSettings({ account, name, isDestination, setAccounts, onChanged 
 }
 
 /** Google только что подключили: какие календари забирать. События приходят после «Готово». */
-function GoogleSetup({ account, setAccounts, onDone }: { account: CalendarAccount; setAccounts: SetAccounts; onDone: () => void }): ReactNode {
+function GoogleSetup({ account, setAccounts, onDone, onFailed }: { account: CalendarAccount; setAccounts: SetAccounts; onDone: () => void; onFailed: () => void }): ReactNode {
   const t = useT();
-  const toggle = useToggle(account, setAccounts);
+  const toggle = useToggle(account, setAccounts, onFailed);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 

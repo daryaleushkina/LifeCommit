@@ -68,6 +68,8 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
   const [data, setData] = useState<FriendsResponse | null>(caches.friends);
   const [query, setQuery] = useState('');
   const [showing, setShowing] = useState(false);
+  // Выбор «Что показать» не сохранился — шторка снова открыта с ним же и строкой ошибки.
+  const [showFailed, setShowFailed] = useState<number[] | null>(null);
   const [inviting, setInviting] = useState(false);
   // Шторку «Что показать» — не больше раза за открытие, даже если сервер ещё не узнал, что её закрыли.
   const asked = useRef(false);
@@ -92,10 +94,19 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
 
   const closeShow = async (ids: number[] | null) => {
     setShowing(false);
+    setShowFailed(null);
     if (ids) {
-      await api.setShown(ids).catch(() => {});
+      try {
+        await api.setShown(ids);
+      } catch {
+        setShowFailed(ids);
+        setShowing(true);
+        return;
+      }
       onShown();
-    } else await api.promptSeen().catch(() => {});
+    }
+    // «Назад» — служебная отметка «уже спросили»: не дошла — спросим в другой раз, ошибку не показываем.
+    else await api.promptSeen().catch(() => {});
     await reloadFriends();
   };
 
@@ -159,7 +170,7 @@ export function FriendsPanel({ habits, onOpen, onRequests, onShown }: PanelProps
       {inviting && <AddFriendSheet onClose={() => setInviting(false)} />}
 
       {showing && (
-        <ShowSheet habits={habits} onClose={(ids) => void closeShow(ids)} />
+        <ShowSheet habits={habits} picked={showFailed ?? undefined} failed={showFailed !== null} onClose={(ids) => void closeShow(ids)} />
       )}
     </>
   );
@@ -272,6 +283,8 @@ export function Requests({ onBack }: { onBack: () => void }): ReactNode {
   const t = useT();
   const fr = t.fr;
   const [list, setList] = useState<FriendRequest[]>(caches.friends?.incoming ?? []);
+  // Принять или отклонить не вышло — заявка возвращается, сверху строка ошибки.
+  const [error, setError] = useState(false);
   // Уже принятые и отклонённые: ответ, ушедший до нажатия, не должен вернуть их на экран.
   const done = useRef(new Set<number>());
   useBackButton(onBack);
@@ -283,9 +296,17 @@ export function Requests({ onBack }: { onBack: () => void }): ReactNode {
   }, []);
 
   const act = async (p: FriendRequest, accept: boolean) => {
+    setError(false);
     done.current.add(p.id);
+    const at = list.findIndex((x) => x.id === p.id);
     setList((cur) => cur.filter((x) => x.id !== p.id));
-    await (accept ? api.acceptFriend(p.id) : api.dropRequest(p.id)).catch(() => {});
+    try {
+      await (accept ? api.acceptFriend(p.id) : api.dropRequest(p.id));
+    } catch {
+      done.current.delete(p.id);
+      setList((cur) => [...cur.slice(0, at), p, ...cur.slice(at)]);
+      setError(true);
+    }
     void reloadFriends();
   };
 
@@ -294,6 +315,11 @@ export function Requests({ onBack }: { onBack: () => void }): ReactNode {
       <header className="page-head">
         <h1>{fr.requestsTitle}</h1>
       </header>
+      {error && (
+        <p className="error" onClick={() => setError(false)}>
+          {t.error}
+        </p>
+      )}
       {list.length === 0 && <p className="empty">{fr.nothingFound}</p>}
       <div className="friend-list">
         {list.map((p) => (
@@ -470,10 +496,19 @@ export function FriendLink({ code, onClose, onFriends }: { code: string; onClose
 // ── «Что показать друзьям?» (25H) ──
 
 /** На весь экран: плитки привычек, тап выбирает; «Выбрать все» — обязательно (правило владелицы). Назад — ничего не меняем. */
-export function ShowSheet({ habits, onClose }: { habits: TodayTask[]; onClose: (ids: number[] | null) => void }): ReactNode {
+interface ShowSheetProps {
+  habits: TodayTask[];
+  /** Выбор, который не сохранился: шторка открыта снова с ним, а не с тем, что на сервере. */
+  picked?: number[];
+  /** Сохранить не вышло — строка ошибки над «Готово». */
+  failed?: boolean;
+  onClose: (ids: number[] | null) => void;
+}
+
+export function ShowSheet({ habits, picked: initial, failed = false, onClose }: ShowSheetProps): ReactNode {
   const t = useT();
   const fr = t.fr;
-  const [picked, setPicked] = useState<Set<number>>(() => new Set(habits.filter((h) => h.visibility === 'friends').map((h) => h.id)));
+  const [picked, setPicked] = useState<Set<number>>(() => new Set(initial ?? habits.filter((h) => h.visibility === 'friends').map((h) => h.id)));
   useBackButton(() => onClose(null));
   const all = habits.length > 0 && picked.size === habits.length;
   const toggle = (id: number) =>
@@ -506,6 +541,7 @@ export function ShowSheet({ habits, onClose }: { habits: TodayTask[]; onClose: (
           </button>
         ))}
       </div>
+      {failed && <p className="error">{t.error}</p>}
       <button className="act primary wide show-done" onClick={() => onClose([...picked])}>
         {t.done}
       </button>

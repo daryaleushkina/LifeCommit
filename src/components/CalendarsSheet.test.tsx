@@ -183,15 +183,22 @@ describe('Google', () => {
     await expect.element(holidays).toBeChecked();
     expect(api.toggleCollection).toHaveBeenCalledWith(1, 'g3', true);
     await expect.poll(() => onChanged).toHaveBeenCalledTimes(2);
-    // Сервер не ответил — на экране всё равно остаётся выбор.
+    // 04.10.2026: сервер не сохранил — выбор возвращается как был, в шторке строка ошибки (раньше на экране оставалось несохранённое).
     vi.mocked(api.toggleCollection).mockRejectedValueOnce(new Error('offline'));
     vi.mocked(api.setDefaultCalendar).mockRejectedValueOnce(new Error('offline'));
     await page.getByRole('checkbox', { name: 'Личный' }).click();
-    await expect.element(page.getByRole('checkbox', { name: 'Личный' })).not.toBeChecked();
-    await expect.poll(() => onChanged).toHaveBeenCalledTimes(3);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByRole('checkbox', { name: 'Личный' })).toBeChecked();
     await writeTo.click();
     await page.getByRole('option', { name: 'Личный' }).click();
-    await expect.poll(() => onChanged).toHaveBeenCalledTimes(4);
+    await expect.element(writeTo).toMatchTextContent(/Работа/);
+    expect(caches.accounts![0]!.default_url).toBe('g2');
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    // Ничего не поменялось — экран календаря не перечитываем.
+    expect(onChanged).toHaveBeenCalledTimes(2);
+    // Следующая правка удалась — строки ошибки нет.
+    await page.getByRole('checkbox', { name: 'Праздники' }).click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
   });
 
   it('отключить — после подтверждения; «Отмена» ничего не делает', async () => {
@@ -211,15 +218,28 @@ describe('Google', () => {
     await expect.element(page.getByText('Вход через Google')).toBeVisible();
   });
 
-  it('вне Telegram отключаем без вопроса, даже если сервер не ответил', async () => {
+  it('вне Telegram отключаем без вопроса', async () => {
+    tg.popup = false;
+    caches.accounts = [google()];
+    const { r, onChanged } = setup();
+    await r;
+    await page.getByRole('button', { name: 'Отключить Google Календарь' }).click();
+    await expect.poll(() => onChanged).toHaveBeenCalledOnce();
+    expect(api.disconnectCalendar).toHaveBeenCalledWith('google');
+    expect(tg.show).not.toHaveBeenCalled();
+  });
+
+  // 04.10.2026: раньше сбой отключения проходил молча.
+  it('сервер не отключил — календарь на месте, в шторке строка ошибки', async () => {
     tg.popup = false;
     caches.accounts = [google()];
     vi.mocked(api.disconnectCalendar).mockRejectedValue(new Error('offline'));
     const { r, onChanged } = setup();
     await r;
     await page.getByRole('button', { name: 'Отключить Google Календарь' }).click();
-    await expect.poll(() => onChanged).toHaveBeenCalledOnce();
-    expect(tg.show).not.toHaveBeenCalled();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Отключить Google Календарь' })).toBeVisible();
+    expect(onChanged).not.toHaveBeenCalled();
   });
 
   it('только что подключили: выбрать календари и «Готово»', async () => {

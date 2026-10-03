@@ -211,6 +211,34 @@ describe('«Сегодня»', () => {
     await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
   });
 
+  // 04.10.2026: ошибка удаления больше не теряется, если за 5 секунд «Вернуть» человек ушёл на другую вкладку.
+  it('свайп по привычке и сразу на другую вкладку: сервер не удалил — ошибка видна там', async () => {
+    m.api.deleteTask.mockRejectedValueOnce(new Error('сеть'));
+    const onDeleted = vi.fn(async () => {});
+    function Tabs() {
+      const [cache, setCache] = useState<Cache>({ today: response({ tasks: [task({ id: 7, title: 'Йога' })] }), heat: [], loadedAt: Date.now() });
+      const [tab, setTab] = useState<'today' | 'other'>('today');
+      return (
+        <>
+          {tab === 'today' ? (
+            <Today cache={cache} setCache={setCache} me={1} onEdit={() => {}} onArchive={() => {}} onOpenGroup={() => {}} onDeleted={onDeleted} />
+          ) : (
+            <p>Календарь</p>
+          )}
+          <button onClick={() => setTab('other')}>Другая вкладка</button>
+          <RemovalHost />
+        </>
+      );
+    }
+    await renderApp(<Tabs />);
+    swipeAway(page.getByRole('heading', { name: 'Йога' }).element());
+    await page.getByRole('button', { name: 'Другая вкладка' }).click();
+    await expect.element(page.getByText('Календарь')).toBeVisible();
+    minimize();
+    await expect.poll(() => onDeleted.mock.calls.length).toBe(1);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+  });
+
   it('свайп по привычке: сервер удалил — ошибки нет', async () => {
     await renderApp(<Screen today={response({ tasks: [task({ id: 7, title: 'Йога' })] })} />);
     swipeAway(page.getByRole('heading', { name: 'Йога' }).element());

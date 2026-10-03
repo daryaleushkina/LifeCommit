@@ -254,8 +254,15 @@ describe('настройки', () => {
     await sheet.getByRole('button', { name: 'Разблокировать' }).first().click();
     expect(m.api.unblock).toHaveBeenCalledWith(5);
     await expect.element(sheet.getByText('Тимур')).not.toBeInTheDocument();
-    // Сервер не ответил — строка всё равно уходит; шторка закрывается.
+    // Сервер не разблокировал — человек возвращается в список, в шторке строка ошибки (04.10.2026: раньше уходил молча).
     m.api.unblock.mockRejectedValue(new Error('сеть'));
+    await sheet.getByRole('button', { name: 'Разблокировать' }).click();
+    await expect.element(sheet.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(sheet.getByText('Аня')).toBeVisible();
+    // Тап по ошибке её убирает; повтор удался — строка уходит, ошибки нет.
+    await sheet.getByText('Что-то пошло не так. Попробуй ещё раз.').click();
+    await expect.element(sheet.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
+    m.api.unblock.mockResolvedValue({ ok: true });
     await sheet.getByRole('button', { name: 'Разблокировать' }).click();
     await expect.element(sheet.getByText('Аня')).not.toBeInTheDocument();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));

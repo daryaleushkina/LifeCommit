@@ -29,6 +29,10 @@ let removed = new Set<string>();
 let pending: Pending | null = null;
 let timer: number | undefined;
 let choice: Choice | null = null;
+// Сервер не выполнил удаление (commit бросил): строка уже снова видна, а сказать об этом надо здесь — экрана,
+// с которого удаляли, за 5 секунд «Вернуть» могло уже не быть.
+let failed = false;
+let failTimer: number | undefined;
 let version = 0;
 const listeners = new Set<() => void>();
 const emit = () => {
@@ -40,6 +44,13 @@ const subscribe = (l: () => void) => {
   return () => listeners.delete(l);
 };
 
+function setFailed(on: boolean) {
+  failed = on;
+  window.clearTimeout(failTimer);
+  if (on) failTimer = window.setTimeout(() => setFailed(false), UNDO_MS);
+  emit();
+}
+
 /** Отправить отложенное удаление на сервер прямо сейчас. Строка остаётся скрытой, пока данные не перечитаются. */
 function flush() {
   const p = pending;
@@ -47,10 +58,13 @@ function flush() {
   pending = null;
   window.clearTimeout(timer);
   emit();
-  void p.commit().finally(() => {
-    removed = new Set([...removed].filter((k) => k !== p.key));
-    emit();
-  });
+  void p
+    .commit()
+    .catch(() => setFailed(true))
+    .finally(() => {
+      removed = new Set([...removed].filter((k) => k !== p.key));
+      emit();
+    });
 }
 
 if (typeof document !== 'undefined') {
@@ -60,10 +74,12 @@ if (typeof document !== 'undefined') {
 
 /**
  * Убрать строку с «Вернуть». commit — само удаление на сервере и перечитать экран (после этого строки и так нет).
+ * Не вышло — commit бросает (перечитав экран): плашка «что-то пошло не так» появится поверх любого экрана.
  * key — что прятать: «todo:12», «gi:3:45:2026-10-02».
  */
 export function removeWithUndo(key: string, text: string, commit: () => Promise<unknown>) {
   flush();
+  if (failed) setFailed(false);
   removed = new Set(removed).add(key);
   pending = { key, text, commit };
   timer = window.setTimeout(flush, UNDO_MS);
@@ -121,6 +137,14 @@ export function RemovalHost(): ReactNode {
               </svg>
               {t.swipe.undo}
             </button>
+          </div>,
+          document.body,
+        )}
+      {failed &&
+        !shown &&
+        createPortal(
+          <div className="undo-toast" role="status" onClick={() => setFailed(false)}>
+            <span>{t.error}</span>
           </div>,
           document.body,
         )}
