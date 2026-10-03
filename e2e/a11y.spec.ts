@@ -23,6 +23,11 @@ const screens: [string, (page: import('@playwright/test').Page) => Promise<void>
     await p.getByText('Семья').first().click();
   }],
   ['шторка дела', async (p) => p.locator('.todo-list li', { hasText: 'Купить корм Тесле' }).locator('.todo-main').click()],
+  ['друзья и заявки', async (p) => {
+    await goTab(p, 'Вместе');
+    await p.getByRole('radio', { name: 'Друзья' }).click();
+    await p.getByRole('button', { name: 'Позвать друга' }).click();
+  }],
 ];
 
 for (const [name, open] of screens) {

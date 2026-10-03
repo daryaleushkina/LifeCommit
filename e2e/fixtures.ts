@@ -1,7 +1,7 @@
 // Общее для всех сквозных тестов: свой пользователь на каждый тест, приложение, открытое под ним, помощники
 // и проверка экрана (вёрстка + эталонный снимок).
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { expect, test as base, type Locator, type Page } from '@playwright/test';
+import { expect, test as base, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import type { TgOptions } from '../playwright.config';
 
 /** Подпись initData, которую Worker в локальной разработке принимает без проверки (DEV_AUTH_BYPASS). */
@@ -13,7 +13,31 @@ export interface Me {
   api: <T = unknown>(method: string, path: string, body?: unknown) => Promise<T>;
 }
 
-export const test = base.extend<TgOptions & { tgViewportExtra: number; me: Me; app: Page }>({
+/** Человек со своей initData (id из «тестового» диапазона): запросы к API от его имени и удаление со всеми данными. */
+async function makeUser(request: APIRequestContext, name: string, username?: string): Promise<Me & { drop: () => Promise<void> }> {
+  const id = 8_000_000_000_000 + Math.floor(Math.random() * 1_000_000_000);
+  const initData = new URLSearchParams([
+    ['auth_date', String(Math.floor(Date.now() / 1000))],
+    ['hash', MOCK_HASH],
+    ['signature', 'mock-signature'],
+    ['user', JSON.stringify({ id, first_name: name, language_code: 'ru', ...(username && { username }) })],
+  ]).toString();
+  const api = async <T,>(method: string, path: string, body?: unknown): Promise<T> => {
+    const res = await request.fetch(`/api${path}`, { method, headers: { Authorization: `tma ${initData}` }, ...(body !== undefined && { data: body }) });
+    if (!res.ok()) throw new Error(`${method} ${path}: ${res.status()} ${await res.text()}`);
+    return (await res.json()) as T;
+  };
+  await api('POST', '/session', { timezone: 'Europe/Moscow' });
+  const drop = async () => {
+    // Группы при удалении аккаунта остаются без владельца — удаляем их сами.
+    const groups = await api<{ id: number; role: string }[]>('GET', '/groups').catch(() => []);
+    for (const g of groups) if (g.role === 'owner') await api('DELETE', `/groups/${g.id}`).catch(() => {});
+    await api('DELETE', '/account').catch(() => {});
+  };
+  return { id, api, drop };
+}
+
+export const test = base.extend<TgOptions & { tgViewportExtra: number; me: Me; people: (name: string, username?: string) => Promise<Me>; app: Page }>({
   tgTheme: ['light', { option: true }],
   // Telegram сообщает высоту больше видимой (бывает на iPhone) — проверка, что низ всё равно доступен.
   tgViewportExtra: [0, { option: true }],
@@ -22,24 +46,20 @@ export const test = base.extend<TgOptions & { tgViewportExtra: number; me: Me; a
 
   // Свежий пользователь на тест: id из «тестового» диапазона, после теста — удаляется со всеми данными.
   me: async ({ request }, use) => {
-    const id = 8_000_000_000_000 + Math.floor(Math.random() * 1_000_000_000);
-    const initData = new URLSearchParams([
-      ['auth_date', String(Math.floor(Date.now() / 1000))],
-      ['hash', MOCK_HASH],
-      ['signature', 'mock-signature'],
-      ['user', JSON.stringify({ id, first_name: 'Тест', language_code: 'ru' })],
-    ]).toString();
-    const api = async <T,>(method: string, path: string, body?: unknown): Promise<T> => {
-      const res = await request.fetch(`/api${path}`, { method, headers: { Authorization: `tma ${initData}` }, ...(body !== undefined && { data: body }) });
-      if (!res.ok()) throw new Error(`${method} ${path}: ${res.status()} ${await res.text()}`);
-      return (await res.json()) as T;
-    };
-    await api('POST', '/session', { timezone: 'Europe/Moscow' });
-    await use({ id, api });
-    // Группы при удалении аккаунта остаются без владельца — удаляем их сами.
-    const groups = await api<{ id: number; role: string }[]>('GET', '/groups').catch(() => []);
-    for (const g of groups) if (g.role === 'owner') await api('DELETE', `/groups/${g.id}`).catch(() => {});
-    await api('DELETE', '/account').catch(() => {});
+    const user = await makeUser(request, 'Тест');
+    await use({ id: user.id, api: user.api });
+    await user.drop();
+  },
+
+  // Другие люди (друзья, кто зовёт): тоже свои на тест и тоже удаляются после него.
+  people: async ({ request }, use) => {
+    const made: Awaited<ReturnType<typeof makeUser>>[] = [];
+    await use(async (name, username) => {
+      const user = await makeUser(request, name, username);
+      made.push(user);
+      return { id: user.id, api: user.api };
+    });
+    for (const user of made) await user.drop();
   },
 
   // Приложение под этим пользователем. Ошибки страницы и ответы сервера 5xx роняют тест.

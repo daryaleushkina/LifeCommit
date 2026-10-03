@@ -4,7 +4,6 @@ import { stream } from 'hono/streaming';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   autoStep,
-  cleanDaysBeforeStart,
   FREE_TASK_LIMIT,
   type ArchivedTask,
   type HeatDay,
@@ -16,7 +15,6 @@ import {
   type TodoInput,
   sortTodos,
   type TodayResponse,
-  type TodayTask,
   type UserSettings,
   VOICE_DAILY_LIMIT,
   type VoiceAction,
@@ -25,7 +23,7 @@ import {
 import type { TaskHistory } from '../shared/stats';
 import { summarize, type SummaryLog, type SummaryTask } from '../shared/summary';
 import { requireTelegram, type AuthVars } from './auth';
-import { addDays, isValidTimeZone, logicalDay, weekdayIndex, weekStart } from './day';
+import { addDays, isValidTimeZone, logicalDay, weekStart } from './day';
 import { byTelegram, db, type Env } from './env';
 import { MAX_HABITS, MAX_TODOS, transcribe } from './voice';
 import { routeVoice, voiceGroups } from './voiceRoute';
@@ -36,6 +34,8 @@ import { authUrl } from './gcal';
 import { signState } from './secret';
 import { groups, groupsRange, groupsToday, handOver } from './groups';
 import { shareApi } from './share';
+import { toTodayTasks, type ScreenLog, type TaskRow, type TodayRow } from './habits';
+import { friends } from './friends';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -50,28 +50,12 @@ export interface UserRow {
   remind_morning: string | null;
   remind_evening: string | null;
   bot_chat_ok: boolean;
-  profile_mode: 'open' | 'closed';
   premium_until: string | null;
 }
 
-interface TaskRow {
-  id: number;
-  title: string;
-  emoji: string | null;
-  kind: TaskKind;
-  unit: string | null;
-  step: number;
-  schedule: TodayTask['schedule'];
-  weekdays: number;
-  per_week: number | null;
-  visibility: TodayTask['visibility'];
-  challenge_id: number | null;
-  position: number;
-  last_slip_on: string | null;
-}
 
 export const USER_COLS =
-  'id, first_name, username, photo_url, language_code, timezone, day_start_hour, remind_morning, remind_evening, bot_chat_ok, profile_mode, premium_until';
+  'id, first_name, username, photo_url, language_code, timezone, day_start_hour, remind_morning, remind_evening, bot_chat_ok, premium_until';
 const TASK_COLS = 'id, title, emoji, kind, unit, step, schedule, weekdays, per_week, visibility, challenge_id, position, last_slip_on';
 
 export const isPremium = (u: UserRow) => u.premium_until !== null && new Date(u.premium_until) > new Date();
@@ -95,7 +79,6 @@ function toSettings(u: UserRow): UserSettings {
     remind_morning: u.remind_morning?.slice(0, 5) ?? null,
     remind_evening: u.remind_evening?.slice(0, 5) ?? null,
     bot_chat_ok: u.bot_chat_ok,
-    profile_mode: u.profile_mode,
     premium: isPremium(u),
   };
 }
@@ -168,14 +151,6 @@ api.get('/templates', async (c) => {
 
 api.get('/today', async (c) => c.json(await loadToday(c.get('sb'), c.get('user'))));
 
-/** Строка дела из `today_screen`: цель, первый день, чистые дни и подзадачи база считает сама. */
-interface TodayRow extends TaskRow {
-  target: number | null;
-  start: string | null;
-  clean_count: number;
-  pre_slips: number;
-  subtasks: { id: number; title: string }[];
-}
 
 async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayResponse> {
   const day = today(user);
@@ -184,46 +159,13 @@ async function loadToday(sb: SupabaseClient, user: UserRow): Promise<TodayRespon
   const screen = must(screenRes) as {
     tasks: TodayRow[];
     archived: ArchivedTask[];
-    logs: { task_id: number; day: string; value: number; status: 'clean' | 'slip' | null }[];
+    logs: ScreenLog[];
     todos: (Omit<TodoRow, 'rrule' | 'exdates'> & { done: boolean })[];
     todos_recurring: (TodoRow & { done: boolean })[];
     todos_later: number;
   };
   const { tasks, archived, logs: logRows } = screen;
-
-  const result: TodayTask[] = tasks.map((t) => {
-    const todayLog = logRows.find((l) => l.task_id === t.id && l.day === day);
-    const weekDone = logRows.filter(
-      (l) => l.task_id === t.id && l.day !== day && (Number(l.value) > 0 || l.status === 'clean'),
-    ).length;
-    const due =
-      t.schedule === 'daily' ||
-      (t.schedule === 'weekdays' && (t.weekdays & (1 << weekdayIndex(day))) !== 0) ||
-      (t.schedule === 'per_week' && (weekDone < (t.per_week ?? 7) || todayLog !== undefined));
-    return {
-      id: t.id,
-      title: t.title,
-      emoji: t.emoji,
-      kind: t.kind,
-      unit: t.unit,
-      step: t.step,
-      schedule: t.schedule,
-      weekdays: t.weekdays,
-      per_week: t.per_week,
-      visibility: t.visibility,
-      challenge_id: t.challenge_id,
-      target: t.target === null ? 1 : Number(t.target),
-      value: todayLog ? Number(todayLog.value) : 0,
-      logged: todayLog !== undefined,
-      status: todayLog?.status ?? null,
-      week_done: weekDone,
-      due,
-      subtasks: t.subtasks,
-      // «N дней без…»: чистые дни в приложении плюс дни до его появления, если указан «последний раз».
-      clean_before: t.kind === 'abstain' ? Number(t.clean_count) + cleanDaysBeforeStart(t.start ?? day, t.last_slip_on) - Number(t.pre_slips ?? 0) : 0,
-      last_slip_on: t.last_slip_on,
-    };
-  });
+  const result = toTodayTasks(tasks, logRows, day);
 
   const personal = tasks.filter((t) => t.challenge_id === null).length;
   return {
@@ -254,7 +196,7 @@ function known<T extends string>(value: T, list: readonly string[], error: strin
   return value;
 }
 const SCHEDULES = ['daily', 'weekdays', 'per_week'];
-const VISIBILITIES = ['private', 'followers', 'public'];
+const VISIBILITIES = ['private', 'friends'];
 
 function cleanTask(input: TaskInput, day: string) {
   const title = String(input.title ?? '').trim().slice(0, 80);
@@ -879,7 +821,6 @@ api.patch('/settings', async (c) => {
   if (body.language_code === 'ru' || body.language_code === 'en') fields.language_code = body.language_code;
   if (body.timezone && isValidTimeZone(body.timezone)) fields.timezone = body.timezone;
   if (body.day_start_hour !== undefined && Number.isFinite(Number(body.day_start_hour))) fields.day_start_hour = Math.min(12, Math.max(0, Math.floor(body.day_start_hour)));
-  if (body.profile_mode === 'open' || body.profile_mode === 'closed') fields.profile_mode = body.profile_mode;
   if (time(body.remind_morning) !== undefined) fields.remind_morning = time(body.remind_morning);
   if (time(body.remind_evening) !== undefined) fields.remind_evening = time(body.remind_evening);
   // Менять нечего — база на пустую правку не вернёт строку (и было бы 500): отдаём как есть.
@@ -909,4 +850,5 @@ api.delete('/account', async (c) => {
 
 // Группы: участники, приглашения, групповые дела (worker/groups.ts).
 api.route('/', groups);
+api.route('/', friends);
 api.route('/', shareApi);

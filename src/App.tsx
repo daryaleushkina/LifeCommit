@@ -19,6 +19,7 @@ import { MicIcon, VoiceSheet, type VoicePreview } from './components/VoiceSheet'
 import { Group } from './screens/Group';
 import { Groups } from './screens/Groups';
 import { Join } from './screens/Join';
+import { FriendLink, FriendScreen, Requests } from './screens/Friends';
 
 type Route =
   | { name: 'today' }
@@ -29,11 +30,16 @@ type Route =
   | { name: 'detail'; id: number }
   | { name: 'task'; id: number | null; kind?: TaskKind }
   | { name: 'archive' }
-  | { name: 'groups' }
+  // section — сразу «Друзья» (пришли со ссылки друга).
+  | { name: 'groups'; section?: 'friends' }
   // Экран группы; back — вкладка, откуда пришли.
   | { name: 'group'; id: number; back: Tab }
   // Вступление по ссылке t.me/…?startapp=g_<код>.
   | { name: 'join'; code: string }
+  // Друзья (во «Вместе»): экран друга и заявки; чужая ссылка «Позвать друга» — t.me/…?startapp=f_<код>.
+  | { name: 'friend'; id: number }
+  | { name: 'requests' }
+  | { name: 'friendLink'; code: string }
   // Правка привычки из голосового разбора; back — вкладка, с которой открыли шторку.
   | { name: 'draft'; index: number; back: Tab };
 type Tab = 'today' | 'calendar' | 'groups' | 'me';
@@ -98,6 +104,7 @@ export function App(): ReactNode {
       const joinParam = new URLSearchParams(window.location.search).get('join');
       const joinCode = start_param?.startsWith('g_') ? start_param.slice(2) : joinParam && /^[a-z0-9]{6,20}$/.test(joinParam) ? joinParam : null;
       const groupId = start_param?.startsWith('grp_') ? Number(start_param.slice(4)) : null;
+      const friendCode = start_param?.startsWith('f_') ? start_param.slice(2) : null;
       const day = logicalDayOf(user.timezone, user.day_start_hour);
       const quiet = (p: Promise<unknown>) => p.catch(() => null);
       const [today, heat] = await Promise.all([
@@ -108,6 +115,8 @@ export function App(): ReactNode {
         day ? quiet(fetchInto.range(day, day)) : null,
         joinCode ? quiet(fetchInto.invitation(joinCode)) : null,
         groupId ? quiet(fetchInto.group(groupId)) : null,
+        // Друзья во «Вместе» открываются сразу, с заявками.
+        quiet(fetchInto.friends()),
         // Шрифт — до показа: иначе текст сначала системным шрифтом, потом перескакивает (но не дольше 1,5 с).
         Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 1500))]),
       ]);
@@ -130,6 +139,7 @@ export function App(): ReactNode {
       if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
       else if (joinCode) setRoute({ name: 'join', code: joinCode });
       else if (groupId) setRoute({ name: 'group', id: groupId, back: 'groups' });
+      else if (friendCode) setRoute({ name: 'friendLink', code: friendCode });
     } catch {
       setBoot({ state: 'error' });
     }
@@ -174,7 +184,8 @@ export function App(): ReactNode {
 
   const tab = (name: Tab): Route => ({ name });
   // Экран группы живёт внутри вкладки, откуда его открыли: нижняя панель и микрофон остаются (02.10.2026).
-  const currentTab: Tab = route.name === 'group' ? route.back : route.name === 'me' || route.name === 'calendar' || route.name === 'groups' ? route.name : 'today';
+  const currentTab: Tab =
+    route.name === 'group' ? route.back : route.name === 'friend' || route.name === 'requests' ? 'groups' : route.name === 'me' || route.name === 'calendar' || route.name === 'groups' ? route.name : 'today';
   const openGroup = (id: number) => setRoute({ name: 'group', id, back: currentTab });
   const closeVoice = () => {
     setVoiceOpen(false);
@@ -226,6 +237,8 @@ export function App(): ReactNode {
       setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
       setRoute({ name: 'group', id, back: 'groups' });
     }} onClose={home} />;
+  } else if (route.name === 'friendLink') {
+    screen = <FriendLink code={route.code} onClose={home} onFriends={() => setRoute({ name: 'groups', section: 'friends' })} />;
   } else if (boot.onboarding) {
     screen = (
       <Onboarding
@@ -248,10 +261,23 @@ export function App(): ReactNode {
       <main className="app-shell with-tabs">
         {route.name === 'group' ? (
           <Group key={`${route.id}:${groupRev}`} id={route.id} me={boot.user.id} today={cache.today.day} onBack={() => setRoute(tab(currentTab))} onChanged={() => void refresh()} />
+        ) : route.name === 'friend' ? (
+          <FriendScreen key={route.id} id={route.id} onBack={() => setRoute(tab('groups'))} />
+        ) : route.name === 'requests' ? (
+          <Requests onBack={() => setRoute(tab('groups'))} />
         ) : currentTab === 'me' ? (
           <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         ) : currentTab === 'groups' ? (
-          <Groups me={boot.user.id} initial={cache.today.groups} onOpen={openGroup} />
+          <Groups
+            me={boot.user.id}
+            initial={cache.today.groups}
+            onOpen={openGroup}
+            habits={cache.today.tasks}
+            onOpenFriend={(id) => setRoute({ name: 'friend', id })}
+            onRequests={() => setRoute({ name: 'requests' })}
+            onShown={() => void refresh()}
+            section={route.name === 'groups' ? route.section : undefined}
+          />
         ) : currentTab === 'calendar' ? (
           <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} onChanged={() => void refresh()} me={boot.user.id} onOpenGroup={openGroup} />
         ) : (

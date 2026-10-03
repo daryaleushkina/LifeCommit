@@ -226,7 +226,8 @@ function when(day: string, time: string | null, durationMin: number | null, tz: 
   if (!time) return { start: { date: day }, end: { date: shiftDay(day, spanDays) } };
   const [h = 0, m = 0] = time.split(':').map(Number);
   const total = h * 60 + m + (durationMin ?? 30);
-  const endDay = total >= 1440 ? shiftDay(day, 1) : day;
+  // Событие может идти несколько дней (конференция на трое суток) — конец не на следующий день, а через столько дней.
+  const endDay = shiftDay(day, Math.floor(total / 1440));
   const rest = total % 1440;
   const pad = (n: number) => String(n).padStart(2, '0');
   return {
