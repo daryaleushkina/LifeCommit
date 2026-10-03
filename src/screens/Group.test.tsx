@@ -379,6 +379,22 @@ describe('настройки группы', () => {
     expect(settings().getByText('Что-то пошло не так. Попробуй ещё раз.').elements()).toEqual([]);
   });
 
+  // 04.10.2026, сквозной тест под нагрузкой: перечитка группы (после удаления свайпом) ушла раньше, чем человек включил
+  // «только админы», а пришла позже — и выключила переключатель обратно, хотя на сервере уже «включено».
+  it('ответ, запрошенный до правки, её не затирает: «только админы» остаётся, экран перечитан после сервера', async () => {
+    let answer: (g: GroupDetail) => void = () => {};
+    caches.groups.set(10, detail());
+    m.api.group.mockReturnValueOnce(new Promise<GroupDetail>((r) => (answer = r))).mockResolvedValue(detail({ settings: { ...detail().settings, admins_only_edit: true } }));
+    await renderApp(<Group id={10} me={ME} today={TODAY} onBack={vi.fn()} onChanged={vi.fn()} />);
+    await openSettings();
+    const box = settings().getByRole('checkbox', { name: 'Дела заводят только админы' });
+    await box.click();
+    await expect.element(box).toBeChecked();
+    answer(detail());
+    await expect.poll(() => m.api.group.mock.calls.length).toBe(2);
+    await expect.element(box).toBeChecked();
+  });
+
   // 04.10.2026: раньше переключатель оставался включённым, хотя сервер настройку не сохранил.
   it('«только админы» не сохранилось — переключатель возвращается, в шторке ошибка', async () => {
     m.api.updateGroup.mockRejectedValue(new Error('сеть'));

@@ -5,7 +5,7 @@ import type { GroupDayBlock, GroupToday } from '../shared/groups';
 import type { TaskHistory } from '../shared/stats';
 import type { FriendProfile, FriendsResponse, Todo } from '../shared/types';
 import { api, type CalendarAccount, type GroupDetail, type Invitation } from './api';
-import { currentChange } from './useTaskLog';
+import { bumpChange, currentChange } from './useTaskLog';
 
 /** Ссылка входа Google живёт 15 минут; берём запас. */
 const GOOGLE_URL_TTL = 12 * 60_000;
@@ -45,6 +45,20 @@ function once<T>(key: string, run: () => Promise<T>): Promise<T> {
 
 export const googleUrlFresh = () => (caches.googleUrl && Date.now() - caches.googleUrl.at < GOOGLE_URL_TTL ? caches.googleUrl.url : null);
 
+// Правки экрана группы, которые ещё идут на сервер (отметка, имя, «только админы»).
+const edits = new Set<Promise<unknown>>();
+/** Правка на экране группы: перечитки, начатые раньше или во время неё, её не затрут — дождутся и спросят заново. */
+export function trackEdit<T>(p: Promise<T>): Promise<T> {
+  bumpChange();
+  edits.add(p);
+  const done = () => {
+    edits.delete(p);
+    bumpChange();
+  };
+  p.then(done, done);
+  return p;
+}
+
 export const load = {
   accounts: () =>
     once('accounts', async () => {
@@ -80,7 +94,17 @@ export const load = {
     }),
   group: (id: number) =>
     once(`group:${id}`, async () => {
-      const g = await api.group(id);
+      // Как у дней: пока шёл запрос, на экране группы что-то поменяли (04.10.2026: перечитка после удаления свайпом
+      // выключала только что включённое «только админы») — ответ устарел, спрашиваем ещё раз.
+      // Правка ещё у сервера — дождаться её и спросить заново: иначе ответ без неё ляжет поверх неё.
+      let seq: number;
+      let g: GroupDetail;
+      let tries = 0;
+      do {
+        seq = currentChange();
+        g = await api.group(id);
+        if (edits.size) await Promise.allSettled([...edits]);
+      } while (seq !== currentChange() && ++tries < 4);
       caches.groups.set(id, g);
       return g;
     }),

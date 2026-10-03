@@ -3,7 +3,7 @@ import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } 
 import { hapticFeedback, openTelegramLink, popup } from '@tma.js/sdk-react';
 import type { GroupDayItem } from '../../shared/groups';
 import { api, ApiError, type GroupDetail } from '../api';
-import { caches, load as fetchInto } from '../caches';
+import { caches, load as fetchInto, trackEdit } from '../caches';
 import { GroupItemSheet } from '../components/GroupItemSheet';
 import { Avatar, AvatarStack, GroupBadge, GroupItemRow } from '../components/groupUi';
 import { Sheet } from '../components/Picker';
@@ -60,6 +60,8 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   useEffect(() => {
     void load();
   }, [load]);
+  // Правка на экране (отметка, имя, «только админы»): перечитки, начатые раньше или во время неё, её не затрут.
+  const edit = <T,>(run: () => Promise<T>): Promise<T> => trackEdit(run());
   // Чат ещё жив? Проверяем в фоне раз за открытие: удалённый в Telegram чат пропадает из настроек сразу.
   const chatChecked = useRef(false);
   useEffect(() => {
@@ -90,7 +92,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
     setGroup((cur) => cur && { ...cur, items: cur.items.map((x) => (x.id === it.id ? { ...x, done, done_by: done ? [...x.done_by, me] : x.done_by.filter((u) => u !== me) } : x)) });
     if (done) hapticFeedback.notificationOccurred.ifAvailable('success');
     try {
-      const res = await api.markItem(group.id, it.id, done);
+      const res = await edit(() => api.markItem(group.id, it.id, done));
       if (res.taken) setNote(g.taken);
     } catch (e) {
       setNote(e instanceof ApiError && e.code === 'not_yours' ? g.notYours : t.error);
@@ -256,6 +258,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
           }}
           onAdminsOnly={(on) => setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, admins_only_edit: on } })}
           onFailed={() => setNote(t.error)}
+          edit={edit}
           onConnectChat={() => void connectChat()}
           onDisconnectChat={() => void disconnectChat()}
           onLeave={() => void leave(false)}
@@ -328,6 +331,7 @@ function GroupSettingsSheet({
   onLeave,
   onDelete,
   onFailed,
+  edit,
 }: {
   group: GroupDetail;
   onClose: () => void;
@@ -335,6 +339,8 @@ function GroupSettingsSheet({
   onAdminsOnly: (on: boolean) => void;
   /** Сервер не сохранил настройку — подсказка на экране группы (видна, когда шторка закрыта). */
   onFailed: () => void;
+  /** Запрос правки к серверу: см. edit в Group — начатые раньше перечитки её не затрут. */
+  edit: <T>(run: () => Promise<T>) => Promise<T>;
   onConnectChat: () => void;
   onDisconnectChat: () => void;
   onLeave: () => void;
@@ -355,7 +361,7 @@ function GroupSettingsSheet({
     if (!next || next === group.title) return;
     setError(false);
     try {
-      await api.updateGroup(group.id, { title: next });
+      await edit(() => api.updateGroup(group.id, { title: next }));
     } catch {
       setTitle(group.title);
       failed();
@@ -367,7 +373,7 @@ function GroupSettingsSheet({
     setError(false);
     onAdminsOnly(on);
     try {
-      await api.updateGroup(group.id, { admins_only_edit: on });
+      await edit(() => api.updateGroup(group.id, { admins_only_edit: on }));
     } catch {
       onAdminsOnly(!on);
       failed();
