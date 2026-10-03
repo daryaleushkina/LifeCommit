@@ -29,6 +29,13 @@ describe('ответ модели → групповые дела', () => {
     expect(d[2]).toMatchObject({ mode: 'event', all_members: true, day: '2026-10-03', time: '19:00' });
     expect(d[3]).toMatchObject({ mode: 'goal', target: 150000, unit: { currency: '₽' } });
   });
+  // 04.10.2026: черновики из голоса пишутся в group_items напрямую, мимо cleanItem — название чистится здесь.
+  it('название без невидимых символов и переворота текста, эмодзи-семья цела', () => {
+    const d = toGroupDrafts({ items: [
+      { title: 'Ужин​ ‮всем‬ 👨‍👩‍👧', mode: 'event', people: ['all'], repeat: 'once', day: '2026-10-03' },
+    ] }, today, members, 1);
+    expect(d[0]!.title).toBe('Ужин всем 👨‍👩‍👧');
+  });
   it('незнакомое имя — «кто-то один», а не дело в пустоту; «все» — каждому', () => {
     const d = toGroupDrafts({ items: [
       { title: 'Купить хлеб', mode: 'assign', people: ['Вася'], repeat: 'once' },
