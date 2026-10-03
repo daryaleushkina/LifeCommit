@@ -33,3 +33,6 @@ coverage/
 coverage-e2e/
 coverage-e2e-raw/
 .vitest/
+
+# Черновые проверки агента lc-explorer: падающие сценарии, снимки, вывод прогонов (см. .claude/agents/lc-explorer.md)
+e2e/_explore/
