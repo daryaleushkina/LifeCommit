@@ -3,6 +3,7 @@
 // очередь, «семейный ужин в семь» — мероприятие, «копим 150 тысяч на отпуск» — общая цель.
 // Один запрос, как и у личного разбора (docs/groups-architecture.md, «Голос»).
 import type { GroupItemDraft, GroupMode } from '../shared/groups';
+import { cleanText } from '../shared/text';
 import type { Env } from './env';
 import { askModel, todayLine, type ModelSpec } from './voice';
 
@@ -144,7 +145,7 @@ export function toGroupDrafts(raw: unknown, today: string, members: { id: number
   if (!Array.isArray(list)) return [];
   const out: GroupDraft[] = [];
   for (const r of list as Record<string, unknown>[]) {
-    const title = typeof r.title === 'string' ? r.title.trim().slice(0, 120) : '';
+    const title = typeof r.title === 'string' ? cleanText(r.title, 120) : '';
     const mode = ['one', 'assign', 'event', 'goal'].includes(r.mode as string) ? (r.mode as GroupMode) : 'one';
     if (!title) continue;
     const people = Array.isArray(r.people) ? (r.people as unknown[]).filter((p): p is string => typeof p === 'string') : [];
