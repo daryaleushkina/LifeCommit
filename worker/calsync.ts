@@ -643,6 +643,7 @@ export async function syncDue(env: Env, sb: SupabaseClient): Promise<void> {
   for (const acc of due) {
     const user = check(await sb.from('users').select('id, timezone, day_start_hour').eq('id', acc.user_id).maybeSingle()) as UserLite | null;
     if (!user) continue;
+    // Сбой уже в логе и в статусе подключения (pullAccount) — остальные подключения идут дальше.
     await pullAccount(env, sb, user, acc).catch(() => {});
   }
 }

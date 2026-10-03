@@ -48,6 +48,7 @@ const T = {
   ru: {
     hello: (title: string) => `Привет! Этот чат теперь — группа «${title}» в LifeCommit.\n\nОтвечайте на мои сообщения текстом или голосом — добавлю общие дела. Отмечать можно кнопками прямо здесь.`,
     needApp: 'Чтобы подключить этот чат, откройте LifeCommit — это пара секунд.',
+    connectFailed: 'Не получилось подключить этот чат. Уберите бота из чата и добавьте ещё раз чуть позже.',
     bye: (title: string) => `Этот чат отключили от группы «${title}» в LifeCommit. Пока!`,
     adminsOnly: (title: string) => `Подключить чат к группе «${title}» может только её создатель или админ.`,
     open: 'Открыть LifeCommit',
@@ -93,6 +94,7 @@ const T = {
   en: {
     hello: (title: string) => `Hi! This chat is now the “${title}” group in LifeCommit.\n\nReply to my messages with text or voice and I'll add shared to-dos. Check them off with the buttons right here.`,
     needApp: 'To connect this chat, open LifeCommit — it takes a couple of seconds.',
+    connectFailed: 'Could not connect this chat. Remove the bot from the chat and add it again a bit later.',
     bye: (title: string) => `This chat was disconnected from the “${title}” group in LifeCommit. Bye!`,
     adminsOnly: (title: string) => `Only the owner or an admin of “${title}” can connect a chat to it.`,
     open: 'Open LifeCommit',
@@ -376,13 +378,26 @@ export async function handleGroupUpdate(env: Env, u: GroupUpdate): Promise<boole
     // По ссылке, но не админ группы — бот уже отказал и вышел: новую группу не заводим.
     if (!(await botInChat(env, chat.id))) return true;
     const user = await appUser(sb, from.id);
+    const t = from.language_code?.startsWith('ru') ? T.ru : T.en;
     if (!user) {
-      await tg(env, 'sendMessage', { chat_id: chat.id, text: (from.language_code?.startsWith('ru') ? T.ru : T.en).needApp, reply_markup: { inline_keyboard: [[{ text: T.ru.open, url: `https://t.me/${env.BOT_USERNAME}?start=app` }]] } });
+      await tg(env, 'sendMessage', { chat_id: chat.id, text: t.needApp, reply_markup: { inline_keyboard: [[{ text: T.ru.open, url: `https://t.me/${env.BOT_USERNAME}?start=app` }]] } });
       return true;
     }
-    const { data: created } = await sb.from('groups').insert({ title: cut(chat.title ?? 'Группа', 60), kind: 'other', owner_id: user.id }).select('id').single<{ id: number }>();
-    if (!created) return true;
-    await sb.from('group_members').insert({ group_id: created.id, user_id: user.id, role: 'owner' });
+    // Группа и её владелец — два запроса без транзакции: не вышло — в лог и в чат, без группы-сироты.
+    const { data: created, error: createError } = await sb.from('groups').insert({ title: cut(chat.title?.trim() || 'Группа', 60), kind: 'other', owner_id: user.id }).select('id').single<{ id: number }>();
+    if (!created) {
+      console.error('group from chat: create failed', chat.id, user.id, createError);
+      await tg(env, 'sendMessage', { chat_id: chat.id, text: t.connectFailed });
+      return true;
+    }
+    const { error: memberError } = await sb.from('group_members').insert({ group_id: created.id, user_id: user.id, role: 'owner' });
+    if (memberError) {
+      console.error('group from chat: owner not added', created.id, user.id, memberError);
+      const { error: dropError } = await sb.from('groups').delete().eq('id', created.id);
+      if (dropError) console.error('group from chat: orphan not removed', created.id, dropError);
+      await tg(env, 'sendMessage', { chat_id: chat.id, text: t.connectFailed });
+      return true;
+    }
     await bindChat(env, sb, created.id, chat);
     return true;
   }

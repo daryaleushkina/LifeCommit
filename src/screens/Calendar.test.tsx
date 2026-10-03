@@ -202,6 +202,9 @@ describe('день', () => {
     m.api.markItem.mockRejectedValueOnce(new Error('сеть'));
     await page.getByRole('button', { name: 'Сделано: Вынести мусор' }).click();
     await expect.poll(() => onChanged.mock.calls.length).toBe(2);
+    // Отметка не дошла до сервера — сказать об этом, а не молча оставить как было.
+    await page.getByText('Что-то пошло не так. Попробуй ещё раз.').click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
     await page.getByRole('button', { name: /^Семья/ }).click();
     await title('Вынести мусор').click();
     expect(onOpenGroup.mock.calls).toEqual([[10], [10]]);
