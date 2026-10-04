@@ -6,6 +6,8 @@ import { syncDue } from './calsync';
 import { groupChatsTick } from './groupBot';
 import { sendReminders } from './cron';
 import { db } from './env';
+import { feedbackCleanup } from './feedback';
+import { feedbackTick } from './feedbackBot';
 import { google } from './google';
 import { shareFiles } from './share';
 import type { Env } from './env';
@@ -29,8 +31,15 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event, env, ctx) {
+  async scheduled(event, env, ctx) {
+    // Раз в 5 минут — только черновики жалоб /bug (10 минут тишины — жалоба уходит сама). Остальное рассчитано на 15.
+    if (event.cron === '*/5 * * * *') {
+      ctx.waitUntil(feedbackTick(env).catch((e) => console.error('feedback drafts failed', e)));
+      return;
+    }
     ctx.waitUntil(sendReminders(env, env.APP_URL));
+    // Жалобы: закрытые 14 дней назад и старше 60 дней — прочь вместе со скриншотами.
+    ctx.waitUntil(feedbackCleanup(env).catch((e) => console.error('feedback cleanup failed', e)));
     // Чаты групп: утром — «Сегодня в группе», вечером — итог.
     ctx.waitUntil(groupChatsTick(env).catch((e) => console.error('group chats failed', e)));
     // Календари Apple и Google: забираем изменения у тех, кого дольше всех не обновляли.

@@ -63,6 +63,22 @@ test('«Чего я хочу?» и редактор привычки трёх в
   }
 });
 
+test('шторка «Сообщить о проблеме»', async ({ app: page }) => {
+  await goTab(page, 'Я');
+  await page.getByRole('button', { name: 'Сообщить о проблеме' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Что случилось?' });
+  await expect(sheet).toBeVisible();
+  // Шторка закрывает нижнюю панель по замыслу (как все шторки) — правило «ничего поверх панели» checkScreen к ней
+  // не относится. Проверяем своё: не шире экрана и «Отправить» достаётся.
+  const width = await page.evaluate(() => ({ page: document.documentElement.scrollWidth, sheet: document.querySelector('.sheet')!.scrollWidth, clientSheet: document.querySelector('.sheet')!.clientWidth, screen: innerWidth }));
+  expect(width.page).toBeLessThanOrEqual(width.screen + 1);
+  expect(width.sheet).toBeLessThanOrEqual(width.clientSheet + 1);
+  await sheet.getByRole('button', { name: 'Отправить' }).scrollIntoViewIfNeeded();
+  await expect(sheet.getByRole('button', { name: 'Отправить' })).toBeInViewport();
+  await sheet.evaluate((el) => el.scrollTo(0, 0));
+  await expect(page).toHaveScreenshot('sheet-feedback.png');
+});
+
 test('«Отложенные»', async ({ app: page, me }) => {
   const { tasks } = await me.api<{ tasks: { id: number; title: string }[] }>('GET', '/today');
   await me.api('POST', `/tasks/${tasks.find((t) => t.title === 'Спортзал')!.id}/archive`);

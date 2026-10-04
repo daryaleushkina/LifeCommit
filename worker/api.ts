@@ -37,6 +37,8 @@ import { groups, groupsRange, groupsToday, handOver } from './groups';
 import { shareApi } from './share';
 import { toTodayTasks, type ScreenLog, type TaskRow, type TodayRow } from './habits';
 import { friends } from './friends';
+import { removeUserFeedbackFiles } from './feedback';
+import { feedbackApi } from './feedbackApi';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -282,7 +284,7 @@ api.post('/tasks/batch', async (c) => {
 });
 
 /** Больше не принимаем: 90 секунд речи в любом из форматов браузеров заметно меньше. */
-const MAX_AUDIO_BYTES = 3_000_000;
+export const MAX_AUDIO_BYTES = 3_000_000;
 
 // Голос в мини-аппе: запись → расслышанная фраза → список действий. В базу ничего не пишет —
 // человек сначала смотрит список и только потом добавляет (POST /tasks/batch).
@@ -845,6 +847,8 @@ api.delete('/account', async (c) => {
   const sb = c.get('sb');
   const owned = must(await sb.from('groups').select('id').eq('owner_id', c.get('user').id).is('archived_at', null)) as { id: number }[];
   for (const g of owned) await handOver(sb, g.id, c.get('user').id);
+  // Скриншоты жалоб: строки уйдут каскадом вместе с человеком, файлы в хранилище — нет.
+  await removeUserFeedbackFiles(sb, c.get('user').id);
   must(await sb.from('users').delete().eq('id', c.get('user').id));
   return c.json({ ok: true });
 });
@@ -853,3 +857,5 @@ api.delete('/account', async (c) => {
 api.route('/', groups);
 api.route('/', friends);
 api.route('/', shareApi);
+// Жалобы из приложения (worker/feedbackApi.ts, docs/feedback.md).
+api.route('/', feedbackApi);

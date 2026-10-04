@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { cloudflare } from '@cloudflare/vite-plugin';
 import react from '@vitejs/plugin-react';
@@ -34,8 +35,18 @@ function siteRoute(): Plugin {
   };
 }
 
+/** Версия сборки для жалоб (src/feedback.ts): короткий git sha; без git — dev. */
+function gitSha(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return 'dev';
+  }
+}
+
 export default defineConfig({
   plugins: [siteRoute(), react(), cloudflare()],
+  define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(gitSha()) },
   server: { host: true },
   environments: {
     client: {

@@ -118,7 +118,12 @@ enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
-# Uncomment to configure local storage buckets
+# Скриншоты жалоб из приложения (docs/feedback.md). В проде bucket создан так же: приватный, до 5 МБ, только картинки.
+[storage.buckets.feedback]
+public = false
+file_size_limit = "5MiB"
+allowed_mime_types = ["image/jpeg", "image/png", "image/webp"]
+
 # [storage.buckets.images]
 # public = false
 # file_size_limit = "50MiB"

@@ -422,6 +422,27 @@ const ru = {
   allowBot: 'Разрешить боту напоминать',
   deleteAccount: 'Удалить аккаунт',
   deleteConfirm: 'Удалить аккаунт и все данные без возможности восстановления?',
+  // Жалобы (docs/feedback.md, этап 1)
+  fb: {
+    open: 'Сообщить о проблеме',
+    title: 'Что случилось?',
+    placeholder: 'Что делали, что ждали и что вышло',
+    mic: 'Сказать голосом',
+    micStop: 'Закончить запись',
+    recording: 'Говори — нажми ещё раз, чтобы закончить',
+    hearing: 'Разбираю голос…',
+    addShot: '+ Скриншот',
+    removeShot: 'Убрать скриншот',
+    attach: 'Приложим: версию приложения, устройство и экран',
+    send: 'Отправить',
+    thanks: 'Получили, спасибо!',
+    limit: 'Уже много за сегодня — завтра примем ещё.',
+    tooMany: 'Не больше 4 скриншотов.',
+    badImage: 'Эту картинку не получилось прочитать — попробуй другую.',
+    noMic: 'Микрофон недоступен — напиши текстом.',
+    voiceFailed: 'Не получилось разобрать голос — напиши текстом.',
+    voiceLimit: 'Голосовых на сегодня хватит — напиши текстом.',
+  },
 };
 
 type Dict = typeof ru;
@@ -825,6 +846,26 @@ const en: Dict = {
   allowBot: 'Let the bot remind me',
   deleteAccount: 'Delete account',
   deleteConfirm: 'Delete your account and all data permanently?',
+  fb: {
+    open: 'Report a problem',
+    title: 'What happened?',
+    placeholder: 'What you did, what you expected and what happened',
+    mic: 'Say it',
+    micStop: 'Stop recording',
+    recording: 'Speak — tap again to finish',
+    hearing: 'Listening back…',
+    addShot: '+ Screenshot',
+    removeShot: 'Remove screenshot',
+    attach: "We'll attach: app version, device and screen",
+    send: 'Send',
+    thanks: 'Got it, thank you!',
+    limit: "That's a lot for today — we'll take more tomorrow.",
+    tooMany: 'Up to 4 screenshots.',
+    badImage: "Couldn't read this picture — try another one.",
+    noMic: 'Microphone unavailable — please type instead.',
+    voiceFailed: "Couldn't make out the voice — please type instead.",
+    voiceLimit: "That's enough voice for today — please type instead.",
+  },
 };
 
 function plural(n: number, one: string, few: string, many: string): string {

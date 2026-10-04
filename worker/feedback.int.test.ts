@@ -1,6 +1,10 @@
-// Жалобы пользователей (docs/feedback.md, этап 1 — приём): база, лимиты и повторы.
-import { describe, expect, it } from 'vitest';
-import { dbReady, sb, user } from './test/harness';
+// Жалобы пользователей (docs/feedback.md, этап 1 — приём): база, лимиты и повторы; приём из приложения
+// (POST /api/feedback, голос), /bug в боте, таймер черновиков и удаление по сроку.
+// Всё, что пишет в feedback, — в этом файле: тесты внутри файла идут по очереди, и счёт «за сутки на проект» не
+// гуляет от соседних файлов, которые vitest гоняет параллельно.
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { feedbackCleanup } from './feedback';
+import { ai, botUpdate, cronTick, dbReady, env, request, sb, tg, user, type TestUser, type TgCall } from './test/harness';
 
 const ready = await dbReady();
 if (!ready) console.warn('feedback-тесты пропущены: нет локальной Supabase (pnpm db:start)');
@@ -119,5 +123,607 @@ describe.skipIf(!ready)('жалобы: приём в базе', () => {
     expect((await sb.from('users').delete().eq('id', u.id)).error).toBeNull();
     expect(await rows(u.id)).toEqual([]);
     expect((await sb.from('feedback_drafts').select('user_id').eq('user_id', u.id)).data).toEqual([]);
+  });
+});
+
+// ── Приём из приложения ──
+
+const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const JPEG = [0xff, 0xd8, 0xff, 0xe0];
+const image = (magic: number[], size = 64, type = 'image/png') => new File([new Uint8Array([...magic, ...new Array(size - magic.length).fill(7)])], 'shot', { type });
+
+/** Форма, как её шлёт шторка «Сообщить о проблеме». */
+function form(fields: { text?: string; context?: string; files?: (File | string)[] }): FormData {
+  const f = new FormData();
+  if (fields.text !== undefined) f.set('text', fields.text);
+  if (fields.context !== undefined) f.set('context', fields.context);
+  for (const file of fields.files ?? []) f.append('files', file);
+  return f;
+}
+
+const post = (u: TestUser, body: BodyInit, path = '/feedback', headers: Record<string, string> = {}) =>
+  request(`/api${path}`, { method: 'POST', headers: { Authorization: `tma ${u.initData}`, ...headers }, body });
+
+const OWNER = env.OWNER_ID;
+afterEach(() => {
+  env.OWNER_ID = OWNER;
+});
+
+/** Что ушло владелице (в любой из её чатов). */
+const toOwner = (method: string, chat = env.OWNER_ID) => tg.sent(method).filter((c) => String(c.body.chat_id) === String(chat));
+
+/** Пока идёт run, запросы, на которые указывает match, отвечают 500 — как будто база или хранилище споткнулись. */
+async function failing<T>(match: (req: Request) => boolean, run: () => Promise<T>): Promise<T> {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = new Request(input, init);
+    return match(req) ? Response.json({ message: 'boom', code: 'XX000', statusCode: '500', error: 'boom' }, { status: 500 }) : real(req);
+  }) as typeof fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+const rest = (path: string, method?: string) => (req: Request) => req.url.includes(path) && (!method || req.method === method);
+
+describe.skipIf(!ready)('POST /api/feedback', () => {
+  it('текст, скриншоты и контекст: жалоба в базе, файлы в хранилище, владелице — сообщение и картинки', async () => {
+    const u = await user({ name: 'Даша' });
+    const res = await post(
+      u,
+      form({
+        text: 'Не сохраняется дело\r\n\n\nНа экране «Сегодня»\u202E',
+        context: JSON.stringify({ version: 'abc1234', platform: 'ios', screen: 'me', initData: 'не брать' }),
+        files: [image(PNG), image(JPEG, 128, 'image/jpeg')],
+      }),
+    );
+    expect(res).toEqual({ status: 200, body: { ok: true } });
+    const [row] = (await sb.from('feedback').select('id, source, text, attachments, context, confirmed').eq('user_id', u.id)).data!;
+    expect(row).toEqual({
+      id: expect.any(Number),
+      source: 'app',
+      text: 'Не сохраняется дело\n\nНа экране «Сегодня»',
+      attachments: [
+        { kind: 'storage', path: `${row!.id}/1.png` },
+        { kind: 'storage', path: `${row!.id}/2.jpg` },
+      ],
+      context: { version: 'abc1234', platform: 'ios', screen: 'me' },
+      confirmed: true,
+    });
+    const files = (await sb.storage.from('feedback').list(String(row!.id))).data!.map((f) => f.name);
+    expect(files.sort()).toEqual(['1.png', '2.jpg']);
+    const stored = await sb.storage.from('feedback').download(`${row!.id}/2.jpg`);
+    expect(stored.data?.size).toBe(128);
+
+    const [note] = toOwner('sendMessage');
+    expect(note?.body.text).toBe(`🐞 Жалоба #${row!.id} · из приложения\nОт: Даша @u${u.id} · id ${u.id}\n\nНе сохраняется дело\n\nНа экране «Сегодня»\n\nversion abc1234 · platform ios · screen me\nСкриншотов: 2`);
+    expect(toOwner('sendPhoto').map((c) => c.body)).toEqual([
+      { chat_id: String(env.OWNER_ID), caption: `#${row!.id}`, photo: '[file]' },
+      { chat_id: String(env.OWNER_ID), caption: `#${row!.id}`, photo: '[file]' },
+    ]);
+    // Человеку бот ничего не пишет: «Получили» показывает сама шторка.
+    expect(tg.sent('sendMessage').filter((c) => c.body.chat_id === u.id)).toEqual([]);
+  });
+
+  it('только скриншот, без текста — тоже жалоба; без контекста — context пустой', async () => {
+    const u = await user();
+    expect((await post(u, form({ files: [image(PNG)] }))).status).toBe(200);
+    const { data } = await sb.from('feedback').select('text, context, attachments').eq('user_id', u.id);
+    expect(data).toEqual([{ text: '', context: null, attachments: [{ kind: 'storage', path: expect.stringMatching(/^\d+\/1\.png$/) }] }]);
+  });
+
+  it('пусто — 400 empty; не форма — 400 bad_form; битый контекст — 400 bad_context; ничего не записано', async () => {
+    const u = await user();
+    expect(await post(u, form({ text: ' \u200B\n ' }))).toEqual({ status: 400, body: { error: 'empty' } });
+    expect(await post(u, JSON.stringify({ text: 'Жалоба' }), '/feedback', { 'content-type': 'application/json' })).toEqual({ status: 400, body: { error: 'bad_form' } });
+    expect(await post(u, form({ text: 'Жалоба', context: '{не json' }))).toEqual({ status: 400, body: { error: 'bad_context' } });
+    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
+    expect(tg.calls).toEqual([]);
+  });
+
+  it('файлы: больше 4 — 400, не картинка (хоть и названа png) — 400, строка вместо файла — 400, больше 5 МБ — 413', async () => {
+    const u = await user();
+    const cases: [FormData, number, string][] = [
+      [form({ text: 'a', files: [1, 2, 3, 4, 5].map(() => image(PNG)) }), 400, 'too_many_files'],
+      [form({ text: 'a', files: [new File(['<svg onload=alert(1)>'], 'x.png', { type: 'image/png' })] }), 400, 'bad_file'],
+      [form({ text: 'a', files: ['не файл'] }), 400, 'bad_file'],
+      [form({ text: 'a', files: [image(PNG, 5 * 1024 * 1024 + 1)] }), 413, 'file_too_big'],
+    ];
+    for (const [body, status, error] of cases) expect(await post(u, body)).toEqual({ status, body: { error } });
+    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
+  });
+
+  it('тело больше 21 МБ — 413 too_big, форму не разбираем', async () => {
+    const u = await user();
+    const res = await post(u, form({ text: 'a' }), '/feedback', { 'content-length': String(22 * 1024 * 1024) });
+    expect(res).toEqual({ status: 413, body: { error: 'too_big' } });
+  });
+
+  it('три в час — дальше 429 feedback_limit; повтор того же текста — не новая жалоба и лимит не тратит', async () => {
+    const u = await user();
+    expect((await post(u, form({ text: 'Первая' }))).status).toBe(200);
+    expect(await post(u, form({ text: 'первая ' }))).toEqual({ status: 200, body: { ok: true } });
+    expect((await post(u, form({ text: 'Вторая' }))).status).toBe(200);
+    expect((await post(u, form({ text: 'Третья' }))).status).toBe(200);
+    expect(await post(u, form({ text: 'Четвёртая' }))).toEqual({ status: 429, body: { error: 'feedback_limit' } });
+    const { data } = await sb.from('feedback').select('text, dup_count').eq('user_id', u.id).order('id');
+    expect(data).toEqual([
+      { text: 'Первая', dup_count: 1 },
+      { text: 'Вторая', dup_count: 0 },
+      { text: 'Третья', dup_count: 0 },
+    ]);
+    // Владелице — только о новых: три сообщения, повтор без сообщения.
+    expect(toOwner('sendMessage')).toHaveLength(3);
+  });
+
+  it('потолок проекта за сутки — 429 feedback_busy', async () => {
+    const filler = await user();
+    const since = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
+    const today = (await sb.from('feedback').select('id', { count: 'exact', head: true }).gte('created_at', since)).count ?? 0;
+    const rows = Array.from({ length: Math.max(0, 200 - today) }, (_, i) => ({ user_id: filler.id, source: 'bot', text: `Заполнитель ${i}` }));
+    expect((await sb.from('feedback').insert(rows)).error).toBeNull();
+    const u = await user();
+    expect(await post(u, form({ text: 'Ещё одна' }))).toEqual({ status: 429, body: { error: 'feedback_busy' } });
+    // Заполнитель — прочь сразу, а не в afterEach: дальше в файле жалобы снова должны проходить.
+    expect((await sb.from('feedback').delete().eq('user_id', filler.id)).error).toBeNull();
+  });
+
+  it('хранилище не приняло файл — жалобы нет, загруженное убрано, 502 upload_failed (человек повторит)', async () => {
+    const u = await user();
+    let uploads = 0;
+    const upload = (req: Request) => req.method === 'POST' && req.url.includes('/storage/v1/object/feedback/') && ++uploads === 2;
+    expect(await failing(upload, () => post(u, form({ text: 'Со скриншотами', files: [image(PNG), image(PNG)] })))).toEqual({ status: 502, body: { error: 'upload_failed' } });
+    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
+    // Тот же текст сразу снова — новая жалоба, а не «повтор» удалённой; первый файл не остался сиротой.
+    expect((await post(u, form({ text: 'Со скриншотами', files: [image(PNG)] }))).status).toBe(200);
+    const [row] = (await sb.from('feedback').select('id, dup_count').eq('user_id', u.id)).data!;
+    expect(row!.dup_count).toBe(0);
+    expect(tg.sent('sendMessage')).toHaveLength(1);
+  });
+
+  it('файлы легли, а пути в жалобу не записались — тоже 502, жалобы и файлов нет', async () => {
+    const u = await user();
+    const res = await failing(rest('/rest/v1/feedback?', 'PATCH'), () => post(u, form({ text: 'Скриншот', files: [image(PNG)] })));
+    expect(res).toEqual({ status: 502, body: { error: 'upload_failed' } });
+    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
+  });
+
+  it('база не приняла жалобу — 500, владелице ничего', async () => {
+    const u = await user();
+    expect((await failing(rest('/rpc/submit_feedback'), () => post(u, form({ text: 'Жалоба' })))).status).toBe(500);
+    expect(tg.calls).toEqual([]);
+  });
+
+  it('скриншот владелице не ушёл или чаты владелицы не прочитались — жалоба принята, сбой в логе', async () => {
+    const u = await user();
+    tg.reply('sendPhoto', { ok: false, error_code: 400, description: 'Bad Request: IMAGE_PROCESS_FAILED' });
+    expect((await post(u, form({ text: 'Первая', files: [image(PNG), image(PNG)] }))).status).toBe(200);
+    // Первый скриншот не ушёл — второй в этот чат уже не шлём, но сообщение было.
+    expect(toOwner('sendMessage')).toHaveLength(1);
+    expect(toOwner('sendPhoto')).toHaveLength(1);
+    tg.calls = [];
+    const owner = String(env.OWNER_ID);
+    expect((await failing((req) => req.url.includes('select=telegram_aliases') && req.url.includes(`id=eq.${owner}`), () => post(u, form({ text: 'Вторая' })))).status).toBe(200);
+    expect(tg.calls).toEqual([]);
+    expect((await sb.from('feedback').select('text').eq('user_id', u.id).order('id')).data).toEqual([{ text: 'Первая' }, { text: 'Вторая' }]);
+  });
+
+  it('владелица с двумя аккаунтами — сообщение в оба; Telegram отказал — жалоба всё равно принята', async () => {
+    const owner = await user();
+    const alias = 9_200_000_000_000 + Math.floor(Math.random() * 1_000_000_000);
+    await sb.from('users').update({ telegram_aliases: [alias] }).eq('id', owner.id);
+    env.OWNER_ID = String(owner.id);
+    const u = await user();
+    tg.reply('sendMessage', { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' });
+    expect((await post(u, form({ text: 'Жалоба' }))).status).toBe(200);
+    expect(tg.sent('sendMessage').map((c) => c.body.chat_id)).toEqual([owner.id, alias]);
+    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toHaveLength(1);
+  });
+
+  it('владелица не задана — жалоба принята, сообщений нет', async () => {
+    env.OWNER_ID = undefined;
+    const u = await user();
+    expect((await post(u, form({ text: 'Жалоба' }))).status).toBe(200);
+    expect(tg.calls).toEqual([]);
+  });
+
+  it('без входа — 401, жалоба не принимается', async () => {
+    const res = await request('/api/feedback', { method: 'POST', body: form({ text: 'Жалоба' }) });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe.skipIf(!ready)('POST /api/feedback/voice', () => {
+  beforeEach(() => {
+    ai.transcript = 'кнопка не нажимается';
+  });
+
+  it('голос → текст для поля (без разбора в дела), лимит голоса общий', async () => {
+    const u = await user();
+    const res = await post(u, new Blob([new Uint8Array(2000)], { type: 'audio/webm' }), '/feedback/voice');
+    expect(res).toEqual({ status: 200, body: { text: 'кнопка не нажимается' } });
+    expect(ai.calls.every((c) => c.model.includes('whisper'))).toBe(true);
+    expect((await sb.from('voice_usage').select('count').eq('user_id', u.id)).data).toEqual([{ count: 1 }]);
+    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
+  });
+
+  it('пусто — 400 no_audio; длиннее 3 МБ — 413; лимит голоса кончился — 429 voice_limit', async () => {
+    const u = await user();
+    expect(await post(u, new Blob([]), '/feedback/voice')).toEqual({ status: 400, body: { error: 'no_audio' } });
+    expect(await post(u, new Blob([new Uint8Array(3_000_001)]), '/feedback/voice')).toEqual({ status: 413, body: { error: 'too_long' } });
+    await sb.from('voice_usage').insert({ user_id: u.id, day: new Date().toISOString().slice(0, 10), count: 20 });
+    expect(await post(u, new Blob([new Uint8Array(2000)]), '/feedback/voice')).toEqual({ status: 429, body: { error: 'voice_limit' } });
+  });
+
+  it('по-английски — распознаём как английский', async () => {
+    const u = await user({ lang: 'en' });
+    const run = env.AI.run;
+    const inputs: unknown[] = [];
+    env.AI.run = (async (_model: string, input: unknown) => {
+      inputs.push(input);
+      return { text: 'button is broken' };
+    }) as unknown as Ai['run'];
+    try {
+      expect(await post(u, new Blob([new Uint8Array(2000)]), '/feedback/voice')).toEqual({ status: 200, body: { text: 'button is broken' } });
+    } finally {
+      env.AI.run = run;
+    }
+    expect(inputs[0]).toMatchObject({ language: 'en' });
+  });
+
+  it('распознавание упало — 502 failed', async () => {
+    const u = await user();
+    const run = env.AI.run;
+    env.AI.run = (async () => {
+      throw new Error('Failed to decode audio file');
+    }) as unknown as Ai['run'];
+    try {
+      expect(await post(u, new Blob([new Uint8Array(2000)]), '/feedback/voice')).toEqual({ status: 502, body: { error: 'failed' } });
+    } finally {
+      env.AI.run = run;
+    }
+  });
+});
+
+describe.skipIf(!ready)('удаление аккаунта', () => {
+  it('скриншоты жалоб уходят из хранилища вместе с человеком', async () => {
+    const u = await user();
+    expect((await post(u, form({ text: 'Жалоба', files: [image(PNG), image(PNG)] }))).status).toBe(200);
+    const [row] = (await sb.from('feedback').select('id').eq('user_id', u.id)).data!;
+    expect((await u.call('DELETE', '/account')).status).toBe(200);
+    expect((await sb.storage.from('feedback').list(String(row!.id))).data).toEqual([]);
+    expect((await sb.from('feedback').select('id').eq('id', row!.id)).data).toEqual([]);
+  });
+
+  it('жалобы без скриншотов (или их нет вовсе) — аккаунт удаляется, хранилище не трогаем', async () => {
+    const a = await user();
+    expect((await post(a, form({ text: 'Без картинок' }))).status).toBe(200);
+    expect((await a.call('DELETE', '/account')).status).toBe(200);
+    const b = await user();
+    expect((await b.call('DELETE', '/account')).status).toBe(200);
+  });
+
+  it('хранилище не ответило — аккаунт не удаляется (500), чтобы файлы не остались сиротами', async () => {
+    const u = await user();
+    expect((await post(u, form({ text: 'Жалоба', files: [image(PNG)] }))).status).toBe(200);
+    expect((await failing(rest('/storage/v1/object/feedback', 'DELETE'), () => u.call('DELETE', '/account'))).status).toBe(500);
+    expect((await sb.from('users').select('id').eq('id', u.id)).data).toHaveLength(1);
+  });
+});
+
+// ── /bug в боте ──
+
+let seq = 0;
+const person = (id: number, more: object = {}) => ({ id, first_name: 'Даша', language_code: 'ru', ...more });
+const message = (u: { id: number }, body: object, chat = u.id) => botUpdate({ update_id: ++seq, message: { message_id: 1000 + seq, chat: { id: chat, type: 'private' }, from: person(u.id), ...body } });
+const say = (u: { id: number }, text: string) => message(u, { text });
+const photo = (u: { id: number }, file: string, caption?: string) =>
+  message(u, { photo: [{ file_id: `${file}-small`, width: 90, height: 160 }, { file_id: file, width: 1170, height: 2532 }], ...(caption && { caption }) });
+const press = (u: { id: number }, data: string, messageId = 777) => botUpdate({ update_id: ++seq, callback_query: { id: `cb-${seq}`, from: person(u.id), data, message: { message_id: messageId, chat: { id: u.id } } } });
+const replies = (chat: number) => tg.sent('sendMessage').filter((c) => c.body.chat_id === chat);
+const draft = async (userId: number) =>
+  (await sb.from('feedback_drafts').select('chat_id, text, attachments, prompt_message_id').eq('user_id', userId).maybeSingle()).data as {
+    chat_id: number;
+    text: string;
+    attachments: object[];
+    prompt_message_id: number | null;
+  } | null;
+type Button = { text: string; callback_data?: string };
+const keyboard = (c: TgCall | undefined) => (c?.body.reply_markup as { inline_keyboard: Button[][] } | undefined)?.inline_keyboard;
+
+describe.skipIf(!ready)('/bug в боте', () => {
+  it('/bug — приглашение с «Отправить» и «Отмена», черновик открыт', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    const [prompt] = replies(u.id);
+    expect(prompt?.body.text).toBe('Что случилось? Напиши, скажи голосом или пришли скриншоты — можно несколькими сообщениями. Когда всё, нажми «Отправить».');
+    expect(keyboard(prompt)).toEqual([[{ text: 'Отправить', callback_data: 'fb:send' }, { text: 'Отмена', callback_data: 'fb:cancel' }]]);
+    expect(await draft(u.id)).toEqual({ chat_id: u.id, text: '', attachments: [], prompt_message_id: expect.any(Number) });
+  });
+
+  it('пока черновик открыт: текст, скриншоты с подписью и голос копятся в нём, а не разбираются в дела', async () => {
+    const u = await user();
+    ai.transcript = 'и календарь пустой';
+    // Отметка 👌 не поставилась — не важно: сообщение в черновике.
+    tg.reply('setMessageReaction', { ok: false, error_code: 400, description: 'Bad Request: REACTION_INVALID' });
+    await say(u, '/bug не открывается календарь');
+    await say(u, 'после обновления');
+    await photo(u, 'shot-1', 'вот так');
+    await message(u, { voice: { file_id: 'voice-1', duration: 30 } });
+    expect(await draft(u.id)).toEqual(
+      expect.objectContaining({
+        text: 'не открывается календарь\nпосле обновления\nвот так\nи календарь пустой',
+        attachments: [{ kind: 'tg_photo', file_id: 'shot-1' }],
+      }),
+    );
+    // На каждое — тихая отметка 👌, на голос — что расслышал.
+    expect(tg.sent('setMessageReaction')).toHaveLength(3);
+    expect(replies(u.id).map((c) => c.body.text)).toEqual([expect.stringMatching(/^Что случилось\?/), 'Расслышал: «и календарь пустой»']);
+    expect((await sb.from('todos').select('id').eq('user_id', u.id)).data).toEqual([]);
+  });
+
+  it('«Отправить» — жалоба в базе (подтверждена), черновика нет, кнопки сменились на «Получили», владелице — текст и скриншоты', async () => {
+    const u = await user({ name: 'Даша' });
+    await say(u, '/bug');
+    await say(u, 'Белый экран');
+    await photo(u, 'shot-1');
+    await press(u, 'fb:send', 555);
+    const [row] = (await sb.from('feedback').select('id, source, text, attachments, confirmed').eq('user_id', u.id)).data!;
+    expect(row).toEqual({ id: expect.any(Number), source: 'bot', text: 'Белый экран', attachments: [{ kind: 'tg_photo', file_id: 'shot-1' }], confirmed: true });
+    expect(await draft(u.id)).toBeNull();
+    expect(tg.sent('editMessageText').map((c) => c.body)).toEqual([{ chat_id: u.id, message_id: 555, text: 'Получили, спасибо!' }]);
+    expect(tg.sent('answerCallbackQuery')).toHaveLength(1);
+    expect(toOwner('sendMessage')[0]?.body.text).toBe(`🐞 Жалоба #${row!.id} · из бота\nОт: Даша @u${u.id} · id ${u.id}\n\nБелый экран\nСкриншотов: 1`);
+    expect(toOwner('sendPhoto').map((c) => c.body)).toEqual([{ chat_id: Number(env.OWNER_ID), photo: 'shot-1', caption: `#${row!.id}` }]);
+  });
+
+  it('«Отправить» без единого сообщения — подсказка, черновик остаётся', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await press(u, 'fb:send');
+    expect(tg.sent('answerCallbackQuery').map((c) => c.body.text)).toEqual(['Сначала напиши, что случилось']);
+    expect(await draft(u.id)).not.toBeNull();
+    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
+  });
+
+  it('«Отмена» — черновик удалён, ничего не отправлено; дальше сообщения — снова дела', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, 'передумала');
+    await press(u, 'fb:cancel', 556);
+    expect(await draft(u.id)).toBeNull();
+    expect(tg.sent('editMessageText').map((c) => c.body)).toEqual([{ chat_id: u.id, message_id: 556, text: 'Отменено — ничего не отправили.' }]);
+    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
+    expect(toOwner('sendMessage')).toEqual([]);
+  });
+
+  it('кнопка под старым приглашением, когда черновика уже нет, — «уже нет», кнопки убраны', async () => {
+    const u = await user();
+    // Служебные ответы Telegram не прошли — не важно.
+    tg.reply('answerCallbackQuery', { ok: false, error_code: 400, description: 'Bad Request: query is too old' });
+    tg.reply('editMessageReplyMarkup', { ok: false, error_code: 400, description: 'Bad Request: message to edit not found' });
+    await press(u, 'fb:send', 557);
+    await press(u, 'fb:cancel', 558);
+    expect(tg.sent('answerCallbackQuery').map((c) => c.body.text)).toEqual(['Этой жалобы уже нет — отправлена или отменена.', 'Этой жалобы уже нет — отправлена или отменена.']);
+    expect(tg.sent('editMessageReplyMarkup').map((c) => c.body.message_id)).toEqual([557, 558]);
+  });
+
+  it('кнопка без сообщения (Telegram его не прислал) — черновик закрывается, править нечего', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, 'Текст');
+    const bare = (data: string) => botUpdate({ update_id: ++seq, callback_query: { id: `cb-${seq}`, from: person(u.id), data } });
+    await bare('fb:cancel');
+    expect(await draft(u.id)).toBeNull();
+    await bare('fb:send');
+    expect(tg.sent('answerCallbackQuery').map((c) => c.body.text)).toEqual([undefined, 'Этой жалобы уже нет — отправлена или отменена.']);
+    expect(tg.sent('editMessageText')).toEqual([]);
+    expect(tg.sent('editMessageReplyMarkup')).toEqual([]);
+  });
+
+  it('чужой человек жмёт кнопку — «уже нет» на языке его Telegram', async () => {
+    const stranger = { id: 9_500_000_000_000 + Math.floor(Math.random() * 1_000_000_000) };
+    await botUpdate({ update_id: ++seq, callback_query: { id: `cb-${seq}`, from: { id: stranger.id, first_name: 'X', language_code: 'en' }, data: 'fb:send', message: { message_id: 9, chat: { id: stranger.id } } } });
+    expect(tg.sent('answerCallbackQuery').map((c) => c.body.text)).toEqual(['This report is no longer open — it was sent or cancelled.']);
+  });
+
+  it('/bug ещё раз — собранное остаётся, кнопки у старого приглашения убраны, новое — внизу', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    const first = (await draft(u.id))!.prompt_message_id;
+    await say(u, 'Кнопка не жмётся');
+    await say(u, '/bug@LifeCommit_bot');
+    expect(tg.sent('editMessageReplyMarkup').map((c) => c.body)).toEqual([{ chat_id: u.id, message_id: first, reply_markup: { inline_keyboard: [] } }]);
+    const now = (await draft(u.id))!;
+    expect(now.text).toBe('Кнопка не жмётся');
+    expect(now.prompt_message_id).not.toBe(first);
+  });
+
+  it('пятый скриншот не берём и говорим об этом; стикер — подсказка, что можно прислать', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    for (const n of [1, 2, 3, 4, 5]) await photo(u, `shot-${n}`);
+    await message(u, { sticker: { file_id: 'sticker-1' } });
+    expect((await draft(u.id))!.attachments).toHaveLength(4);
+    expect(replies(u.id).slice(1).map((c) => c.body.text)).toEqual(['Больше 4 скриншотов не возьму — этот не приложил.', 'Возьму текст, голосовое или скриншот (картинкой).']);
+  });
+
+  it('голос: длиннее двух минут — просим короче; лимит голоса кончился — просим текстом; распознать не вышло — тоже', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await message(u, { voice: { file_id: 'v-long', duration: 121 } });
+    await sb.from('voice_usage').insert({ user_id: u.id, day: new Date().toISOString().slice(0, 10), count: 20 });
+    await message(u, { voice: { file_id: 'v-2', duration: 10 } });
+    await sb.from('voice_usage').delete().eq('user_id', u.id);
+    const run = env.AI.run;
+    env.AI.run = (async () => {
+      throw new Error('Failed to decode audio file');
+    }) as unknown as Ai['run'];
+    try {
+      await message(u, { voice: { file_id: 'v-3', duration: 10 } });
+    } finally {
+      env.AI.run = run;
+    }
+    expect(replies(u.id).slice(1).map((c) => c.body.text)).toEqual([
+      'Слишком длинное голосовое — до двух минут.',
+      'Голосовых на сегодня хватит — напиши, пожалуйста, текстом.',
+      'Не получилось разобрать голосовое — напиши, пожалуйста, текстом.',
+    ]);
+    expect((await draft(u.id))!.text).toBe('');
+  });
+
+  it('лимит жалоб — «Уже много за сегодня», черновик закрыт, владелице ничего', async () => {
+    const u = await user();
+    const rows = [1, 2, 3].map((n) => ({ user_id: u.id, source: 'bot', text: `Старая ${n}` }));
+    expect((await sb.from('feedback').insert(rows)).error).toBeNull();
+    await say(u, '/bug');
+    await say(u, 'Четвёртая');
+    await press(u, 'fb:send', 559);
+    expect(tg.sent('editMessageText').map((c) => c.body.text)).toEqual(['Уже много за сегодня — завтра примем ещё.']);
+    expect(await draft(u.id)).toBeNull();
+    expect(toOwner('sendMessage')).toEqual([]);
+  });
+
+  it('без аккаунта — сначала открыть LifeCommit; без черновика обычный текст — как раньше, в дела', async () => {
+    const stranger = { id: 9_300_000_000_000 + Math.floor(Math.random() * 1_000_000_000) };
+    await say(stranger, '/bug');
+    expect(replies(stranger.id).map((c) => c.body.text)).toEqual(['Сначала открой LifeCommit — потом можно сообщить о проблеме.']);
+    expect((await sb.from('feedback_drafts').select('user_id').eq('chat_id', stranger.id)).data).toEqual([]);
+  });
+
+  it('со связанного аккаунта — черновик на основного, ответы — в чат, откуда пишут', async () => {
+    const main = await user();
+    const alias = { id: 9_400_000_000_000 + Math.floor(Math.random() * 1_000_000_000) };
+    await sb.from('users').update({ telegram_aliases: [alias.id] }).eq('id', main.id);
+    await say(alias, '/bug');
+    await say(alias, 'С другого аккаунта');
+    expect(await draft(main.id)).toEqual(expect.objectContaining({ chat_id: alias.id, text: 'С другого аккаунта' }));
+    await press(alias, 'fb:send');
+    expect((await sb.from('feedback').select('text').eq('user_id', main.id)).data).toEqual([{ text: 'С другого аккаунта' }]);
+  });
+
+  it('по-английски — тексты на английском', async () => {
+    const u = await user({ lang: 'en' });
+    await sb.from('users').update({ language_code: 'en' }).eq('id', u.id);
+    await say(u, '/bug');
+    await say(u, 'Broken');
+    ai.transcript = 'the calendar is empty';
+    await message(u, { voice: { file_id: 'v-en', duration: 5 } });
+    for (const n of [1, 2, 3, 4, 5]) await photo(u, `en-${n}`);
+    await press(u, 'fb:send', 560);
+    expect(replies(u.id).map((c) => c.body.text)).toEqual([
+      expect.stringMatching(/^What happened\?/),
+      'I heard: "the calendar is empty"',
+      'I take up to 4 screenshots — this one is not attached.',
+    ]);
+    expect(tg.sent('editMessageText')[0]?.body.text).toBe('Got it, thank you!');
+  });
+});
+
+// ── Таймер черновиков и удаление по сроку ──
+
+/** Сдвинуть «последнее сообщение» черновика в прошлое. */
+const staleDraft = (userId: number, minutes: number) => sb.from('feedback_drafts').update({ updated_at: new Date(Date.now() - minutes * 60_000).toISOString() }).eq('user_id', userId);
+
+describe.skipIf(!ready)('таймер черновиков (cron раз в 5 минут)', () => {
+  it('10 минут тишины — жалоба уходит сама, не подтверждённой; человеку «Получили», кнопки убраны', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, 'Не грузится');
+    const prompt = (await draft(u.id))!.prompt_message_id;
+    await staleDraft(u.id, 11);
+    tg.calls = [];
+    await cronTick('*/5 * * * *');
+    expect((await sb.from('feedback').select('text, confirmed').eq('user_id', u.id)).data).toEqual([{ text: 'Не грузится', confirmed: false }]);
+    expect(await draft(u.id)).toBeNull();
+    expect(replies(u.id).map((c) => c.body.text)).toEqual(['Получили, спасибо!']);
+    expect(tg.sent('editMessageReplyMarkup').map((c) => c.body)).toEqual([{ chat_id: u.id, message_id: prompt, reply_markup: { inline_keyboard: [] } }]);
+    expect(toOwner('sendMessage')[0]?.body.text).toContain('Не подтверждена: ушла сама через 10 минут');
+  });
+
+  it('пустой черновик — закрывается молча; свежий — не трогаем; лимит — «Уже много»', async () => {
+    const empty = await user();
+    const fresh = await user();
+    const limited = await user();
+    await say(empty, '/bug');
+    await say(fresh, '/bug');
+    await say(fresh, 'Пишу');
+    await say(limited, '/bug');
+    await say(limited, 'Четвёртая');
+    expect((await sb.from('feedback').insert([1, 2, 3].map((n) => ({ user_id: limited.id, source: 'bot', text: `Старая ${n}` })))).error).toBeNull();
+    await staleDraft(empty.id, 11);
+    await staleDraft(limited.id, 11);
+    await staleDraft(fresh.id, 5);
+    tg.calls = [];
+    await cronTick('*/5 * * * *');
+    expect(await draft(empty.id)).toBeNull();
+    expect(replies(empty.id)).toEqual([]);
+    expect(await draft(fresh.id)).not.toBeNull();
+    expect(await draft(limited.id)).toBeNull();
+    expect(replies(limited.id).map((c) => c.body.text)).toEqual(['Уже много за сегодня — завтра примем ещё.']);
+  });
+
+  it('приглашения нет, «Получили» не дошло (бот заблокирован) — владелице жалоба всё равно приходит', async () => {
+    const u = await user();
+    expect((await sb.from('feedback_drafts').insert({ user_id: u.id, chat_id: u.id, text: 'Без приглашения', updated_at: new Date(Date.now() - 11 * 60_000).toISOString() })).error).toBeNull();
+    tg.reply('sendMessage', { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' });
+    await cronTick('*/5 * * * *');
+    expect((await sb.from('feedback').select('text, confirmed').eq('user_id', u.id)).data).toEqual([{ text: 'Без приглашения', confirmed: false }]);
+    expect(toOwner('sendMessage')[0]?.body.text).toContain('Без приглашения');
+  });
+
+  it('один черновик споткнулся о базу — остальные уходят; база не ответила вовсе — тик не падает', async () => {
+    const a = await user();
+    const b = await user();
+    const stale = new Date(Date.now() - 11 * 60_000).toISOString();
+    expect((await sb.from('feedback_drafts').insert([a, b].map((x) => ({ user_id: x.id, chat_id: x.id, text: `От ${x.id}`, updated_at: stale })))).error).toBeNull();
+    await failing((req) => req.url.includes('/rest/v1/users?') && req.url.includes(`id=eq.${a.id}`), () => cronTick('*/5 * * * *'));
+    expect((await sb.from('feedback').select('text').eq('user_id', b.id)).data).toEqual([{ text: `От ${b.id}` }]);
+    expect((await sb.from('feedback').select('text').eq('user_id', a.id)).data).toEqual([]);
+    await failing(rest('/rest/v1/feedback_drafts'), () => cronTick('*/5 * * * *'));
+  });
+
+  // 15-минутный тик здесь не зовём: он забирает календари всех пользователей базы, в том числе чужих тестов,
+  // которые vitest гоняет параллельно, и ломал бы их. Что 5-минутный не шлёт напоминаний — проверяем.
+  it('5-минутный тик — только черновики: напоминаний не шлёт', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, 'Ждёт');
+    await staleDraft(u.id, 11);
+    await sb.from('users').update({ bot_chat_ok: true, remind_evening: new Date().toISOString().slice(11, 16), timezone: 'UTC' }).eq('id', u.id);
+    await sb.from('tasks').insert({ user_id: u.id, title: 'Читать', kind: 'check', schedule: 'daily' });
+    tg.calls = [];
+    await cronTick('*/5 * * * *');
+    expect(replies(u.id).map((c) => c.body.text)).toEqual(['Получили, спасибо!']);
+  });
+});
+
+describe.skipIf(!ready)('удаление по сроку (feedbackCleanup — его зовёт cron раз в 15 минут)', () => {
+  it('закрытые 14 дней назад и поданные 60 дней назад — прочь вместе со скриншотами; остальные остаются', async () => {
+    const u = await user();
+    const ids: Record<string, number> = {};
+    for (const text of ['Закрыта давно', 'Подана давно', 'Закрыта недавно', 'Новая']) {
+      const { data, error } = await sb.from('feedback').insert({ user_id: u.id, source: 'app', text }).select('id').single();
+      expect(error).toBeNull();
+      ids[text] = data!.id as number;
+      const path = `${data!.id}/1.png`;
+      expect((await sb.storage.from('feedback').upload(path, new Uint8Array(PNG), { contentType: 'image/png' })).error).toBeNull();
+      expect((await sb.from('feedback').update({ attachments: [{ kind: 'storage', path }] }).eq('id', data!.id)).error).toBeNull();
+    }
+    const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+    await sb.from('feedback').update({ closed_at: ago(15), status: 'deployed' }).eq('id', ids['Закрыта давно']);
+    await sb.from('feedback').update({ created_at: ago(61) }).eq('id', ids['Подана давно']);
+    await sb.from('feedback').update({ closed_at: ago(13), status: 'wontfix' }).eq('id', ids['Закрыта недавно']);
+    const bot = (await sb.from('feedback').insert({ user_id: u.id, source: 'bot', text: 'Из бота', created_at: ago(61), attachments: [{ kind: 'tg_photo', file_id: 'f' }] }).select('id').single()).data!;
+    await feedbackCleanup(env);
+    expect((await sb.from('feedback').select('id').eq('id', bot.id)).data).toEqual([]);
+    // Старых больше нет — второй проход ничего не делает.
+    await feedbackCleanup(env);
+    const left = ((await sb.from('feedback').select('text').eq('user_id', u.id).order('id')).data ?? []).map((r) => r.text);
+    expect(left).toEqual(['Закрыта недавно', 'Новая']);
+    expect((await sb.storage.from('feedback').list(String(ids['Закрыта давно']))).data).toEqual([]);
+    expect((await sb.storage.from('feedback').list(String(ids['Подана давно']))).data).toEqual([]);
+    expect((await sb.storage.from('feedback').list(String(ids['Новая']))).data).toHaveLength(1);
   });
 });

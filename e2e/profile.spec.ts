@@ -1,4 +1,5 @@
-// Профиль: месяц и год, листать месяцы, «Поделиться» (месяц и год), тема, шторки настроек; голос.
+// Профиль: месяц и год, листать месяцы, «Поделиться» (месяц и год), тема, шторки настроек; голос; «Сообщить о проблеме».
+import { readFileSync } from 'node:fs';
 import { closeSheet, expect, goTab, test } from './fixtures';
 
 test('месяц и год, «Поделиться» — 4 картинки', async ({ app: page }) => {
@@ -74,4 +75,42 @@ test('разблокировать не вышло — человек в спи�
   await blocked.getByRole('button', { name: 'Разблокировать' }).click();
   await expect(blocked.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
   await expect(blocked.getByText('Тимур')).toBeVisible();
+});
+
+// Приём жалобы на сервере пишет владелице в Telegram настоящим ботом — здесь его подменяем, как «Поделиться»
+// (fixtures.ts). Сам приём: лимиты, файлы в хранилище, сообщение владелице — worker/feedback.int.test.ts.
+test('«Сообщить о проблеме»: текст и скриншот уходят одной формой, в ответ «Получили, спасибо!»', async ({ app: page }) => {
+  const sent: string[] = [];
+  await page.route('**/api/feedback', (r) => {
+    sent.push(r.request().postDataBuffer()?.toString('latin1') ?? '');
+    return r.fulfill({ json: { ok: true } });
+  });
+  await goTab(page, 'Я');
+  await page.getByRole('button', { name: 'Сообщить о проблеме' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Что случилось?' });
+  await expect(sheet.getByRole('button', { name: 'Отправить' })).toBeDisabled();
+  await sheet.getByRole('textbox', { name: 'Что случилось?' }).fill('Не листается месяц');
+  await sheet.getByLabel('+ Скриншот').setInputFiles({ name: 'shot.png', mimeType: 'image/png', buffer: readFileSync('design/avatar/lifecommit-avatar-640.png') });
+  await expect(sheet.getByRole('button', { name: 'Убрать скриншот' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Отправить' }).click();
+  await expect(page.getByRole('dialog', { name: 'Получили, спасибо!' })).toBeVisible();
+  expect(sent).toHaveLength(1);
+  const body = Buffer.from(sent[0]!, 'latin1').toString('utf8');
+  expect(body).toContain('Не листается месяц');
+  expect(body).toContain('"screen":"me"');
+  expect(body).toMatch(/filename="shot-1\.jpg"\r\nContent-Type: image\/jpeg/);
+  await page.getByRole('button', { name: 'Готово' }).click();
+  await expect(page.locator('.sheet-backdrop')).toHaveCount(0);
+});
+
+test('«Сообщить о проблеме»: лимит — «Уже много за сегодня», написанное остаётся', async ({ app: page }) => {
+  await page.route('**/api/feedback', (r) => r.fulfill({ status: 429, json: { error: 'feedback_limit' } }));
+  await goTab(page, 'Я');
+  await page.getByRole('button', { name: 'Сообщить о проблеме' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Что случилось?' });
+  await sheet.getByRole('textbox', { name: 'Что случилось?' }).fill('Белый экран');
+  await sheet.getByRole('button', { name: 'Отправить' }).click();
+  await expect(sheet.getByText('Уже много за сегодня — завтра примем ещё.')).toBeVisible();
+  await expect(sheet.getByRole('textbox', { name: 'Что случилось?' })).toHaveValue('Белый экран');
+  await closeSheet(page);
 });

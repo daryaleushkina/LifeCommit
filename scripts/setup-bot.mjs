@@ -44,13 +44,13 @@ await call('setMyName', { name: 'LifeCommit' });
 for (const [lang, cmds, description, short] of [
   [
     'ru',
-    [{ command: 'start', description: 'Открыть LifeCommit' }],
+    [{ command: 'start', description: 'Открыть LifeCommit' }, { command: 'bug', description: 'Сообщить о проблеме' }],
     'LifeCommit — привычки, цели и дела на каждый день.\n\n✅ Отмечай привычки и цели\n🎤 Говори голосом — дела и привычки разберутся сами\n📅 Дела и встречи — вместе с Google и Apple Календарём\n🤝 Вместе с семьёй и друзьями: общие дела, цели и бот в чате группы',
     'Привычки, цели и дела на день. Голосом, с календарём и вместе с близкими.',
   ],
   [
     '',
-    [{ command: 'start', description: 'Open LifeCommit' }],
+    [{ command: 'start', description: 'Open LifeCommit' }, { command: 'bug', description: 'Report a problem' }],
     'LifeCommit — habits, goals and to-dos for every day.\n\n✅ Track your habits and goals\n🎤 Just say it — to-dos and habits sort themselves out\n📅 To-dos and meetings in sync with Google and Apple Calendar\n🤝 Together with family and friends: shared to-dos, goals and a bot in your group chat',
     'Habits, goals and daily to-dos. By voice, with your calendar and together.',
   ],
