@@ -187,15 +187,16 @@ describe.skipIf(!ready)('POST /api/feedback', () => {
       source: 'app',
       text: 'Не сохраняется дело\n\nНа экране «Сегодня»',
       attachments: [
-        { kind: 'storage', path: `${row!.id}/1.png` },
-        { kind: 'storage', path: `${row!.id}/2.jpg` },
+        { kind: 'storage', path: expect.stringMatching(new RegExp(`^${u.id}/[0-9a-f-]{36}/1\\.png$`)) },
+        { kind: 'storage', path: expect.stringMatching(new RegExp(`^${u.id}/[0-9a-f-]{36}/2\\.jpg$`)) },
       ],
       context: { version: 'abc1234', platform: 'ios', screen: 'me' },
       confirmed: true,
     });
-    const files = (await sb.storage.from('feedback').list(String(row!.id))).data!.map((f) => f.name);
+    const folder = (row!.attachments as { path: string }[])[0]!.path.replace(/\/1\.png$/, '');
+    const files = (await sb.storage.from('feedback').list(folder)).data!.map((f) => f.name);
     expect(files.sort()).toEqual(['1.png', '2.jpg']);
-    const stored = await sb.storage.from('feedback').download(`${row!.id}/2.jpg`);
+    const stored = await sb.storage.from('feedback').download(`${folder}/2.jpg`);
     expect(stored.data?.size).toBe(128);
 
     const [note] = toOwner('sendMessage');
@@ -212,7 +213,7 @@ describe.skipIf(!ready)('POST /api/feedback', () => {
     const u = await user();
     expect((await post(u, form({ files: [image(PNG)] }))).status).toBe(200);
     const { data } = await sb.from('feedback').select('text, context, attachments').eq('user_id', u.id);
-    expect(data).toEqual([{ text: '', context: null, attachments: [{ kind: 'storage', path: expect.stringMatching(/^\d+\/1\.png$/) }] }]);
+    expect(data).toEqual([{ text: '', context: null, attachments: [{ kind: 'storage', path: expect.stringMatching(/^\d+\/[0-9a-f-]{36}\/1\.png$/) }] }]);
   });
 
   it('пусто — 400 empty; не форма — 400 bad_form; битый контекст — 400 bad_context; ничего не записано', async () => {
@@ -259,6 +260,18 @@ describe.skipIf(!ready)('POST /api/feedback', () => {
     expect(toOwner('sendMessage')).toHaveLength(3);
   });
 
+  it('тот же текст, но со скриншотами — новая жалоба, а не повтор: скриншоты не теряются', async () => {
+    const u = await user();
+    expect((await post(u, form({ text: 'Не работает кнопка' }))).status).toBe(200);
+    expect((await post(u, form({ text: 'Не работает кнопка', files: [image(PNG)] }))).status).toBe(200);
+    const { data } = await sb.from('feedback').select('dup_count, attachments').eq('user_id', u.id).order('id');
+    expect(data).toEqual([
+      { dup_count: 0, attachments: [] },
+      { dup_count: 0, attachments: [{ kind: 'storage', path: expect.any(String) }] },
+    ]);
+    expect(toOwner('sendPhoto')).toHaveLength(1);
+  });
+
   it('потолок проекта за сутки — 429 feedback_busy', async () => {
     const filler = await user();
     const since = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
@@ -274,21 +287,22 @@ describe.skipIf(!ready)('POST /api/feedback', () => {
   it('хранилище не приняло файл — жалобы нет, загруженное убрано, 502 upload_failed (человек повторит)', async () => {
     const u = await user();
     let uploads = 0;
-    const upload = (req: Request) => req.method === 'POST' && req.url.includes('/storage/v1/object/feedback/') && ++uploads === 2;
+    const tried: string[] = [];
+    const upload = (req: Request) => {
+      if (req.method !== 'POST' || !req.url.includes('/storage/v1/object/feedback/')) return false;
+      tried.push(decodeURIComponent(req.url.split('/storage/v1/object/feedback/')[1]!));
+      return ++uploads === 2;
+    };
     expect(await failing(upload, () => post(u, form({ text: 'Со скриншотами', files: [image(PNG), image(PNG)] })))).toEqual({ status: 502, body: { error: 'upload_failed' } });
     expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
+    // Первый файл, который успел лечь, убран: в папке жалобы пусто.
+    expect(tried).toHaveLength(2);
+    expect((await sb.storage.from('feedback').list(tried[0]!.replace(/\/1\.png$/, ''))).data).toEqual([]);
     // Тот же текст сразу снова — новая жалоба, а не «повтор» удалённой; первый файл не остался сиротой.
     expect((await post(u, form({ text: 'Со скриншотами', files: [image(PNG)] }))).status).toBe(200);
     const [row] = (await sb.from('feedback').select('id, dup_count').eq('user_id', u.id)).data!;
     expect(row!.dup_count).toBe(0);
     expect(tg.sent('sendMessage')).toHaveLength(1);
-  });
-
-  it('файлы легли, а пути в жалобу не записались — тоже 502, жалобы и файлов нет', async () => {
-    const u = await user();
-    const res = await failing(rest('/rest/v1/feedback?', 'PATCH'), () => post(u, form({ text: 'Скриншот', files: [image(PNG)] })));
-    expect(res).toEqual({ status: 502, body: { error: 'upload_failed' } });
-    expect((await sb.from('feedback').select('id').eq('user_id', u.id)).data).toEqual([]);
   });
 
   it('база не приняла жалобу — 500, владелице ничего', async () => {
@@ -392,10 +406,24 @@ describe.skipIf(!ready)('удаление аккаунта', () => {
   it('скриншоты жалоб уходят из хранилища вместе с человеком', async () => {
     const u = await user();
     expect((await post(u, form({ text: 'Жалоба', files: [image(PNG), image(PNG)] }))).status).toBe(200);
-    const [row] = (await sb.from('feedback').select('id').eq('user_id', u.id)).data!;
+    const [row] = (await sb.from('feedback').select('id, attachments').eq('user_id', u.id)).data!;
+    const folder = (row!.attachments as { path: string }[])[0]!.path.replace(/\/1\.png$/, '');
+    expect((await sb.storage.from('feedback').list(folder)).data).toHaveLength(2);
     expect((await u.call('DELETE', '/account')).status).toBe(200);
-    expect((await sb.storage.from('feedback').list(String(row!.id))).data).toEqual([]);
+    expect((await sb.storage.from('feedback').list(folder)).data).toEqual([]);
     expect((await sb.from('feedback').select('id').eq('id', row!.id)).data).toEqual([]);
+  });
+
+  it('удаление аккаунта не трогает чужие скриншоты', async () => {
+    const a = await user();
+    const b = await user();
+    expect((await post(a, form({ text: 'Моя', files: [image(PNG)] }))).status).toBe(200);
+    expect((await post(b, form({ text: 'Чужая', files: [image(PNG)] }))).status).toBe(200);
+    const [theirs] = (await sb.from('feedback').select('id, attachments').eq('user_id', b.id)).data!;
+    const path = (theirs!.attachments as { path: string }[])[0]!.path;
+    expect((await a.call('DELETE', '/account')).status).toBe(200);
+    expect((await sb.storage.from('feedback').download(path)).error).toBeNull();
+    expect((await sb.from('feedback').select('id').eq('id', theirs!.id)).data).toHaveLength(1);
   });
 
   it('жалобы без скриншотов (или их нет вовсе) — аккаунт удаляется, хранилище не трогаем', async () => {
@@ -406,11 +434,16 @@ describe.skipIf(!ready)('удаление аккаунта', () => {
     expect((await b.call('DELETE', '/account')).status).toBe(200);
   });
 
-  it('хранилище не ответило — аккаунт не удаляется (500), чтобы файлы не остались сиротами', async () => {
+  it('хранилище не ответило — аккаунт не удаляется (500), чтобы файлы не остались сиротами; свои группы при этом не отданы', async () => {
     const u = await user();
+    const other = await user();
+    const { id: group } = (await u.call<{ id: number }>('POST', '/groups', { title: 'Семья', kind: 'family' })).body;
+    const { code } = (await u.call<{ code: string }>('POST', `/groups/${group}/invite`)).body;
+    expect((await other.call('POST', `/invites/${code}/join`)).status).toBe(200);
     expect((await post(u, form({ text: 'Жалоба', files: [image(PNG)] }))).status).toBe(200);
     expect((await failing(rest('/storage/v1/object/feedback', 'DELETE'), () => u.call('DELETE', '/account'))).status).toBe(500);
     expect((await sb.from('users').select('id').eq('id', u.id)).data).toHaveLength(1);
+    expect((await sb.from('groups').select('owner_id').eq('id', group).single()).data).toEqual({ owner_id: u.id });
   });
 });
 
@@ -581,6 +614,55 @@ describe.skipIf(!ready)('/bug в боте', () => {
     expect(now.prompt_message_id).not.toBe(first);
   });
 
+  it('тот же скриншот дважды — в черновике один раз; уже приложенный пятым — 👌, а не «не приложил»', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await photo(u, 'same');
+    await photo(u, 'same');
+    expect((await draft(u.id))!.attachments).toEqual([{ kind: 'tg_photo', file_id: 'same' }]);
+    for (const n of [2, 3, 4]) await photo(u, `shot-${n}`);
+    await photo(u, 'same');
+    expect((await draft(u.id))!.attachments).toHaveLength(4);
+    expect(replies(u.id).slice(1)).toEqual([]);
+    expect(tg.sent('setMessageReaction')).toHaveLength(6);
+  });
+
+  it('тот же текст, но со скриншотом — новая жалоба, а не повтор', async () => {
+    const u = await user();
+    expect((await sb.from('feedback').insert({ user_id: u.id, source: 'bot', text: 'Белый экран' })).error).toBeNull();
+    await say(u, '/bug');
+    await say(u, 'Белый экран');
+    await photo(u, 'white');
+    await press(u, 'fb:send', 564);
+    expect((await sb.from('feedback').select('dup_count').eq('user_id', u.id).order('id')).data).toEqual([{ dup_count: 0 }, { dup_count: 0 }]);
+  });
+
+  it('черновик ушёл, пока шло сообщение, — не ставим 👌, а говорим, что жалоба уже ушла', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, 'Первое');
+    // Таймер или кнопка забрали черновик как раз между «есть ли черновик» и «дописать».
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      if (req.url.includes('/rpc/append_feedback_draft')) await sb.from('feedback_drafts').delete().eq('user_id', u.id);
+      return real(req);
+    }) as typeof fetch;
+    try {
+      await say(u, 'Опоздавшее');
+    } finally {
+      globalThis.fetch = real;
+    }
+    expect(tg.sent('setMessageReaction')).toHaveLength(1);
+    expect(replies(u.id).at(-1)?.body.text).toBe('Жалоба уже ушла. Чтобы добавить ещё, пришли /bug.');
+  });
+
+  it('без аккаунта и с Telegram не по-русски — ответ по-английски, как во всём боте', async () => {
+    const stranger = { id: 9_600_000_000_000 + Math.floor(Math.random() * 1_000_000_000) };
+    await botUpdate({ update_id: ++seq, message: { message_id: 1, chat: { id: stranger.id, type: 'private' }, from: { id: stranger.id, first_name: 'Hans', language_code: 'de' }, text: '/bug' } });
+    expect(replies(stranger.id).map((c) => c.body.text)).toEqual(['Open LifeCommit first — then you can report a problem.']);
+  });
+
   it('пятый скриншот не берём и говорим об этом; стикер — подсказка, что можно прислать', async () => {
     const u = await user();
     await say(u, '/bug');
@@ -626,7 +708,40 @@ describe.skipIf(!ready)('/bug в боте', () => {
     expect(toOwner('sendMessage')).toEqual([]);
   });
 
-  it('без аккаунта — сначала открыть LifeCommit; без черновика обычный текст — как раньше, в дела', async () => {
+  it('дописать в черновик не вышло (база споткнулась) — человеку «пришли ещё раз», а не тишина', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await failing(rest('/rpc/append_feedback_draft'), () => say(u, 'Потерялось бы'));
+    expect(replies(u.id).at(-1)?.body.text).toBe('Не получилось записать — пришли это ещё раз.');
+    expect(tg.sent('setMessageReaction')).toEqual([]);
+  });
+
+  it('/bug текст: приглашение не ушло — текст всё равно в черновике', async () => {
+    const u = await user();
+    tg.reply('sendMessage', { ok: false, error_code: 429, description: 'Too Many Requests: retry after 1' });
+    await say(u, '/bug не грузится лента');
+    expect((await draft(u.id))!.text).toBe('не грузится лента');
+  });
+
+  it('текст черновика — не длиннее 2000 символов, начало сохраняется', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, `начало ${'а'.repeat(1500)}`);
+    await say(u, 'б'.repeat(1500));
+    const text = (await draft(u.id))!.text;
+    expect(text).toHaveLength(2000);
+    expect(text.startsWith('начало ')).toBe(true);
+  });
+
+  it('команда при открытом черновике — как обычно (/start здоровается), в черновик не попадает', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, '/start');
+    expect((await draft(u.id))!.text).toBe('');
+    expect(replies(u.id).at(-1)?.body.text).toMatch(/^Привет/);
+  });
+
+  it('без аккаунта — сначала открыть LifeCommit', async () => {
     const stranger = { id: 9_300_000_000_000 + Math.floor(Math.random() * 1_000_000_000) };
     await say(stranger, '/bug');
     expect(replies(stranger.id).map((c) => c.body.text)).toEqual(['Сначала открой LifeCommit — потом можно сообщить о проблеме.']);

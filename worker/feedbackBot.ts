@@ -42,6 +42,8 @@ const texts = {
     voiceLimit: 'Голосовых на сегодня хватит — напиши, пожалуйста, текстом.',
     voiceFailed: 'Не получилось разобрать голосовое — напиши, пожалуйста, текстом.',
     failed: 'Не получилось отправить — нажми ещё раз',
+    notSaved: 'Не получилось записать — пришли это ещё раз.',
+    closed: 'Жалоба уже ушла. Чтобы добавить ещё, пришли /bug.',
     heard: (text: string) => `Расслышал: «${text}»`,
     openFirst: 'Сначала открой LifeCommit — потом можно сообщить о проблеме.',
     open: 'Открыть LifeCommit',
@@ -61,13 +63,15 @@ const texts = {
     voiceLimit: "That's enough voice for today — please write it as text.",
     voiceFailed: 'Could not make out the voice message — please write it as text.',
     failed: 'Could not send — tap again',
+    notSaved: 'Could not save that — please send it again.',
+    closed: 'The report has already gone. To add more, send /bug.',
     heard: (text: string) => `I heard: "${text}"`,
     openFirst: 'Open LifeCommit first — then you can report a problem.',
     open: 'Open LifeCommit',
   },
 };
 /** Язык — как в приложении; пользователя нет — как в Telegram. */
-const lang = (code: string | undefined) => (code?.startsWith('en') ? texts.en : texts.ru);
+const lang = (code: string | undefined) => (code?.startsWith('ru') ? texts.ru : texts.en);
 
 interface FeedbackUser {
   id: number;
@@ -138,6 +142,9 @@ async function openDraft(env: Env, chat: number, from: TgFrom, rest: string, app
   const t = lang(user.language_code);
   const old = check(await sb.from('feedback_drafts').select('chat_id, prompt_message_id').eq('user_id', user.id).maybeSingle<{ chat_id: number; prompt_message_id: number | null }>(), 'draft not read');
   check(await sb.from('feedback_drafts').upsert({ user_id: user.id, chat_id: chat, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }), 'draft not opened');
+  // Текст после /bug — в черновик сразу, до приглашения: не ушло приглашение — текст всё равно не потерян.
+  const text = cleanFeedback(rest);
+  if (text) await append(sb, user.id, text, null);
   // Новое приглашение будет внизу — у старого кнопки убираем, чтобы не было двух «Отправить».
   if (old?.prompt_message_id) await dropButtons(env, old.chat_id, old.prompt_message_id);
   const prompt = await tg<{ message_id: number }>(env, 'sendMessage', {
@@ -146,20 +153,19 @@ async function openDraft(env: Env, chat: number, from: TgFrom, rest: string, app
     reply_markup: { inline_keyboard: [[{ text: t.send, callback_data: 'fb:send' }, { text: t.cancel, callback_data: 'fb:cancel' }]] },
   });
   check(await sb.from('feedback_drafts').update({ prompt_message_id: prompt.message_id }).eq('user_id', user.id), 'prompt not saved');
-  const text = cleanFeedback(rest);
-  if (text) await append(sb, user.id, text, null);
 }
 
 /**
- * Дописать в черновик одним запросом (альбом скриншотов приходит несколькими апдейтами разом). dropped — вложение
- * не взяли (уже 4). Черновик закрылся, пока шло сообщение, — база отвечает null, дописывать некуда: это не ошибка.
+ * Дописать в черновик одним запросом (альбом скриншотов приходит несколькими апдейтами разом).
+ * added — легло; dropped — вложение не взяли (уже 4); closed — черновик ушёл (кнопка, таймер), пока шло сообщение.
  */
-async function append(sb: SupabaseClient, userId: number, text: string, attachment: TgPhoto | null): Promise<boolean> {
-  const added = check(
+async function append(sb: SupabaseClient, userId: number, text: string, attachment: TgPhoto | null): Promise<'added' | 'dropped' | 'closed'> {
+  const res = check(
     await sb.rpc('append_feedback_draft', { p_user: userId, p_text: text, p_attachment: attachment, p_max_text: FEEDBACK.maxText, p_max_files: FEEDBACK.maxFiles }),
     'draft not updated',
   ) as { dropped: boolean } | null;
-  return added?.dropped === true;
+  if (!res) return 'closed';
+  return res.dropped ? 'dropped' : 'added';
 }
 
 /** Сообщение при открытом черновике: текст или подпись, самый крупный скриншот, голос — расшифровкой. */
@@ -197,8 +203,17 @@ async function collect(env: Env, sb: SupabaseClient, userId: number, language: s
     await say(t.unsupported);
     return;
   }
-  if (await append(sb, userId, text, photo ? { kind: 'tg_photo', file_id: photo.file_id } : null)) {
-    await say(t.tooManyFiles(FEEDBACK.maxFiles));
+  let added: Awaited<ReturnType<typeof append>>;
+  try {
+    added = await append(sb, userId, text, photo ? { kind: 'tg_photo', file_id: photo.file_id } : null);
+  } catch (e) {
+    // Не записалось — человек должен знать, иначе жалоба уйдёт без этого куска.
+    console.error('feedback: draft not appended', userId, { photo: !!photo, chars: text.length }, e);
+    await say(t.notSaved);
+    return;
+  }
+  if (added !== 'added') {
+    await say(added === 'dropped' ? t.tooManyFiles(FEEDBACK.maxFiles) : t.closed);
     return;
   }
   // Тихая отметка «взял» вместо ответа на каждое сообщение. Не поставилась — не важно, сообщение в черновике.

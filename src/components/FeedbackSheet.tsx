@@ -37,32 +37,45 @@ export function FeedbackSheet({ theme, onClose }: Props): ReactNode {
   const alive = useRef(true);
 
   // Закрыли шторку — микрофон отпускаем, превью скриншотов освобождаем.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // В StrictMode (разработка) эффект запускается дважды: после первой «уборки» шторка снова жива.
+    alive.current = true;
+    // Массив один и тот же на всю жизнь шторки — в него только добавляют.
+    const previews = urls.current;
+    return () => {
       alive.current = false;
       recorder.current?.cancel();
-      urls.current.forEach((url) => URL.revokeObjectURL(url));
-    },
-    [],
-  );
+      previews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
+  // Места под скриншоты считаем по ссылке, а не по shots из замыкания: второй выбор, пока первые ещё ужимаются,
+  // иначе видел бы старое число и молча проскакивал за 4. Пока ужимаются — «Отправить» ждёт.
+  const taken = useRef(0);
+  const [shrinking, setShrinking] = useState(0);
   const addShots = async (files: File[]) => {
     setError(null);
-    const room = MAX_SHOTS - shots.length;
+    const room = MAX_SHOTS - taken.current;
     if (files.length > room) setError(t.fb.tooMany);
-    for (const file of files.slice(0, room)) {
+    const picked = files.slice(0, room);
+    taken.current += picked.length;
+    setShrinking((n) => n + picked.length);
+    for (const file of picked) {
       try {
         const blob = await shrinkImage(file);
         const url = URL.createObjectURL(blob);
         urls.current.push(url);
-        setShots((cur) => (cur.length >= MAX_SHOTS ? cur : [...cur, { blob, url }]));
+        setShots((cur) => [...cur, { blob, url }]);
       } catch {
+        taken.current -= 1;
         setError(t.fb.badImage);
       }
+      setShrinking((n) => n - 1);
     }
   };
 
   const removeShot = (shot: Shot) => {
+    taken.current -= 1;
     URL.revokeObjectURL(shot.url);
     setShots((cur) => cur.filter((s) => s !== shot));
   };
@@ -146,7 +159,7 @@ export function FeedbackSheet({ theme, onClose }: Props): ReactNode {
             </button>
           </div>
         ))}
-        {shots.length < MAX_SHOTS && (
+        {shots.length + shrinking < MAX_SHOTS && (
           <label className="feedback-add">
             {t.fb.addShot}
             <input
@@ -165,7 +178,7 @@ export function FeedbackSheet({ theme, onClose }: Props): ReactNode {
       </div>
       <p className="sheet-note">{t.fb.attach}</p>
       {error && <p className="error">{error}</p>}
-      <button className="act primary wide" disabled={empty || mic !== 'off' || phase === 'sending'} onClick={() => void send()}>
+      <button className="act primary wide" disabled={empty || shrinking > 0 || mic !== 'off' || phase === 'sending'} onClick={() => void send()}>
         {t.fb.send}
       </button>
     </Sheet>
