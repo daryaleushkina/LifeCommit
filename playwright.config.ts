@@ -15,7 +15,10 @@ export interface TgOptions {
   tgInsets: string;
 }
 
-const BASE = 'http://localhost:5173';
+// Порт стенда: по умолчанию 5173. Другой (E2E_PORT=5180) — когда параллельно работают несколько копий репозитория
+// (git worktree): иначе тесты переиспользуют чужой dev-сервер на 5173 и проверяют не тот код.
+const PORT = Number(process.env.E2E_PORT) || 5173;
+const BASE = `http://localhost:${PORT}`;
 /** Android — Chromium с поддельным микрофоном: без него запрос доступа висит, и голос не проверить. */
 const ANDROID = {
   tgPlatform: 'android' as const,
@@ -54,7 +57,7 @@ export default defineConfig<TgOptions>({
     actionTimeout: 8_000,
   },
   webServer: {
-    command: 'pnpm dev --port 5173 --strictPort',
+    command: `pnpm dev --port ${PORT} --strictPort`,
     url: BASE,
     reuseExistingServer: true,
     timeout: 120_000,

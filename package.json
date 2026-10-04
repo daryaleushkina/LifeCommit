@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler deploy",
     "typecheck": "tsc -b",
-    "lint": "oxlint src worker shared e2e",
+    "lint": "oxlint src worker shared site e2e",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "eval:voice": "vitest run --config vitest.eval.config.ts",
@@ -28,6 +28,7 @@
     "@supabase/supabase-js": "^2.117.2",
     "@tma.js/init-data-node": "^2.0.8",
     "@tma.js/sdk-react": "^3.0.23",
+    "gsap": "^3.15.0",
     "hono": "^4.13.10",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

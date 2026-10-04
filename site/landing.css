@@ -1,0 +1,184 @@
+/* Лендинг (вариант B «Ночь» в двух темах): под всем — поле клеток (canvas), виньетка и зерно; слева текст,
+   справа телефон с ореолом; «Голос» закреплён; «Вместе» — примеры групп и чат Telegram рядом с телефоном. */
+:root {
+  --veil: rgba(246, 244, 238, 0.86);
+  --vignette: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(236, 233, 224, 0.7) 100%);
+  --grain-op: 0.045;
+  --grain-mode: multiply;
+  --sheen: linear-gradient(100deg, #1F2A1F 0%, #1F2A1F 40%, #2E8F55 47%, #3FA968 50%, #1F2A1F 57%, #1F2A1F 100%);
+  --chip: rgba(255, 255, 255, 0.6);
+  --chat: rgba(255, 255, 255, 0.8);
+  --chat-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.9), 0 30px 60px -28px rgba(31, 52, 36, 0.45);
+  --msg-in: #FFFFFF;
+  --msg-out: #E6F5DC;
+  --msg-out-ink: #3C7A35;
+  --kb: rgba(35, 122, 70, 0.1);
+  --kb-ink: #1B6139;
+  --who: #1A6FAD;
+  --t-ck-bg: #E6F2E9; --t-ck: #237A46; --t-ct-bg: #F5EBD3; --t-ct: #8A6412; --t-qt-bg: #F8E4DA; --t-qt: #B4532A; --t-a-bg: #E4E8DF; --t-a: #566055; --t-g-bg: #E3ECF8; --t-g: #3D63B8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --veil: rgba(10, 15, 12, 0.88);
+    --vignette: radial-gradient(120% 90% at 50% 40%, transparent 45%, rgba(5, 8, 6, 0.78) 100%);
+    --grain-op: 0.07; --grain-mode: overlay;
+    --sheen: linear-gradient(100deg, #E8EEE6 0%, #E8EEE6 40%, #FFFFFF 47%, #BFEBCF 50%, #E8EEE6 57%, #E8EEE6 100%);
+    --chip: rgba(255, 255, 255, 0.04);
+    --chat: rgba(23, 31, 26, 0.78);
+    --chat-edge: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.07), 0 30px 60px -20px rgba(0, 0, 0, 0.7);
+    --msg-in: #1F2721; --msg-out: #23432E; --msg-out-ink: #8FD6A6; --kb: rgba(255, 255, 255, 0.08); --kb-ink: #CFE9D6; --who: #6CB8F0;
+    --t-ck-bg: #1E3325; --t-ck: #8FD6A6; --t-ct-bg: #3A3116; --t-ct: #E2C36B; --t-qt-bg: #3A241B; --t-qt: #E38A62; --t-a-bg: rgba(255, 255, 255, 0.08); --t-a: #A3AD9F; --t-g-bg: rgba(74, 120, 214, 0.18); --t-g: #8FB0F0;
+  }
+}
+:root[data-theme='dark'] {
+  --veil: rgba(10, 15, 12, 0.88);
+  --vignette: radial-gradient(120% 90% at 50% 40%, transparent 45%, rgba(5, 8, 6, 0.78) 100%);
+  --grain-op: 0.07; --grain-mode: overlay;
+  --sheen: linear-gradient(100deg, #E8EEE6 0%, #E8EEE6 40%, #FFFFFF 47%, #BFEBCF 50%, #E8EEE6 57%, #E8EEE6 100%);
+  --chip: rgba(255, 255, 255, 0.04);
+  --chat: rgba(23, 31, 26, 0.78);
+  --chat-edge: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.07), 0 30px 60px -20px rgba(0, 0, 0, 0.7);
+  --msg-in: #1F2721; --msg-out: #23432E; --msg-out-ink: #8FD6A6; --kb: rgba(255, 255, 255, 0.08); --kb-ink: #CFE9D6; --who: #6CB8F0;
+  --t-ck-bg: #1E3325; --t-ck: #8FD6A6; --t-ct-bg: #3A3116; --t-ct: #E2C36B; --t-qt-bg: #3A241B; --t-qt: #E38A62; --t-a-bg: rgba(255, 255, 255, 0.08); --t-a: #A3AD9F; --t-g-bg: rgba(74, 120, 214, 0.18); --t-g: #8FB0F0;
+}
+
+/* поле клеток, виньетка и зерно — под всем содержимым */
+#field { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.vignette { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: var(--vignette); }
+.grain { position: fixed; inset: -50%; z-index: 2; pointer-events: none; opacity: var(--grain-op); mix-blend-mode: var(--grain-mode);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  animation: grain 1.2s steps(6) infinite; }
+@keyframes grain { 0% { transform: translate(0, 0) } 20% { transform: translate(-3%, 2%) } 40% { transform: translate(2%, -3%) } 60% { transform: translate(-2%, -1%) } 80% { transform: translate(3%, 3%) } 100% { transform: translate(0, 0) } }
+main { position: relative; z-index: 1; }
+.landing .site-foot { position: relative; z-index: 3; }
+
+/* текст читается поверх поля: мягкая подложка цвета фона */
+.copy, .hero-text { position: relative; isolation: isolate; }
+.copy::before, .hero-text::before { content: ''; position: absolute; z-index: -1; inset: -90px -120px; pointer-events: none;
+  background: radial-gradient(closest-side, var(--veil), color-mix(in srgb, var(--veil) 65%, transparent) 55%, transparent); }
+
+/* ── первый экран ── */
+.hero { max-width: var(--max); margin: 0 auto; padding: clamp(120px, 15vh, 170px) var(--gut) clamp(72px, 10vh, 120px);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: clamp(32px, 5vw, 88px); }
+#h1 { margin: 0; max-width: 11.5em; font-size: clamp(42px, 6.4vw, 100px); line-height: 0.98; font-weight: 640; letter-spacing: -0.042em; text-wrap: balance; color: var(--fg); }
+#h1 .ln { padding-bottom: 0.06em; }
+.sheen { background: var(--sheen); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important;
+  animation: sheen 10s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+@keyframes sheen { 0% { background-position: 100% 0 } 55%, 100% { background-position: 0% 0 } }
+.hero .line { margin: 26px 0 0; font-size: clamp(17px, 1.4vw, 20px); color: var(--mut); letter-spacing: -0.005em; }
+.hero .stores { margin-top: 38px; }
+
+/* телефон с ореолом */
+.ph { position: relative; justify-self: center; isolation: isolate; }
+.ph::before { content: ''; position: absolute; z-index: -1; inset: -16% -38%; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--halo), color-mix(in srgb, var(--halo) 30%, transparent) 52%, transparent 76%);
+  filter: blur(18px); animation: halo 6.5s ease-in-out infinite; }
+@keyframes halo { 0%, 100% { opacity: 0.85; transform: scale(1) } 50% { opacity: 0.55; transform: scale(1.07) } }
+.ph .phone { --pw: 330; }
+
+/* ── сцены ── */
+.scene { position: relative; }
+.stage { max-width: var(--max); margin: 0 auto; padding: 0 var(--gut); min-height: 100vh;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: clamp(32px, 6vw, 112px); }
+.std .stage { min-height: 0; padding-block: clamp(96px, 13vw, 180px); }
+.std.flip .ph { order: -1; }
+.copy { max-width: 560px; }
+.kicker { display: inline-flex; align-items: center; gap: 10px; margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--acc); }
+:root[data-theme='dark'] .kicker { color: var(--acc-hi); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .kicker { color: var(--acc-hi); } }
+.kicker::before { content: ''; width: 7px; height: 7px; border-radius: 2px; background: var(--acc); box-shadow: 0 0 12px 2px color-mix(in srgb, var(--acc) 60%, transparent); }
+.copy h2 { margin: 18px 0 0; font-size: clamp(34px, 4.4vw, 64px); line-height: 1.02; font-weight: 620; letter-spacing: -0.035em; text-wrap: balance; }
+.copy p { margin: 22px 0 0; font-size: clamp(17px, 1.35vw, 20px); line-height: 1.55; color: var(--mut); max-width: 46ch; text-wrap: pretty; }
+/* абзац «Голоса» светлеет слово за словом при прокрутке */
+.copy p.read .w { color: var(--dim); transition: color 260ms; }
+.copy p.read .w.lit { color: var(--fg); }
+.steps { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 8px; }
+.steps span { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; font-size: 14px; color: var(--mut);
+  box-shadow: inset 0 0 0 1px var(--line); transition: background-color 360ms, color 360ms, box-shadow 360ms; }
+.steps span::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.6; }
+.steps span.on { background: color-mix(in srgb, var(--acc) 14%, transparent); color: #1B6139; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acc) 40%, transparent), 0 0 24px -6px color-mix(in srgb, var(--acc) 60%, transparent); }
+:root[data-theme='dark'] .steps span.on { color: var(--acc-hi); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .steps span.on { color: var(--acc-hi); } }
+.steps span.done { color: var(--fg); }
+.voice .ph .phone { --pw: 350; }
+
+.chips { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 10px; }
+.chip2 { display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 16px 0 7px; border-radius: 15px; font-size: 15px; font-weight: 500;
+  background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); }
+.chip2 .t { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; }
+.chip2 .t svg { width: 18px; height: 18px; }
+.t.ck { background: var(--t-ck-bg); color: var(--t-ck); } .t.ct { background: var(--t-ct-bg); color: var(--t-ct); } .t.qt { background: var(--t-qt-bg); color: var(--t-qt); }
+.t.a { background: var(--t-a-bg); color: var(--t-a); font-size: 13px; font-weight: 700; } .t.g { background: var(--t-g-bg); color: var(--t-g); font-size: 13px; font-weight: 700; }
+
+/* «Вместе»: примеры групп */
+.gtabs { margin-top: 28px; display: inline-flex; gap: 4px; padding: 4px; border-radius: 16px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); }
+.gtabs button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: transparent; color: var(--mut); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color 300ms, color 300ms; }
+.gtabs button:hover { color: var(--fg); }
+.gtabs button[aria-pressed='true'] { background: var(--fg); color: var(--bg); font-weight: 600; }
+.tg-note { margin-top: 22px; display: flex; align-items: flex-start; gap: 12px; max-width: 46ch; font-size: 15px; line-height: 1.5; color: var(--mut); }
+.tg-note svg { flex: none; width: 22px; height: 22px; margin-top: 1px; color: #2AABEE; }
+
+/* чат группы в Telegram рядом с телефоном */
+/* чат стоит рядом с телефоном, не поверх него; на узком экране — под ним */
+.together .ph { display: flex; flex-direction: row-reverse; align-items: flex-end; gap: 24px; }
+.together .ph::before { inset: -10% -18%; }
+.chat { position: relative; z-index: 3; flex: none; width: 290px; margin-bottom: 64px; border-radius: 22px; overflow: hidden;
+  background: var(--chat); -webkit-backdrop-filter: blur(20px) saturate(1.3); backdrop-filter: blur(20px) saturate(1.3); box-shadow: var(--chat-edge); font-size: 13.5px; line-height: 1.4; }
+.chat-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.chat-head b { display: block; font-size: 14px; font-weight: 600; }
+.chat-head small { display: block; font-size: 12px; color: var(--mut); }
+.chat-ava { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; font-weight: 700; background: var(--t-ck-bg); color: var(--t-ck); }
+.chat-body { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+.msg { max-width: 92%; padding: 7px 10px 8px; border-radius: 14px; box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06); }
+.msg.bot { align-self: flex-start; background: var(--msg-in); border-bottom-left-radius: 5px; }
+.msg.me { align-self: flex-end; display: flex; flex-direction: column; gap: 4px; background: var(--msg-out); border-bottom-right-radius: 5px; color: var(--msg-out-ink); }
+.msg.me .quote { padding-left: 7px; border-left: 2px solid currentColor; font-size: 11.5px; font-weight: 600; opacity: 0.85; }
+.voice-row { display: flex; align-items: center; gap: 8px; }
+.msg .who { display: block; font-size: 12px; font-weight: 700; color: var(--who); }
+.msg p { margin: 2px 0 0; }
+.msg .mh { font-weight: 600; }
+.msg ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.msg li { display: flex; align-items: center; gap: 7px; padding: 1px 0; }
+.msg li i { flex: none; width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--dim); display: grid; place-items: center; color: transparent; }
+.msg li i svg { width: 9px; height: 9px; }
+.msg li.done i { background: #3FA968; box-shadow: none; color: #fff; }
+.msg li.done { color: var(--mut); }
+.kb { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.kb span { padding: 6px 4px; border-radius: 9px; background: var(--kb); color: var(--kb-ink); font-size: 12px; font-weight: 600; text-align: center; white-space: nowrap; }
+.vplay { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: #4FA44C; color: #fff; }
+.vplay svg { width: 12px; height: 12px; }
+.vbars { display: flex; align-items: center; gap: 2px; height: 20px; }
+.vbars i { width: 2.5px; border-radius: 2px; background: currentColor; opacity: 0.55; }
+.msg.me small { font-size: 11px; white-space: nowrap; }
+
+/* ── финал ── */
+.final { max-width: var(--max); margin: 0 auto; padding: clamp(110px, 15vw, 200px) var(--gut) clamp(90px, 11vw, 150px); text-align: center; display: flex; flex-direction: column; align-items: center; }
+.big-mark { --m: clamp(26px, 3.4vw, 40px); --g: clamp(7px, 0.9vw, 10px); filter: drop-shadow(0 0 28px color-mix(in srgb, var(--acc) 45%, transparent)); }
+.final h2 { margin: 40px 0 0; font-size: clamp(42px, 6.6vw, 104px); line-height: 0.98; font-weight: 640; letter-spacing: -0.042em; }
+.final p { margin: 20px 0 0; font-size: clamp(17px, 1.4vw, 20px); color: var(--mut); }
+.final .stores { margin-top: 40px; justify-content: center; }
+
+@media (max-width: 1100px) {
+  .ph .phone { --pw: 300; }
+  .voice .ph .phone { --pw: 320; }
+}
+@media (max-width: 1100px) {
+  .together .ph { flex-direction: column; align-items: center; gap: 0; }
+  .chat { width: min(340px, 100%); margin: -64px 0 0; }
+}
+@media (max-width: 880px) {
+  .hero, .stage { grid-template-columns: minmax(0, 1fr); }
+  .hero { padding-top: calc(env(safe-area-inset-top, 0px) + 104px); gap: 56px; }
+  .hero .stores { margin-top: 30px; }
+  .stage { min-height: 0; padding-block: 96px; gap: 48px; }
+  .std.flip .ph { order: 0; }
+  .ph .phone, .voice .ph .phone { --pw: 290; }
+}
+@media (max-width: 420px) {
+  .ph .phone, .voice .ph .phone { --pw: 268; }
+  .gtabs { display: flex; }
+  .gtabs button { flex: 1; padding: 0 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grain, .ph::before, .sheen { animation: none; }
+}

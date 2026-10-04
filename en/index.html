@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LifeCommit — habits, to-dos, goals and calendar in one place</title>
+<meta name="description" content="Habits, to-dos, goals and calendar in one place. Say it out loud — for yourself and for your group. For iPhone, Android and Telegram.">
+<meta property="og:title" content="LifeCommit — habits, to-dos, goals and calendar in one place">
+<meta property="og:description" content="Say it out loud — for yourself and for your group. For iPhone, Android and Telegram.">
+<meta property="og:url" content="https://lifecommit.app/en/">
+<meta property="og:type" content="website">
+<link rel="canonical" href="https://lifecommit.app/en/">
+<link rel="alternate" hreflang="ru" href="https://lifecommit.app/ru/">
+<link rel="alternate" hreflang="en" href="https://lifecommit.app/en/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script>try{var t=localStorage.getItem('lc-site-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}(function(){var u=navigator.userAgent;document.documentElement.setAttribute('data-os',/iPhone|iPad|iPod/.test(u)||(/Macintosh/.test(u)&&navigator.maxTouchPoints>1)?'ios':/Android/.test(u)?'android':'desktop')})()</script>
+<script type="module" src="/site/landing.ts"></script>
+</head>
+<body class="landing">
+<canvas id="field" aria-hidden="true"></canvas>
+<div class="vignette" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<header class="site-top">
+  <a class="brand" href="/en/" aria-label="LifeCommit — home"><span class="mark" aria-hidden="true"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></span>LifeCommit</a>
+  <div class="top-r">
+    <span class="lang"><a href="/ru/" hreflang="ru" lang="ru">RU</a><b aria-current="page">EN</b></span>
+    <button class="theme-btn" type="button" data-theme-toggle aria-label="Switch theme"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg></button>
+    <a class="get" href="#download">Get the app</a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" id="hero">
+    <div class="hero-text">
+      <h1 id="h1">Habits, to-dos, goals and calendar in&nbsp;one&nbsp;place</h1>
+      <p class="line">For iPhone, Android and Telegram.</p>
+      <div class="stores">
+        <a class="store apple" href="#" data-soon><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.75.73 1.05 1.6 2.24 2.73 2.2 1.1-.05 1.51-.71 2.84-.71 1.32 0 1.7.71 2.86.69 1.18-.02 1.93-1.07 2.65-2.13.84-1.22 1.18-2.4 1.2-2.46-.03-.01-2.3-.88-2.32-3.5zM14.2 6.13c.6-.73 1-1.74.9-2.75-.87.04-1.92.58-2.54 1.3-.56.64-1.05 1.67-.92 2.66.97.07 1.96-.49 2.56-1.21z"/></svg><span><small>Download on the</small><b>App Store</b></span></a>
+        <a class="store play" href="#" data-soon><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#00D7FE" d="M3.6 2.4c-.27.3-.42.76-.42 1.33v16.54c0 .57.15 1.03.42 1.33L13 12z"/><path fill="#FFCE00" d="M16.1 15.1L13 12l3.1-3.1 3.75 2.13c1.07.6 1.07 1.6 0 2.21z"/><path fill="#FF3A44" d="M16.1 15.1L13 12l-9.4 9.6c.35.37.92.41 1.56.05z"/><path fill="#00F076" d="M16.1 8.9L5.16 2.35c-.64-.36-1.21-.32-1.56.05L13 12z"/></svg><span><small>Get it on</small><b>Google Play</b></span></a>
+        <a class="store tg" href="https://t.me/LifeCommit_bot" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="currentColor"/><path fill="#fff" d="M5.4 11.8l11.6-4.5c.54-.2 1 .13.83.94l-1.98 9.3c-.14.66-.54.82-1.1.51l-3-2.22-1.45 1.4c-.16.16-.3.3-.6.3l.2-3.06 5.57-5.03c.24-.21-.05-.33-.38-.12l-6.88 4.33-2.96-.92c-.64-.2-.66-.64.14-.95z"/></svg><span><small>Open in</small><b>Telegram</b></span></a>
+      </div>
+    </div>
+    <div class="ph" id="heroPh" aria-hidden="true">
+      <div class="phone"><div class="phone-screen"><div class="app" data-screen="today"></div></div></div>
+    </div>
+  </section>
+
+  <section class="scene voice" id="voice" aria-labelledby="voice-h">
+    <div class="stage">
+      <div class="copy">
+        <p class="kicker">Voice</p>
+        <h2 id="voice-h">Say it in one sentence</h2>
+        <p class="read" id="voiceText">“Call the bank tomorrow at three, drink water every day, and for Work — Masha prepares the report by Friday.” LifeCommit sorts out what is yours, what goes to a group, and whose it is. You can also say it to the bot in Telegram — in a private chat or as a reply in a group chat.</p>
+        <div class="steps" aria-hidden="true"><span>Listening</span><span>Sorting it out</span><span>Found 3</span></div>
+      </div>
+      <div class="ph" id="voicePh" aria-hidden="true">
+        <div class="phone"><div class="phone-screen"><div class="app" data-screen="voice" id="voiceApp"></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene std flip" id="habits" aria-labelledby="habits-h">
+    <div class="stage">
+      <div class="copy">
+        <p class="kicker">Habits</p>
+        <h2 id="habits-h">Do, count or quit</h2>
+        <p>The gym three times a week, eight glasses of water a day, how many days without sweets. One tap to check in.</p>
+        <div class="chips">
+          <span class="chip2"><span class="t ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>Do regularly</span>
+          <span class="chip2"><span class="t ct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5c3.6 4.4 6 7.7 6 10.7a6 6 0 0 1-12 0c0-3 2.4-6.3 6-10.7z"/></svg></span>Count something</span>
+          <span class="chip2"><span class="t qt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M7.8 12L4 9.3v5.4zM16.2 12L20 9.3v5.4z"/></svg></span>Quit</span>
+        </div>
+      </div>
+      <div class="ph" aria-hidden="true">
+        <div class="phone"><div class="phone-screen"><div class="app" data-screen="today"></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene std" id="calendar" aria-labelledby="calendar-h">
+    <div class="stage">
+      <div class="copy">
+        <p class="kicker">To-dos and calendar</p>
+        <h2 id="calendar-h">To-dos and calendar in one list</h2>
+        <p>Events from Apple and Google Calendar show up on their own, and your timed to-dos land in your phone’s calendar. Whatever is left moves to tomorrow.</p>
+        <div class="chips">
+          <span class="chip2"><span class="t a">A</span>Apple Calendar</span>
+          <span class="chip2"><span class="t g">G</span>Google Calendar</span>
+        </div>
+      </div>
+      <div class="ph" aria-hidden="true">
+        <div class="phone"><div class="phone-screen"><div class="app" data-screen="calendar"></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene std flip together" id="together" aria-labelledby="together-h">
+    <div class="stage">
+      <div class="copy">
+        <p class="kicker">Together</p>
+        <h2 id="together-h">Shared to-dos with your team, family and friends</h2>
+        <p>Who prepares the report, whose turn it is today, how much you have saved for the vacation. Assign a to-do to someone, take turns, or give everyone their own.</p>
+        <div class="gtabs" role="group" aria-label="Group examples">
+          <button type="button" data-group="work" aria-pressed="true">Work</button>
+          <button type="button" data-group="family" aria-pressed="false">Family</button>
+          <button type="button" data-group="friends" aria-pressed="false">Friends</button>
+        </div>
+        <p class="tg-note"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="currentColor"/><path fill="#fff" d="M5.4 11.8l11.6-4.5c.54-.2 1 .13.83.94l-1.98 9.3c-.14.66-.54.82-1.1.51l-3-2.22-1.45 1.4c-.16.16-.3.3-.6.3l.2-3.06 5.57-5.03c.24-.21-.05-.33-.38-.12l-6.88 4.33-2.96-.92c-.64-.2-.66-.64.14-.95z"/></svg><span>The bot works in your group’s Telegram chat too: the day’s to-dos in the morning, check-offs with a button right in the chat, and new to-dos by voice in reply to the bot.</span></p>
+      </div>
+      <div class="ph" id="togetherPh">
+        <div class="phone" aria-hidden="true"><div class="phone-screen"><div class="app" data-screen="group" data-group="work" id="groupApp"></div></div></div>
+        <div class="chat" id="chat" aria-hidden="true"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="final" id="download" aria-labelledby="download-h">
+    <span class="mark big-mark" aria-hidden="true"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></span>
+    <h2 id="download-h">Get LifeCommit</h2>
+    <p>On iPhone, Android and in Telegram.</p>
+    <div class="stores">
+      <a class="store apple" href="#" data-soon><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.75.73 1.05 1.6 2.24 2.73 2.2 1.1-.05 1.51-.71 2.84-.71 1.32 0 1.7.71 2.86.69 1.18-.02 1.93-1.07 2.65-2.13.84-1.22 1.18-2.4 1.2-2.46-.03-.01-2.3-.88-2.32-3.5zM14.2 6.13c.6-.73 1-1.74.9-2.75-.87.04-1.92.58-2.54 1.3-.56.64-1.05 1.67-.92 2.66.97.07 1.96-.49 2.56-1.21z"/></svg><span><small>Download on the</small><b>App Store</b></span></a>
+      <a class="store play" href="#" data-soon><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#00D7FE" d="M3.6 2.4c-.27.3-.42.76-.42 1.33v16.54c0 .57.15 1.03.42 1.33L13 12z"/><path fill="#FFCE00" d="M16.1 15.1L13 12l3.1-3.1 3.75 2.13c1.07.6 1.07 1.6 0 2.21z"/><path fill="#FF3A44" d="M16.1 15.1L13 12l-9.4 9.6c.35.37.92.41 1.56.05z"/><path fill="#00F076" d="M16.1 8.9L5.16 2.35c-.64-.36-1.21-.32-1.56.05L13 12z"/></svg><span><small>Get it on</small><b>Google Play</b></span></a>
+      <a class="store tg" href="https://t.me/LifeCommit_bot" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="currentColor"/><path fill="#fff" d="M5.4 11.8l11.6-4.5c.54-.2 1 .13.83.94l-1.98 9.3c-.14.66-.54.82-1.1.51l-3-2.22-1.45 1.4c-.16.16-.3.3-.6.3l.2-3.06 5.57-5.03c.24-.21-.05-.33-.38-.12l-6.88 4.33-2.96-.92c-.64-.2-.66-.64.14-.95z"/></svg><span><small>Open in</small><b>Telegram</b></span></a>
+    </div>
+  </section>
+</main>
+
+<footer class="site-foot">
+  <a class="brand" href="/en/"><span class="mark" style="--m: 6px; --g: 2px" aria-hidden="true"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></span>© 2026 LifeCommit</a>
+  <nav aria-label="Documents"><a href="/en/privacy/">Privacy policy</a><a href="/en/terms/">Terms of use</a></nav>
+  <span class="foot-lang" aria-label="Language"><a href="/ru/" hreflang="ru" lang="ru">RU</a><b aria-current="page">EN</b></span>
+  <span class="soc"><a href="#" aria-label="LifeCommit Telegram channel"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.4 11.2l15.9-6.1c.74-.27 1.37.18 1.13 1.29l-2.7 12.7c-.2.9-.74 1.12-1.5.7l-4.1-3.03-1.98 1.91c-.22.22-.4.4-.82.4l.29-4.18 7.6-6.87c.33-.29-.07-.45-.51-.16l-9.4 5.92-4.05-1.26c-.88-.27-.9-.88.18-1.3z"/></svg></a><a href="#" aria-label="LifeCommit on Threads"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M17.2 8.6C16.4 5.9 14.5 4.5 12 4.5c-3.9 0-6.3 2.9-6.3 7.5s2.4 7.5 6.3 7.5c3.2 0 5.5-1.8 5.5-4.4 0-2.4-2-3.7-4.7-3.7-2.1 0-3.4 1-3.4 2.4 0 1.3 1.1 2.1 2.6 2.1 2.2 0 3.4-1.6 3.4-4.6"/></svg></a></span>
+</footer>
+</body>
+</html>

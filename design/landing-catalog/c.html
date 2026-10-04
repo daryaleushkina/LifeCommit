@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LifeCommit · Клетки</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="kit.css">
+<script>
+  /* Заставка прячет первый экран только при живом JS; если что-то не загрузится, CSS сам покажет всё через 3,6 с. */
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches && (window.scrollY || 0) < 20) document.documentElement.classList.add('intro');
+</script>
+<style>
+/* «Клетки»: бумага, тушь и зелёные уровни. Фон — живая сетка дней на canvas; в сценах её блок «закрашивается»
+   по мере прокрутки, как отмеченные дни. Всё остальное тихое. */
+:root {
+  color-scheme: light;
+  --gut: clamp(16px, 4vw, 56px);
+  --max: 1360px;
+  --ink-2: #39443A;
+  --hair: rgba(31, 42, 31, 0.08);
+}
+html { background: var(--paper); }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+a { color: inherit; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--green-hi); outline-offset: 3px; border-radius: 10px; }
+
+canvas.cells { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+/* мягкий ореол бумаги под текстом — сетка не мешает читать */
+.calm { position: relative; }
+.calm::before {
+  content: ''; position: absolute; inset: -56px -72px; z-index: -1; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(246, 244, 238, 0.96) 58%, rgba(246, 244, 238, 0) 100%);
+}
+
+/* ── шапка ── */
+.top {
+  position: fixed; z-index: 20; top: 0; left: 0; right: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 16px) var(--gut) 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  transition: background-color 400ms, box-shadow 400ms;
+}
+.top.scrolled { background: rgba(246, 244, 238, 0.8); -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2); box-shadow: 0 1px 0 var(--hair); }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; font-weight: 700; font-size: 19px; letter-spacing: -0.02em; }
+.top-r { display: flex; align-items: center; gap: 20px; }
+.lang { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.lang b { color: var(--ink); font-weight: 600; }
+.lang a { text-decoration: none; color: var(--muted); padding: 4px 2px; }
+.lang a:hover { color: var(--ink); }
+.get {
+  height: 40px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center;
+  background: var(--ink); color: #fff; text-decoration: none; font-size: 15px; font-weight: 600;
+  transition: transform 300ms var(--ease-out), background-color 300ms;
+}
+.get:hover { background: #0B100C; transform: translateY(-1px); }
+
+main { position: relative; z-index: 1; overflow-x: clip; }
+
+/* ── первый экран ── */
+.hero {
+  max-width: var(--max); margin: 0 auto; box-sizing: border-box;
+  min-height: min(100svh, 1000px);
+  padding: 128px var(--gut) 72px;
+  display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); align-items: center; gap: 40px;
+}
+.h1 { margin: 0; font-size: clamp(44px, 6.2vw, 104px); line-height: 0.98; font-weight: 700; letter-spacing: -0.042em; text-wrap: balance; max-width: 10.5em; }
+.h1 .ln { padding-bottom: 0.06em; }
+.for { margin: 30px 0 0; font-size: clamp(17px, 1.4vw, 20px); line-height: 1.5; color: var(--muted); }
+.hero-cta { margin-top: 36px; align-items: center; }
+.hero-visual { display: grid; place-items: center; position: relative; }
+.hero-visual::after {
+  content: ''; position: absolute; left: 50%; bottom: -28px; width: 70%; height: 46px; transform: translateX(-50%);
+  border-radius: 50%; background: radial-gradient(closest-side, rgba(35, 122, 70, 0.22), transparent); filter: blur(6px); z-index: -1;
+}
+#heroPhone { --pw: 300; animation: float 7s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-8px); } }
+
+/* ── сцены ── */
+.story { position: relative; }
+.stage { position: relative; }
+.scene {
+  max-width: var(--max); margin: 0 auto; box-sizing: border-box;
+  padding: 120px var(--gut);
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: center; gap: 48px;
+}
+.scene-copy { max-width: 520px; }
+.kick { display: flex; align-items: center; gap: 12px; margin: 0 0 22px; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--green); }
+.chap { display: grid; grid-template-columns: repeat(4, 8px); gap: 3px; }
+.chap i { width: 8px; height: 8px; border-radius: 2.5px; background: var(--h0); }
+.chap i.done { background: var(--h2); }
+.chap i.now { background: var(--h4); }
+.scene h2 { margin: 0; font-size: clamp(34px, 4.2vw, 64px); line-height: 1.02; font-weight: 700; letter-spacing: -0.036em; text-wrap: balance; }
+.txt { margin: 24px 0 0; font-size: clamp(16px, 1.25vw, 19px); line-height: 1.6; color: var(--muted); max-width: 44ch; text-wrap: pretty; }
+.txt .q { color: var(--ink-2); }
+.scene-visual { display: flex; flex-direction: column; align-items: center; gap: 32px; }
+.scene-visual .phone { --pw: 290; }
+.strip { --c: 12px; display: grid; grid-template-rows: repeat(7, var(--c)); grid-auto-flow: column; grid-auto-columns: var(--c); gap: 4px; }
+.strip i, .year i { border-radius: 3px; background: var(--h0); transition: background-color 260ms; }
+.strip i.l1, .year i.l1 { background: var(--h1); } .strip i.l2, .year i.l2 { background: var(--h2); }
+.strip i.l3, .year i.l3 { background: var(--h3); } .strip i.l4, .year i.l4 { background: var(--h4); }
+
+/* слайды экранов внутри телефона сцены */
+.phone-screen .slide { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; transform-origin: 50% 40%; }
+.phone-screen .slide > .app { position: absolute; left: 0; top: 0; transform-origin: 0 0; transform: scale(calc(var(--pw) * 0.94 / 390)); }
+.stage-visual { display: none; }
+.dive { display: none; }
+
+/* закреплённая сцена на широком экране */
+html.pin .stage {
+  height: 100vh; height: 100svh; box-sizing: border-box;
+  max-width: var(--max); margin: 0 auto;
+  padding: 84px var(--gut) 28px;
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); grid-template-rows: minmax(0, 1fr); align-items: center; column-gap: 48px;
+}
+html.pin .scene { display: contents; }
+html.pin .scene-copy { grid-area: 1 / 1; }
+html.pin .scene-visual { display: none; }
+html.pin .stage-visual { display: grid; grid-area: 1 / 2; place-items: center; position: relative; }
+html.pin .dive { display: block; position: absolute; z-index: 5; left: 0; top: 0; width: 20px; height: 20px; border-radius: 6px; background: var(--h4); visibility: hidden; pointer-events: none; }
+
+/* ── финал ── */
+.final {
+  max-width: var(--max); margin: 0 auto; box-sizing: border-box;
+  padding: 160px var(--gut) 120px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+}
+.year { --yc: 12px; --yg: 4px; display: grid; grid-template-rows: repeat(7, var(--yc)); grid-auto-flow: column; grid-auto-columns: var(--yc); gap: var(--yg); margin-bottom: 72px; }
+.final h2 { margin: 0; font-size: clamp(42px, 6vw, 96px); line-height: 1; font-weight: 700; letter-spacing: -0.04em; }
+.final p { margin: 22px 0 0; font-size: clamp(17px, 1.4vw, 20px); color: var(--muted); }
+.final .stores { margin-top: 40px; justify-content: center; align-items: center; }
+.final .qr-card { text-align: left; }
+.final .qr-card p { margin: 0; font-size: 14px; line-height: 1.35; }
+
+/* ── подвал ── */
+footer {
+  position: relative; z-index: 1;
+  max-width: var(--max); margin: 0 auto; box-sizing: border-box;
+  padding: 36px var(--gut) 112px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 32px;
+  border-top: 1px solid var(--hair); font-size: 14px; color: var(--muted);
+}
+footer .f-brand { display: flex; align-items: center; gap: 12px; }
+footer nav { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+footer nav a { text-decoration: none; color: var(--muted); }
+footer nav a:hover { color: var(--ink); }
+.social { display: flex; gap: 8px; }
+.social a { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; color: var(--ink-2); background: rgba(255, 255, 255, 0.7); box-shadow: inset 0 0 0 1px var(--hair); transition: transform 300ms var(--ease-out), background-color 300ms; }
+.social a:hover { background: #fff; transform: translateY(-2px); }
+.social svg { width: 20px; height: 20px; }
+
+/* ── заставка: пока клетки летят в знак, первый экран ждёт ── */
+html.intro .hero-copy > *, html.intro #heroPhone, html.intro .top .word, html.intro .top-r, html.intro #hdrMark i {
+  opacity: 0; animation: lc-safe 0.6s ease 3.6s forwards;
+}
+@keyframes lc-safe { to { opacity: 1; } }
+/* ореол под текстом и тень телефона не должны прорезать заставку */
+.calm::before, .hero-visual::after { transition: opacity 700ms ease; }
+html.intro .calm::before, html.intro .hero-visual::after { opacity: 0; }
+
+/* ── узкий экран ── */
+@media (max-width: 1199px) { #heroPhone { --pw: 280; } }
+@media (max-width: 899px) {
+  .hero { grid-template-columns: minmax(0, 1fr); min-height: 0; padding-top: 104px; padding-bottom: 40px; gap: 52px; }
+  .hero-visual { padding-bottom: 12px; }
+  #heroPhone { --pw: 264; }
+  .scene { grid-template-columns: minmax(0, 1fr); padding: 76px var(--gut); gap: 36px; }
+  .scene-visual .phone { --pw: 264; }
+  .final { padding-top: 112px; }
+  .year { --yc: 10px; --yg: 4px; margin-bottom: 56px; }
+}
+@media (max-width: 640px) {
+  .top-r { gap: 14px; }
+  .lang { display: none; }
+  .qr-card { display: none; }
+  .hero-cta .store, .final .store { flex: 1 1 150px; justify-content: center; padding: 0 14px; }
+  .for { margin-top: 22px; }
+  .hero-cta { margin-top: 28px; }
+  footer { flex-direction: column; align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #heroPhone { animation: none; }
+}
+</style>
+</head>
+<body>
+<canvas class="cells" aria-hidden="true"></canvas>
+
+<header class="top" id="top">
+  <a class="brand" href="#hero" aria-label="LifeCommit, в начало">
+    <span class="mark" id="hdrMark" style="--m: 12px; --g: 4px" aria-hidden="true"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></span>
+    <span class="word">LifeCommit</span>
+  </a>
+  <div class="top-r">
+    <span class="lang"><b>RU</b><span aria-hidden="true">·</span><a href="#" lang="en">EN</a></span>
+    <a class="get" href="#download">Скачать</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero" id="hero">
+    <div class="hero-copy calm">
+      <h1 class="h1">Привычки, дела, цели и календарь в одном месте</h1>
+      <p class="for">Для iPhone, Android и Telegram.</p>
+      <div class="hero-cta" data-stores data-qr data-tone="dark"></div>
+    </div>
+    <div class="hero-visual">
+      <div class="phone" id="heroPhone"><div class="phone-screen"><div class="app" data-screen="today" id="heroApp"></div></div></div>
+    </div>
+  </section>
+
+  <section class="story" aria-label="Что умеет LifeCommit">
+    <div class="stage">
+      <article class="scene" data-kind="voice">
+        <div class="scene-copy calm">
+          <p class="kick"><span class="chap" aria-hidden="true"><i class="now"></i><i></i><i></i><i></i></span>Голос</p>
+          <h2>Скажите одной фразой</h2>
+          <p class="txt"><span class="q">„Каждый день пить восемь стаканов воды, по понедельникам и средам спортзал, а завтра в три позвонить в банк“.</span> LifeCommit сам разберёт, где привычка, а где дело со временем. Так же можно написать или сказать боту в Telegram.</p>
+        </div>
+        <div class="scene-visual">
+          <div class="strip" aria-hidden="true"></div>
+          <div class="phone"><div class="phone-screen"><div class="app" data-screen="voice"></div></div></div>
+        </div>
+      </article>
+
+      <article class="scene" data-kind="habits">
+        <div class="scene-copy calm">
+          <p class="kick"><span class="chap" aria-hidden="true"><i class="done"></i><i class="now"></i><i></i><i></i></span>Привычки</p>
+          <h2>Делать, считать или бросить</h2>
+          <p class="txt">Спортзал три раза в неделю, восемь стаканов воды в день, сколько дней без сладкого. Отметка — одно касание.</p>
+        </div>
+        <div class="scene-visual">
+          <div class="strip" aria-hidden="true"></div>
+          <div class="phone"><div class="phone-screen"><div class="app" data-screen="today"></div></div></div>
+        </div>
+      </article>
+
+      <article class="scene" data-kind="calendar">
+        <div class="scene-copy calm">
+          <p class="kick"><span class="chap" aria-hidden="true"><i class="done"></i><i class="done"></i><i class="now"></i><i></i></span>Дела и календарь</p>
+          <h2>Дела и календарь в одном списке</h2>
+          <p class="txt">События из Apple и Google Календаря появляются сами, а ваши дела со временем попадают в календарь телефона. Несделанное переезжает на завтра.</p>
+        </div>
+        <div class="scene-visual">
+          <div class="strip" aria-hidden="true"></div>
+          <div class="phone"><div class="phone-screen"><div class="app" data-screen="calendar"></div></div></div>
+        </div>
+      </article>
+
+      <article class="scene" data-kind="group">
+        <div class="scene-copy calm">
+          <p class="kick"><span class="chap" aria-hidden="true"><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i></span>Вместе</p>
+          <h2>Общие дела с семьёй и друзьями</h2>
+          <p class="txt">Кто сегодня выносит мусор, сколько собрали на отпуск, кто уже покормил кота. Бот подскажет в общем чате.</p>
+        </div>
+        <div class="scene-visual">
+          <div class="strip" aria-hidden="true"></div>
+          <div class="phone"><div class="phone-screen"><div class="app" data-screen="group"></div></div></div>
+        </div>
+      </article>
+
+      <!-- один телефон для закреплённой сцены на широком экране: экраны сменяют друг друга внутри -->
+      <div class="stage-visual" aria-hidden="true">
+        <div class="phone stage-phone"><div class="phone-screen">
+          <div class="slide"><div class="app" data-screen="voice"></div></div>
+          <div class="slide"><div class="app" data-screen="today"></div></div>
+          <div class="slide"><div class="app" data-screen="calendar"></div></div>
+          <div class="slide"><div class="app" data-screen="group"></div></div>
+        </div></div>
+      </div>
+      <div class="dive" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <section class="final" id="download">
+    <div class="year" aria-hidden="true"></div>
+    <h2>Скачайте LifeCommit</h2>
+    <p>На iPhone, Android и в Telegram.</p>
+    <div data-stores data-qr data-tone="dark"></div>
+  </section>
+</main>
+
+<footer>
+  <div class="f-brand">
+    <span class="mark" style="--m: 9px; --g: 3px" aria-hidden="true"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></span>
+    <span>© 2026 LifeCommit</span>
+  </div>
+  <nav aria-label="Документы">
+    <a href="#">Политика конфиденциальности</a>
+    <a href="#">Условия использования</a>
+  </nav>
+  <div class="social">
+    <a href="#" aria-label="Telegram-канал LifeCommit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M21 4.5L3.5 11.3c-.8.3-.8 1 0 1.2l4.3 1.4 1.6 5c.2.6.7.7 1.1.3l2.4-2.2 4.4 3.3c.6.4 1.1.2 1.3-.5L21.9 5.6c.2-.9-.3-1.4-.9-1.1z"/><path d="M7.8 13.9l9.6-6.1-7.3 7.2"/></svg></a>
+    <a href="#" aria-label="LifeCommit в Threads"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M16.6 8.6C15.8 6.2 14 5 11.6 5 8 5 5.8 7.6 5.8 12s2.2 7 5.8 7c2.7 0 4.6-1.4 5.2-3.6.6-2.3-.7-4.1-3.3-4.4-2.7-.3-4.4 1-4.3 2.6.1 1.5 1.6 2.3 3.2 2.1 1.9-.3 2.9-1.8 2.9-4.6"/></svg></a>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/ScrollTrigger.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/SplitText.min.js"></script>
+<script src="kit.js"></script>
+<script>
+(() => {
+  'use strict';
+  const html = document.documentElement;
+  const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const FINE = matchMedia('(pointer: fine)').matches;
+  const HEX = ['#E4E8DF', '#B8E0C4', '#7CCB96', '#3FA968', '#237A46'];
+  const RGB = HEX.map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
+  const MARK = [0, 1, 4, 1, 4, 2, 4, 2, 0];
+  const KINDS = ['voice', 'habits', 'calendar', 'group'];
+  const screenP = (i, p) => (i === 2 ? 0.13 + 0.87 * p : p);
+
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const eOut3 = (t) => 1 - Math.pow(1 - t, 3);
+  const eIO3 = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  const eIO4 = (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2);
+  const mix = (a, b, t) => `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`;
+  function hash(x, y) {
+    let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+  /* уровень «дня» с пятнами и пропусками — пропуски нарочно, без серий */
+  function heat(c, r) {
+    const n = 0.55 * hash(c, r) + 0.25 * (0.5 + 0.5 * Math.sin(c * 0.35 + r * 0.9)) + 0.2 * (0.5 + 0.5 * Math.sin(c * 0.11 - r * 0.27 + 1.3));
+    return n < 0.3 ? 0 : n < 0.48 ? 1 : n < 0.63 ? 2 : n < 0.77 ? 3 : 4;
+  }
+
+  /* Уровень клетки блока сцены при прогрессе p. Один и тот же рисунок для canvas (широкий экран) и полоски (телефон). */
+  function lvlFor(kind, p, c, r, cols, rows) {
+    if (kind === 'voice') {
+      if (p < 0.08) return 0;
+      if (p < 0.66) {
+        let a = p < 0.54
+          ? 0.14 + 0.86 * Math.abs(Math.sin(c * 0.62 + p * 64) * Math.cos(c * 0.21 - p * 23))
+          : 0.06 + 0.1 * Math.abs(Math.sin(c * 0.5 + p * 40));
+        a *= clamp((p - 0.08) / 0.06);
+        const mid = (rows - 1) / 2;
+        const d = Math.abs(r - mid) / (mid + 0.5);
+        if (d > a) return 0;
+        const x = 1 - d / Math.max(a, 0.001);
+        return x > 0.6 ? 3 : x > 0.25 ? 2 : 1;
+      }
+      const bands = [Math.floor(rows * 0.25), Math.floor(rows * 0.5), Math.floor(rows * 0.75)];
+      const thick = rows >= 14 ? 2 : 1;
+      for (let k = 0; k < 3; k++) {
+        if (r < bands[k] || r >= bands[k] + thick) continue;
+        const f = clamp((p - (0.7 + k * 0.07)) / 0.12);
+        const edge = f * (cols + 1);
+        if (c > edge) return 0;
+        if (p > 0.93) return 4;
+        return c > edge - 1.2 ? 2 : 3;
+      }
+      return 0;
+    }
+    const tgt = 1 + Math.floor(hash(c + 31 * KINDS.indexOf(kind) + 7, r + 3) * 4);
+    let thr;
+    if (kind === 'calendar') thr = (r + hash(c, r + 9) * 0.9) / (rows + 0.9);
+    else if (kind === 'group') {
+      const seeds = [[0.2, 0.3], [0.78, 0.22], [0.52, 0.82]];
+      let best = 9;
+      for (const [sx, sy] of seeds) best = Math.min(best, Math.hypot(c / cols - sx, (r / rows - sy) * (rows / Math.max(cols, 1))));
+      thr = best / 0.72 + hash(c, r) * 0.08;
+    } else thr = (c + hash(c, r) * 0.9) / (cols + 0.9);
+    if (kind === 'year' && heat(c, r) === 0) return 0; // в году есть пустые дни
+    const a = clamp((p * 1.18 - thr) * 5);
+    if (a <= 0) return 0;
+    const t = kind === 'year' ? Math.max(1, heat(c, r)) : tgt;
+    return Math.max(1, Math.round(a * t));
+  }
+
+  /* ───────────── фоновая сетка ───────────── */
+  const cv = document.querySelector('canvas.cells');
+  const ctx = cv.getContext('2d');
+  let W = 0, H = 0, dpr = 1, cell = 20, gap = 6, pitch = 26, cols = 0, rows = 0, ox = 0, oy = 0, qAlpha = 0.62, quiet = null;
+  const state = { pin: false, active: false, ba: 0, fill: [0, 0, 0, 0], trans: [0, 0, 0], geom: null, dirty: true, mx: -1e4, my: -1e4 };
+
+  function addRR(g, x, y, w, h, r) {
+    if (g.roundRect) { g.roundRect(x, y, w, h, r); return; }
+    g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  }
+  function fillRR(x, y, s, color, alpha) {
+    ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath(); addRR(ctx, x, y, s, s, s * 0.28); ctx.fill();
+  }
+
+  function layout() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    const narrow = W < 600;
+    cell = narrow ? 14 : W < 1100 ? 18 : 20; gap = narrow ? 5 : 6; pitch = cell + gap;
+    cols = Math.ceil((W + gap) / pitch) + 1; rows = Math.ceil((H + gap) / pitch) + 1;
+    ox = Math.round((W - (cols * pitch - gap)) / 2); oy = Math.round((H - (rows * pitch - gap)) / 2);
+    qAlpha = narrow ? 0.42 : 0.6;
+    quiet = document.createElement('canvas'); quiet.width = cv.width; quiet.height = cv.height;
+    const q = quiet.getContext('2d');
+    q.setTransform(dpr, 0, 0, dpr, 0, 0); q.globalAlpha = qAlpha; q.fillStyle = HEX[0];
+    q.beginPath();
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) addRR(q, ox + c * pitch, oy + r * pitch, cell, cell, cell * 0.28);
+    q.fill();
+    state.geom = null; state.dirty = true;
+  }
+
+  /* ───────────── заставка: год заполняется и собирается в знак ───────────── */
+  const narrowStart = innerWidth < 600;
+  const intro = { on: html.classList.contains('intro'), t0: 0, d1: narrowStart ? 0.7 : 1.05, d2: narrowStart ? 0.55 : 0.85, marks: null };
+
+  function markTargets() {
+    const els = document.querySelectorAll('#hdrMark i');
+    const cc = Math.floor(cols / 2), rc = Math.floor(rows / 2);
+    return [...els].map((el, i) => {
+      const b = el.getBoundingClientRect();
+      return { c: cc - 1 + (i % 3), r: rc - 1 + Math.floor(i / 3), tx: b.left, ty: b.top, ts: b.width, lv: MARK[i] };
+    });
+  }
+
+  function drawIntro(t) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    if (!intro.marks) intro.marks = markTargets();
+    const cx = W / 2, cy = H / 2, maxD = Math.hypot(W / 2, H / 2);
+    const k = clamp((t - intro.d1) / intro.d2);
+    const isMark = new Set(intro.marks.map((m) => m.c + ':' + m.r));
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (isMark.has(c + ':' + r)) continue;
+        const x = ox + c * pitch, y = oy + r * pitch;
+        const d = Math.hypot(x + cell / 2 - cx, y + cell / 2 - cy) / maxD;
+        const s = eOut3(clamp((t - d * intro.d1 * 0.82) / 0.3));
+        if (s <= 0) continue;
+        const lv = heat(c, r);
+        let color = HEX[lv], alpha = 1;
+        if (k > 0) { // всё стекает к центру, в знак
+          const e = eIO3(clamp((k - (1 - d) * 0.55) / 0.45));
+          color = mix(RGB[lv], RGB[0], e); alpha = 1 + (qAlpha - 1) * e;
+        }
+        const sz = cell * (0.3 + 0.7 * s);
+        fillRR(x + (cell - sz) / 2, y + (cell - sz) / 2, sz, color, alpha);
+      }
+    }
+    for (const m of intro.marks) {
+      const x0 = ox + m.c * pitch, y0 = oy + m.r * pitch;
+      const d = Math.hypot(x0 + cell / 2 - cx, y0 + cell / 2 - cy) / maxD;
+      const s = eOut3(clamp((t - d * intro.d1 * 0.82) / 0.3));
+      if (s <= 0) continue;
+      const base = heat(m.c, m.r);
+      const g = clamp(k / 0.4); // клетки знака принимают свои цвета
+      const color = k > 0 ? mix(RGB[base], RGB[m.lv], eIO3(g)) : HEX[base];
+      const f = eIO4(clamp((k - 0.4) / 0.6)); // и летят в шапку
+      const pulse = 1 + 0.12 * Math.sin(Math.PI * g) * (1 - f);
+      const sz = (cell + (m.ts - cell) * f) * (k > 0 ? pulse : 0.3 + 0.7 * s);
+      const x = x0 + (m.tx - x0) * f + ((k > 0 ? cell + (m.ts - cell) * f : cell) - sz) / 2;
+      const y = y0 + (m.ty - y0) * f + ((k > 0 ? cell + (m.ts - cell) * f : cell) - sz) / 2;
+      fillRR(x, y, sz, color, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  let entranceTl = null;
+  function entrance() {
+    const tl = gsap.timeline({ defaults: { ease: 'expo.out' } });
+    tl.from('.top .word, .top-r', { opacity: 0, y: -8, duration: 0.9, stagger: 0.06 }, 0);
+    let split = null;
+    if (window.SplitText) {
+      split = new SplitText('.h1', { type: 'lines', mask: 'lines', linesClass: 'ln' });
+      tl.from(split.lines, { yPercent: 112, duration: 1.25, stagger: 0.09 }, 0.04);
+    } else tl.from('.h1', { opacity: 0, y: 30, duration: 1 }, 0.04);
+    tl.from('.for', { opacity: 0, y: 16, duration: 1 }, 0.38);
+    tl.from('.hero-cta > *', { opacity: 0, y: 18, duration: 1, stagger: 0.07 }, 0.48);
+    tl.from('#heroPhone', { opacity: 0, y: 110, rotate: 3, duration: 1.6 }, 0.12);
+    tl.eventCallback('onComplete', () => { if (split) split.revert(); });
+    return tl;
+  }
+  function endIntro(fast) {
+    if (!intro.on) return;
+    intro.on = false;
+    html.classList.remove('intro');
+    entranceTl = entrance();
+    if (fast) entranceTl.progress(1);
+    state.dirty = true;
+  }
+
+  /* ───────────── живой фон после заставки ───────────── */
+  const breath = []; let nextBreath = 0;
+  function blockGeom() {
+    if (state.geom) return state.geom;
+    const ph = document.querySelector('.stage-phone');
+    if (!ph) return null;
+    const b = ph.getBoundingClientRect();
+    const minR = Math.ceil((84 - oy) / pitch);
+    const c0 = Math.max(0, Math.floor((b.left - ox) / pitch) - 6);
+    const c1 = Math.min(cols - 1, Math.ceil((b.right - ox) / pitch) + 6);
+    const r0 = Math.max(minR, Math.floor((b.top - oy) / pitch) - 2);
+    const r1 = Math.min(rows - 2, Math.ceil((b.bottom - oy) / pitch) + 2);
+    state.geom = { c0, c1, r0, r1, cols: c1 - c0 + 1, rows: r1 - r0 + 1 };
+    return state.geom;
+  }
+  function inBlock(c, r) {
+    const g = state.ba > 0.02 && state.geom;
+    return g && c >= g.c0 && c <= g.c1 && r >= g.r0 && r <= g.r1;
+  }
+
+  function drawScene(now) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    ctx.globalAlpha = 1; ctx.drawImage(quiet, 0, 0, W, H);
+
+    // редкие «вдохи»: где-то тихо отмечается день
+    if (!REDUCED) {
+      if (now > nextBreath && breath.length < (W < 600 ? 4 : 9)) {
+        breath.push({ c: Math.floor(Math.random() * cols), r: Math.floor(Math.random() * rows), t0: now, dur: 2600 + Math.random() * 1600, lv: Math.random() < 0.7 ? 1 : 2 });
+        nextBreath = now + 260 + Math.random() * 380;
+      }
+      for (let i = breath.length - 1; i >= 0; i--) {
+        const b = breath[i]; const u = (now - b.t0) / b.dur;
+        if (u >= 1) { breath.splice(i, 1); continue; }
+        if (inBlock(b.c, b.r)) continue;
+        fillRR(ox + b.c * pitch, oy + b.r * pitch, cell, HEX[b.lv], Math.sin(Math.PI * u) * 0.9);
+      }
+    }
+
+    // курсор приподнимает соседние клетки на уровень
+    if (FINE && state.mx > -1e3) {
+      const R = pitch * 2.6;
+      const c0 = Math.floor((state.mx - R - ox) / pitch), c1 = Math.ceil((state.mx + R - ox) / pitch);
+      const r0 = Math.floor((state.my - R - oy) / pitch), r1 = Math.ceil((state.my + R - oy) / pitch);
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        if (c < 0 || r < 0 || c >= cols || r >= rows || inBlock(c, r)) continue;
+        const d = Math.hypot(ox + c * pitch + cell / 2 - state.mx, oy + r * pitch + cell / 2 - state.my) / R;
+        if (d < 1) fillRR(ox + c * pitch, oy + r * pitch, cell, HEX[1], (1 - d) * (1 - d) * 0.95);
+      }
+    }
+
+    // блок сцены: закрашивается по мере прокрутки, между сценами прокатывается вверх
+    if (state.pin) {
+      const target = state.active ? 1 : 0;
+      state.ba += (target - state.ba) * 0.16;
+      if (Math.abs(target - state.ba) > 0.005) state.dirty = true; else state.ba = target;
+      const g = state.ba > 0.01 ? blockGeom() : null;
+      if (g) {
+        let tIdx = -1;
+        for (let k = 0; k < 3; k++) if (state.trans[k] > 0 && state.trans[k] < 1) tIdx = k;
+        const active = state.trans.filter((v) => v >= 1).length;
+        const buckets = [[], [], [], [], []];
+        const shift = tIdx >= 0 ? Math.round(eIO3(state.trans[tIdx]) * g.rows) : 0;
+        for (let r = 0; r < g.rows; r++) {
+          for (let c = 0; c < g.cols; c++) {
+            let kind, p, rr = r;
+            if (tIdx >= 0) {
+              const src = r + shift;
+              if (src < g.rows) { kind = KINDS[tIdx]; p = state.fill[tIdx]; rr = src; }
+              else { kind = KINDS[tIdx + 1]; p = state.fill[tIdx + 1]; rr = src - g.rows; }
+            } else { kind = KINDS[active]; p = state.fill[active]; }
+            buckets[lvlFor(kind, p, c, rr, g.cols, g.rows)].push(ox + (g.c0 + c) * pitch, oy + (g.r0 + r) * pitch);
+          }
+        }
+        for (let lv = 0; lv < 5; lv++) {
+          const list = buckets[lv]; if (!list.length) continue;
+          ctx.globalAlpha = state.ba; ctx.fillStyle = HEX[lv]; ctx.beginPath();
+          for (let i = 0; i < list.length; i += 2) addRR(ctx, list[i], list[i + 1], cell, cell, cell * 0.28);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  let last = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (document.hidden) return;
+    if (intro.on) {
+      if (!intro.t0) intro.t0 = now;
+      const t = (now - intro.t0) / 1000;
+      drawIntro(t);
+      if (t >= intro.d1 + intro.d2) endIntro(false);
+      return;
+    }
+    if (!state.dirty && now - last < 33) return; // тихий фон — ~30 кадров, прокрутка — каждый кадр
+    last = now; state.dirty = false;
+    drawScene(now);
+  }
+
+  /* ───────────── полоски клеток (телефон) и год в финале ───────────── */
+  function buildCells(el, n) { el.innerHTML = '<i></i>'.repeat(n); el._lv = new Array(n).fill(0); }
+  function paint(el, kind, p) {
+    const kids = el.children, cs = +el.dataset.cols, rs = 7;
+    for (let i = 0; i < kids.length; i++) {
+      const lv = lvlFor(kind, p, Math.floor(i / rs), i % rs, cs, rs);
+      if (el._lv[i] !== lv) { el._lv[i] = lv; kids[i].className = lv ? 'l' + lv : ''; }
+    }
+  }
+
+  /* ───────────── сцены ───────────── */
+  function sizeStagePhone() {
+    const ph = document.querySelector('.stage-phone');
+    const avail = innerHeight - 84 - 28 - 24;
+    ph.style.setProperty('--pw', String(Math.max(220, Math.min(330, Math.floor(avail / 2.0943)))));
+  }
+
+  function buildPinned() {
+    html.classList.add('pin'); state.pin = true;
+    sizeStagePhone();
+    const stage = document.querySelector('.stage');
+    const copies = [...document.querySelectorAll('.scene-copy')];
+    const slides = [...document.querySelectorAll('.stage-phone .slide')];
+    const apps = slides.map((s) => s.querySelector('.app'));
+    const phone = document.querySelector('.stage-phone');
+    const screen = phone.querySelector('.phone-screen');
+    const dive = document.querySelector('.dive');
+    apps.forEach((a, i) => LC.set(a, screenP(i, 0)));
+    state.fill = [0, 0, 0, 0]; state.trans = [0, 0, 0];
+    gsap.set(copies, { autoAlpha: 0, y: 40 });
+    gsap.set(slides.slice(1), { clipPath: 'inset(100% 0% 0% 0%)' });
+    gsap.set(phone, { autoAlpha: 0 });
+
+    // «нырок в клетку»: клетка фоновой сетки за телефоном растёт и становится его экраном
+    const from = () => {
+      const sb = stage.getBoundingClientRect(), s = screen.getBoundingClientRect();
+      const top = s.top - sb.top; // во время закрепления сцена стоит в 0
+      const c = Math.round((s.left + s.width / 2 - ox - cell / 2) / pitch);
+      const r = Math.round((top + s.height / 2 - oy - cell / 2) / pitch);
+      return { x: ox + c * pitch - sb.left, y: oy + r * pitch };
+    };
+    const to = () => {
+      const sb = stage.getBoundingClientRect(), s = screen.getBoundingClientRect();
+      return { x: s.left - sb.left, y: s.top - sb.top, w: s.width, h: s.height, rad: parseFloat(getComputedStyle(screen).borderTopLeftRadius) || 40 };
+    };
+
+    const px = [0, 1, 2, 3].map(() => ({ p: 0 }));
+    const tx = [0, 1, 2].map(() => ({ t: 0 }));
+    const tl = gsap.timeline({
+      defaults: { ease: 'none' },
+      scrollTrigger: {
+        trigger: stage, start: 'top top', end: () => '+=' + Math.round(innerHeight * 5.8),
+        pin: true, scrub: 0.6, invalidateOnRefresh: true,
+        onToggle: (self) => { state.active = self.isActive; state.geom = null; state.dirty = true; },
+        onUpdate: () => { state.dirty = true; },
+      },
+    });
+    tl.fromTo(dive,
+      { visibility: 'visible', opacity: 1, left: () => from().x, top: () => from().y, width: cell, height: cell, borderRadius: cell * 0.28, backgroundColor: HEX[4] },
+      { left: () => to().x, top: () => to().y, width: () => to().w, height: () => to().h, borderRadius: () => to().rad, backgroundColor: '#F1EFE7', duration: 1.1, ease: 'power3.inOut', immediateRender: false }, 0);
+    tl.to(phone, { autoAlpha: 1, duration: 0.35, ease: 'power1.out' }, 0.85);
+    tl.to(dive, { autoAlpha: 0, duration: 0.25 }, 1.05);
+    tl.to(copies[0], { autoAlpha: 1, y: 0, duration: 0.6, ease: 'power3.out' }, 0.7);
+
+    const seg = (i, d) => tl.to(px[i], { p: 1, duration: d, onUpdate: () => { LC.set(apps[i], screenP(i, px[i].p)); state.fill[i] = px[i].p; } });
+    const tr = (i) => {
+      const at = tl.duration();
+      tl.to(tx[i], { t: 1, duration: 0.9, onUpdate: () => { state.trans[i] = tx[i].t; } }, at);
+      tl.to(copies[i], { autoAlpha: 0, y: -40, duration: 0.45, ease: 'power2.in' }, at);
+      tl.to(copies[i + 1], { autoAlpha: 1, y: 0, duration: 0.55, ease: 'power3.out' }, at + 0.35);
+      tl.to(slides[i], { scale: 0.92, opacity: 0.35, duration: 0.9, ease: 'power2.inOut' }, at);
+      tl.to(slides[i + 1], { clipPath: 'inset(0% 0% 0% 0%)', duration: 0.9, ease: 'power3.inOut' }, at);
+    };
+    seg(0, 3.2); tr(0); seg(1, 2); tr(1); seg(2, 2); tr(2); seg(3, 2);
+    tl.to({}, { duration: 0.5 });
+
+    return () => { html.classList.remove('pin'); state.pin = false; state.active = false; state.ba = 0; };
+  }
+
+  function buildFlow(animated) {
+    document.querySelectorAll('.scene').forEach((s, i) => {
+      const app = s.querySelector('.scene-visual .app');
+      const strip = s.querySelector('.strip');
+      if (!animated) { LC.set(app, 1); paint(strip, KINDS[i], 1); return; }
+      LC.set(app, screenP(i, 0)); paint(strip, KINDS[i], 0);
+      ScrollTrigger.create({
+        trigger: s.querySelector('.scene-visual'), start: 'top 82%', end: 'bottom 42%',
+        onUpdate: (self) => { LC.set(app, screenP(i, self.progress)); paint(strip, KINDS[i], self.progress); },
+      });
+    });
+  }
+
+  /* ───────────── запуск ───────────── */
+  function init() {
+    LC.mount();
+    LC.switcher('c');
+    layout();
+
+    document.querySelectorAll('.strip').forEach((el) => { el.dataset.cols = '18'; buildCells(el, 18 * 7); });
+    const year = document.querySelector('.year');
+    const yc = innerWidth >= 900 ? 53 : innerWidth >= 600 ? 34 : 22;
+    year.dataset.cols = String(yc); buildCells(year, yc * 7);
+
+    const heroApp = document.getElementById('heroApp');
+
+    if (!window.gsap || !window.ScrollTrigger) { // без библиотек — спокойная статичная страница
+      intro.on = false; html.classList.remove('intro');
+      buildFlow(false); paint(year, 'year', 1); LC.set(heroApp, 1);
+      drawScene(0);
+      return;
+    }
+    gsap.registerPlugin(ScrollTrigger);
+    if (window.SplitText) gsap.registerPlugin(SplitText);
+
+    LC.loop(heroApp, { duration: 7600, hold: 2200, delay: intro.on ? 2400 : 600 });
+
+    const mm = gsap.matchMedia();
+    mm.add({
+      desk: '(min-width: 900px) and (prefers-reduced-motion: no-preference)',
+      mob: '(max-width: 899px) and (prefers-reduced-motion: no-preference)',
+      rm: '(prefers-reduced-motion: reduce)',
+    }, (c) => {
+      const { desk, mob } = c.conditions;
+      if (desk) return buildPinned();
+      buildFlow(!!mob);
+      return undefined;
+    });
+
+    if (REDUCED) paint(year, 'year', 1);
+    else {
+      paint(year, 'year', 0);
+      ScrollTrigger.create({ trigger: '.final', start: 'top 85%', end: 'center 60%', onUpdate: (s) => paint(year, 'year', s.progress) });
+    }
+
+    const top = document.getElementById('top');
+    const onScroll = () => top.classList.toggle('scrolled', window.scrollY > 24);
+    addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+    document.querySelectorAll('a[href="#download"]').forEach((a) => a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const y = document.getElementById('download').getBoundingClientRect().top + window.scrollY - 40;
+      window.scrollTo({ top: y, behavior: REDUCED ? 'auto' : 'smooth' });
+    }));
+
+    if (FINE) {
+      addEventListener('pointermove', (e) => { state.mx = e.clientX; state.my = e.clientY; state.dirty = true; }, { passive: true });
+      document.addEventListener('pointerleave', () => { state.mx = state.my = -1e4; state.dirty = true; });
+    }
+
+    if (intro.on) {
+      const skip = () => endIntro(true);
+      ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach((ev) => addEventListener(ev, skip, { once: true, passive: true }));
+    } else if (!REDUCED) {
+      entranceTl = entrance();
+    }
+
+    let rt = 0;
+    addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { layout(); intro.marks = null; }, 120); });
+    ScrollTrigger.addEventListener('refreshInit', () => { if (state.pin) sizeStagePhone(); });
+    ScrollTrigger.addEventListener('refresh', () => { state.geom = null; state.dirty = true; });
+
+    requestAnimationFrame(frame);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>

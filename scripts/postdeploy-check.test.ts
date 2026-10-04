@@ -1,9 +1,11 @@
 // Проверка прода после деплоя (scripts/postdeploy-check.mjs): адрес, главный скрипт, каждая проверка и повторы.
 import { describe, expect, it, vi } from 'vitest';
-import { check, checkOnce, mainScript, prodUrl } from './postdeploy-check.mjs';
+import { check, checkOnce, LANDING, mainScript, prodUrl } from './postdeploy-check.mjs';
 
 const BASE = 'https://lifecommit.app';
-const HTML = '<!doctype html><html><head><script type="module" crossorigin src="/assets/index-NEW.js"></script></head><body><div id="root"></div></body></html>';
+// Как в сборке: в <head> первым идёт встроенный скрипт переадресации на лендинг (без src), потом скрипт приложения.
+const HTML = '<!doctype html><html><head><meta charset="UTF-8"><script>try{var p=1}catch(e){}</script><script type="module" crossorigin src="/assets/index-NEW.js"></script></head><body><div id="root"></div></body></html>';
+const SITE = '<!doctype html><html lang="ru"><body><header class="site-top"></header><main></main></body></html>';
 
 type Reply = { status: number; type?: string; body?: string } | Error;
 // Тело байтами: у строки Response сам ставит text/plain, а здесь нужен и ответ совсем без content-type.
@@ -17,6 +19,7 @@ function prod(patch: Record<string, Reply> = {}) {
     '/assets/index-NEW.js': { status: 200, type: 'application/javascript' },
     '/api/me': { status: 401, type: 'application/json' },
     '/bot/webhook': { status: 403, type: 'text/plain' },
+    ...Object.fromEntries(LANDING.map((p) => [p, { status: 200, type: 'text/html', body: SITE }])),
   };
   const table = { ...ok, ...patch };
   return vi.fn(async (url: string, _init?: RequestInit) => {
@@ -43,6 +46,7 @@ describe('prodUrl', () => {
 describe('mainScript', () => {
   it('скрипт сборки из HTML', () => expect(mainScript(HTML)).toBe('/assets/index-NEW.js'));
   it('нет скрипта /assets — null', () => expect(mainScript('<script src="/src/main.tsx"></script>')).toBeNull());
+  it('встроенный скрипт без src не мешает найти скрипт сборки', () => expect(mainScript('<script>location.replace("/ru/")</script><script src="/assets/a.js"></script>')).toBe('/assets/a.js'));
 });
 
 describe('checkOnce', () => {
@@ -54,6 +58,12 @@ describe('checkOnce', () => {
     expect(JSON.stringify(f.mock.calls)).not.toMatch(/secret|authorization|tma /i);
   });
 
+  it('лендинг не отвечает 200', async () => {
+    expect(await checkOnce(BASE, prod({ '/en/': { status: 404, type: 'text/html', body: 'нет' } }), null)).toEqual(['лендинг /en/: 404, ждали 200']);
+  });
+  it('вместо лендинга отдался мини-апп (SPA-заглушка)', async () => {
+    expect(await checkOnce(BASE, prod({ '/ru/': { status: 200, type: 'text/html', body: HTML } }), null)).toEqual(['лендинг /ru/: отдаётся не страница сайта (нет шапки site-top)']);
+  });
   it('главная не 200', async () => {
     expect(await checkOnce(BASE, prod({ '/': { status: 503, type: 'text/html', body: HTML } }), null)).toContain('главная: 503, ждали 200');
   });
@@ -99,15 +109,15 @@ describe('checkOnce', () => {
   it('сеть: главная не ответила — скрипт не проверяем, остальное проверяем', async () => {
     const f = prod({ '/': new Error('getaddrinfo ENOTFOUND') });
     expect(await checkOnce(BASE, f, null)).toEqual(['главная: сеть — getaddrinfo ENOTFOUND']);
-    expect(f.mock.calls.map(([u]) => u.slice(BASE.length))).toEqual(['/', '/api/me', '/bot/webhook']);
+    expect(f.mock.calls.map(([u]) => u.slice(BASE.length))).toEqual(['/', ...LANDING, '/api/me', '/bot/webhook']);
   });
   it('сеть: ошибка не Error и сбои по остальным адресам', async () => {
     const f = vi.fn(async (url: string) => {
-      if (url.endsWith('/')) return res({ status: 200, type: 'text/html', body: HTML });
+      if (url === `${BASE}/`) return res({ status: 200, type: 'text/html', body: HTML });
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- проверяем разбор не-Error
       throw 'timeout';
     });
-    expect(await checkOnce(BASE, f, null)).toEqual(['скрипт: сеть — timeout', 'API: сеть — timeout', 'вебхук: сеть — timeout']);
+    expect(await checkOnce(BASE, f, null)).toEqual(['скрипт: сеть — timeout', ...LANDING.map((p) => `лендинг ${p}: сеть — timeout`), 'API: сеть — timeout', 'вебхук: сеть — timeout']);
   });
 });
 
