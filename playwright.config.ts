@@ -42,7 +42,8 @@ export default defineConfig<TgOptions>({
   ignoreSnapshots: process.platform !== 'darwin',
   timeout: 60_000,
   expect: {
-    timeout: 8_000,
+    // В GitHub Actions WebKit рисует программно и заметно медленнее Мака — там ждём дольше; проверки те же.
+    timeout: process.env.CI ? 15_000 : 8_000,
     toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.004, scale: 'css' },
   },
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
@@ -54,7 +55,7 @@ export default defineConfig<TgOptions>({
     reducedMotion: 'reduce',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    actionTimeout: 8_000,
+    actionTimeout: process.env.CI ? 15_000 : 8_000,
   },
   webServer: {
     command: `pnpm dev --port ${PORT} --strictPort`,
