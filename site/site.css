@@ -134,6 +134,8 @@ a { color: inherit; }
 .doc-main th { color: var(--mut); font-weight: 600; }
 
 @media (max-width: 560px) {
+  /* на телефоне под шапкой бежит текст — подложка плотнее, чтобы буквы не просвечивали */
+  .site-top.solid { background: color-mix(in srgb, var(--bg) 88%, transparent); }
   .top-r .lang { display: none; }
   .top-r { gap: 8px; }
   .stores { flex-direction: column; align-items: stretch; }

@@ -20,11 +20,13 @@ test('браузер на корне без Telegram — лендинг на р�
   await page.goto('/');
   await expect(page).toHaveURL(/\/ru\/$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Привычки, дела, цели и календарь в одном месте');
-  const hero = page.locator('.hero');
-  await expect(hero.getByRole('link', { name: /Открыть в\s*Telegram/ })).toHaveAttribute('href', 'https://t.me/LifeCommit_bot');
+  // на первом экране кнопок скачивания нет (решение владелицы 04.10): есть «Скачать» в шапке, кнопки — внизу
+  await expect(page.locator('.hero').getByRole('link')).toHaveCount(0);
+  const final = page.locator('#download');
+  await expect(final.getByRole('link', { name: /Открыть в\s*Telegram/ })).toHaveAttribute('href', 'https://t.me/LifeCommit_bot');
   // на iPhone — App Store, на Android — Google Play; второй стор спрятан
-  const mine = hero.getByRole('link', { name: tgPlatform === 'ios' ? /App Store/ : /Google Play/ });
-  const other = hero.locator(tgPlatform === 'ios' ? '.store.play' : '.store.apple');
+  const mine = final.getByRole('link', { name: tgPlatform === 'ios' ? /App Store/ : /Google Play/ });
+  const other = final.locator(tgPlatform === 'ios' ? '.store.play' : '.store.apple');
   await expect(mine).toBeVisible();
   await expect(other).toBeHidden();
   await noSideScroll(page);
@@ -94,6 +96,64 @@ test('голос: одна фраза — и себе, и в группу', asyn
   await expect(page.locator('#voiceText')).toContainText('ответом в чате группы');
 });
 
+test.describe('с анимацией', () => {
+  // по умолчанию тесты идут с «уменьшить движение», а там телефон не прилипает и всё сразу в конечном виде
+  test.use({ reducedMotion: 'no-preference' });
+
+test('голос на телефоне: экран прилипает под шапкой, шаги над ним идут вместе с ним', async ({ page }) => {
+  await page.goto('/ru/');
+  const ph = page.locator('#voicePh');
+  const steps = ph.locator('.steps-m span');
+  await expect(steps).toHaveText(['Слушаю', 'Разбираю', 'Нашлось 3']);
+  // доводим телефон до места прилипания и листаем дальше — он остаётся на том же месте под шапкой
+  const stuckAt = await ph.evaluate((el) => parseFloat(getComputedStyle(el).top));
+  const box = await ph.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+  await page.evaluate((y) => window.scrollTo(0, y), box - stuckAt + 200);
+  await expect.poll(() => ph.evaluate((el) => Math.round(el.getBoundingClientRect().top))).toBe(Math.round(stuckAt));
+  await expect(page.locator('#voiceApp .v-title')).toHaveText('Слушаю');
+  await expect(steps.nth(0)).toHaveClass(/\bon\b/);
+  // целиком в экране: шаги над телефоном и низ телефона видны
+  await expect(steps.nth(0)).toBeInViewport({ ratio: 1 });
+  await expect(ph.locator('.phone')).toBeInViewport({ ratio: 1 });
+  // долистали — разобрано, горит последний шаг, а телефон всё ещё на месте
+  await page.evaluate((y) => window.scrollTo(0, y + window.innerHeight * 0.85), box - stuckAt);
+  await expect(page.locator('#voiceApp .v-title')).toHaveText('Нашлось 3');
+  await expect(steps.nth(2)).toHaveClass(/\bon\b/);
+  await expect(steps.nth(0)).toHaveClass(/\bdone\b/);
+  expect(Math.round(await ph.evaluate((el) => el.getBoundingClientRect().top))).toBe(Math.round(stuckAt));
+  await noSideScroll(page);
+});
+
+test.describe('узкий телефон, английский', () => {
+  test.use({ viewport: { width: 320, height: 820 } });
+  test('прилипший телефон «Голоса» и шаги над ним не шире экрана', async ({ page }) => {
+    await page.goto('/en/');
+    const ph = page.locator('#voicePh');
+    const stuckAt = await ph.evaluate((el) => parseFloat(getComputedStyle(el).top));
+    const box = await ph.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    await page.evaluate((y) => window.scrollTo(0, y), box - stuckAt + 200);
+    await expect.poll(() => ph.evaluate((el) => Math.round(el.getBoundingClientRect().top))).toBe(Math.round(stuckAt));
+    // каждая пилюля шагов и телефон целиком по ширине внутри экрана с полями 16px
+    const sides = await page.evaluate(() => [...document.querySelectorAll('#voicePh .steps-m span, #voicePh .phone')].map((el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)]; }));
+    for (const [l, r] of sides) {
+      expect(l, 'левый край в поле экрана').toBeGreaterThanOrEqual(16);
+      expect(r, 'правый край в поле экрана').toBeLessThanOrEqual(320 - 16);
+    }
+    await noSideScroll(page);
+  });
+});
+
+test('«уменьшить движение» выключено — заголовки сцен выезжают и остаются целыми', async ({ page }) => {
+  await page.goto('/ru/');
+  const h2 = page.getByRole('heading', { name: 'Дела и календарь в одном списке' });
+  await h2.scrollIntoViewIfNeeded();
+  // после появления строки собраны обратно: заголовок — обычный текст, без обёрток анимации
+  await expect(h2.locator('.ln')).toHaveCount(0);
+  await expect(h2).toBeInViewport();
+  await expect(page.locator('#calendar .copy p').first()).toHaveCSS('opacity', '1');
+});
+});
+
 test('«Вместе»: примеры групп — работа, семья, друзья — и чат Telegram рядом', async ({ page }) => {
   await page.goto('/ru/');
   const tabs = page.getByRole('group', { name: 'Примеры групп' });
@@ -111,12 +171,34 @@ test('«Вместе»: примеры групп — работа, семья, 
   await expect(phone.locator('h1')).toHaveText('Поход');
   await expect(chat).toContainText('Сегодня в «Походе»');
   await expect(page.locator('.tg-note')).toContainText('в чате группы в Telegram');
+  // на телефоне переключатель групп сразу над телефоном, а заметка про чат — под ним, после карточки чата;
+  // меряем в конце страницы, где сдвиги появления (телефон и чат выезжают при прокрутке) уже доиграли
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const below = async (a: string, b: string) => page.evaluate(([a, b]) => document.querySelector(a)!.getBoundingClientRect().top >= document.querySelector(b)!.getBoundingClientRect().bottom, [a, b]);
+  expect(await below('#togetherPh', '.gtabs'), 'телефон под переключателем групп').toBe(true);
+  expect(await below('.tg-note', '#chat'), 'заметка про чат под карточкой чата').toBe(true);
   await noSideScroll(page);
+});
+
+test.describe('компьютер', () => {
+  // правило владелицы 04.10: лендинг проверяется и на телефоне, и на компьютере
+  test.use({ viewport: { width: 1280, height: 800 }, isMobile: false, hasTouch: false });
+  test('первый экран без кнопок, «Вместе»: телефон слева, текст и заметка про чат справа', async ({ page }) => {
+    await page.goto('/ru/');
+    await expect(page.locator('.hero').getByRole('link')).toHaveCount(0);
+    await expect(page.locator('#heroPh .phone')).toBeInViewport();
+    await page.locator('#together .gtabs').scrollIntoViewIfNeeded();
+    const r = (sel: string) => page.locator(sel).evaluate((el) => { const b = el.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; });
+    const [phone, tabs, note] = [await r('#togetherPh .phone'), await r('#together .gtabs'), await r('.tg-note')];
+    expect(note.left, 'заметка правее телефона').toBeGreaterThanOrEqual(phone.right);
+    expect(note.top, 'заметка под переключателем групп').toBeGreaterThanOrEqual(tabs.bottom);
+    await noSideScroll(page);
+  });
 });
 
 test('кнопка стора пока никуда не ведёт, «Скачать» ведёт к кнопкам внизу', async ({ page, tgPlatform }) => {
   await page.goto('/ru/');
-  const store = page.locator('.hero').getByRole('link', { name: tgPlatform === 'ios' ? /App Store/ : /Google Play/ });
+  const store = page.locator('#download').getByRole('link', { name: tgPlatform === 'ios' ? /App Store/ : /Google Play/ });
   await store.click();
   await expect(page).toHaveURL(/\/ru\/$/);
   await page.locator('.site-top').getByRole('link', { name: 'Скачать' }).click();

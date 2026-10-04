@@ -66,11 +66,10 @@ main { position: relative; z-index: 1; }
   animation: sheen 10s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
 @keyframes sheen { 0% { background-position: 100% 0 } 55%, 100% { background-position: 0% 0 } }
 .hero .line { margin: 26px 0 0; font-size: clamp(17px, 1.4vw, 20px); color: var(--mut); letter-spacing: -0.005em; }
-.hero .stores { margin-top: 38px; }
 
 /* телефон с ореолом */
 .ph { position: relative; justify-self: center; isolation: isolate; }
-.ph::before { content: ''; position: absolute; z-index: -1; inset: -16% -38%; border-radius: 50%;
+.ph::before { content: ''; position: absolute; z-index: -1; inset: -16% -38%; border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, var(--halo), color-mix(in srgb, var(--halo) 30%, transparent) 52%, transparent 76%);
   filter: blur(18px); animation: halo 6.5s ease-in-out infinite; }
 @keyframes halo { 0%, 100% { opacity: 0.85; transform: scale(1) } 50% { opacity: 0.55; transform: scale(1.07) } }
@@ -101,6 +100,8 @@ main { position: relative; z-index: 1; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .steps span.on { color: var(--acc-hi); } }
 .steps span.done { color: var(--fg); }
 .voice .ph .phone { --pw: 350; }
+/* копия шагов над телефоном — только на телефоне, где сцена «Голос» прилипает к верху экрана */
+.steps-m { display: none; }
 
 .chips { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 10px; }
 .chip2 { display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 16px 0 7px; border-radius: 15px; font-size: 15px; font-weight: 500;
@@ -115,7 +116,10 @@ main { position: relative; z-index: 1; }
 .gtabs button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 12px; background: transparent; color: var(--mut); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; transition: background-color 300ms, color 300ms; }
 .gtabs button:hover { color: var(--fg); }
 .gtabs button[aria-pressed='true'] { background: var(--fg); color: var(--bg); font-weight: 600; }
-.tg-note { margin-top: 22px; display: flex; align-items: flex-start; gap: 12px; max-width: 46ch; font-size: 15px; line-height: 1.5; color: var(--mut); }
+.together .stage { grid-template-areas: 'ph .' 'ph copy' 'ph note' 'ph .'; grid-template-rows: 1fr auto auto 1fr; row-gap: 0; }
+.together .copy { grid-area: copy; }
+.together .ph { grid-area: ph; }
+.tg-note { grid-area: note; position: relative; margin-top: 22px; display: flex; align-items: flex-start; gap: 12px; max-width: 46ch; font-size: 15px; line-height: 1.5; color: var(--mut); }
 .tg-note svg { flex: none; width: 22px; height: 22px; margin-top: 1px; color: #2AABEE; }
 
 /* чат группы в Telegram рядом с телефоном */
@@ -168,11 +172,23 @@ main { position: relative; z-index: 1; }
 }
 @media (max-width: 880px) {
   .hero, .stage { grid-template-columns: minmax(0, 1fr); }
-  .hero { padding-top: calc(env(safe-area-inset-top, 0px) + 104px); gap: 56px; }
-  .hero .stores { margin-top: 30px; }
-  .stage { min-height: 0; padding-block: 96px; gap: 48px; }
+  .hero { padding-top: calc(env(safe-area-inset-top, 0px) + 104px); padding-bottom: 40px; gap: 44px; }
+  .stage, .std .stage { min-height: 0; padding-block: 60px; gap: 40px; }
   .std.flip .ph { order: 0; }
   .ph .phone, .voice .ph .phone { --pw: 290; }
+  .together .stage { grid-template-areas: 'copy' 'ph' 'note'; grid-template-rows: none; row-gap: 32px; }
+  .tg-note { margin-top: 0; }
+  /* «Голос»: телефон прилипает под шапкой, пока его экран проходит от «Слушаю» до «Нашлось 3»;
+     пустой хвост сцены — путь прокрутки (CSS sticky, а не закрепление GSAP: на iOS оно дёргается) */
+  .voice .copy .steps { display: none; }
+  .steps-m { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0 0 14px; }
+  .steps-m span { height: 30px; padding: 0 11px; gap: 6px; font-size: 13px; }
+  #voicePh { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 76px); display: flex; flex-direction: column; align-items: center; }
+  .voice .stage::after { content: ''; height: 100svh; }
+}
+@media (max-width: 380px) {
+  .steps-m { gap: 4px; }
+  .steps-m span { padding: 0 8px; gap: 5px; font-size: 12px; }
 }
 @media (max-width: 420px) {
   .ph .phone, .voice .ph .phone { --pw: 268; }
@@ -181,4 +197,6 @@ main { position: relative; z-index: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .grain, .ph::before, .sheen { animation: none; }
+  #voicePh { position: relative; top: auto; }
+  .voice .stage::after { display: none; }
 }

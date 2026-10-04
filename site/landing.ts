@@ -158,7 +158,7 @@ function draw(now: number) {
         if (dr < band) i += (0.22 + 0.5 * e) * (1 - dr / band) * va;
       } else if (decode) {
         if (dr <= 1) { const w = (cx - decX) / 70; i += (0.12 + Math.exp(-w * w) * 0.7) * va * (dr === 0 ? 1 : 0.5); }
-      } else if (found) {
+      } else if (found && narrow === 1) {
         for (let k = 0; k < 3; k++) {
           if (c === fcols[k]) { const a = seg(vp, 0.7 + k * 0.07, 0.75 + k * 0.07); i += a * (0.85 - 0.6 * Math.min(1, dr / (rows * 0.6))) * va; }
         }
@@ -261,10 +261,11 @@ function start() {
   resize();
   const heroApp = $('#heroPh .app');
   const voiceApp = $('#voiceApp');
-  const steps = $$('.steps span');
+  // шаги есть в двух местах: в тексте (широкий экран) и над телефоном (телефон) — каждая строка считается сама
+  const stepRows = $$('.steps').map((row) => $$('span', row));
   const setSteps = (p: number) => {
-    const s = p < 0.12 ? -1 : p < 0.54 ? 0 : p < 0.68 ? 1 : 2;
-    steps.forEach((el, i) => { el.classList.toggle('on', i === s); el.classList.toggle('done', i < s); });
+    const s = p < 0.02 ? -1 : p < 0.54 ? 0 : p < 0.68 ? 1 : 2;
+    for (const row of stepRows) row.forEach((el, i) => { el.classList.toggle('on', i === s); el.classList.toggle('done', i < s); });
   };
 
   if (reduced) {
@@ -286,23 +287,66 @@ function start() {
     const split = SplitText.create(h1, { type: 'lines', mask: 'lines', linesClass: 'ln' });
     tl.from(split.lines, { yPercent: 112, duration: 1.4, stagger: 0.09 }, 0.35).add(() => { split.revert(); h1.classList.add('sheen'); }, 2.4);
   }
-  tl.from('.hero .line', { y: 16, opacity: 0, duration: 1.1 }, 0.9).from('.hero .stores', { y: 22, opacity: 0, duration: 1.1 }, 1.0).from('.site-top > *', { y: -16, opacity: 0, duration: 1, stagger: 0.08 }, 0.6);
+  tl.from('.hero .line', { y: 16, opacity: 0, duration: 1.1 }, 0.9).from('.site-top > *', { y: -16, opacity: 0, duration: 1, stagger: 0.08 }, 0.6);
+
+  // заголовки сцен выезжают строками из-под маски, остальное в блоке — следом; один раз
+  $$('.copy, .final').forEach((box) => {
+    const h2 = $('h2', box);
+    if (!h2) return;
+    const split = SplitText.create(h2, { type: 'lines', mask: 'lines', linesClass: 'ln' });
+    const rest = $$(':scope > :not(h2)', box);
+    gsap.timeline({ defaults: { ease: 'expo.out' }, scrollTrigger: { trigger: box, start: 'top 82%', once: true } })
+      .from(split.lines, { yPercent: 112, duration: 1.1, stagger: 0.08 })
+      .from(rest, { y: 18, opacity: 0, duration: 0.9, stagger: 0.06 }, 0.15)
+      .add(() => split.revert());
+  });
 
   const mm = gsap.matchMedia();
   // «Голос»: закреплённая сцена, прокрутка ведёт шторку от «Слушаю» до «Нашлось 3»
   const vs = { p: 0 };
+  const lightWords = (p: number) => {
+    const lit = Math.round(vWords.length * Math.min(1, p));
+    vWords.forEach((w, i) => w.classList.toggle('lit', i < lit));
+  };
+  let wordsWithVoice = true;
   const applyVoice = () => {
     if (voiceApp) setApp(voiceApp, vs.p);
     F.voiceP = vs.p;
     setSteps(vs.p);
-    const lit = Math.round(vWords.length * Math.min(1, vs.p / 0.6));
-    vWords.forEach((w, i) => w.classList.toggle('lit', i < lit));
+    if (wordsWithVoice) lightWords(vs.p / 0.6);
   };
   mm.add('(min-width: 881px)', () => {
+    wordsWithVoice = true;
     gsap.to(vs, { p: 1, ease: 'none', onUpdate: applyVoice, scrollTrigger: { trigger: '#voice .stage', start: 'top top', end: '+=230%', pin: true, scrub: 0.6 } });
   });
   mm.add('(max-width: 880px)', () => {
-    gsap.to(vs, { p: 1, ease: 'none', onUpdate: applyVoice, scrollTrigger: { trigger: '#voicePh', start: 'top 82%', end: 'bottom 30%', scrub: 0.6 } });
+    // телефон прилипает под шапкой (CSS sticky) и целиком влезает в экран вместе с шагами над ним;
+    // абзац светлеет сам, пока его читают, — к моменту, когда телефон прилип, он уже уехал вверх
+    const ph = $('#voicePh');
+    const phone = $('#voicePh .phone');
+    const stage = $('#voice .stage');
+    if (!ph || !phone || !stage) return;
+    wordsWithVoice = false;
+    const top = () => parseFloat(getComputedStyle(ph).top) || 0;
+    // по высоте — чтобы влез под шапкой вместе с шагами; по ширине — не больше, чем CSS даёт этому экрану, и в поля 16px
+    const fit = () => {
+      const maxW = Math.min(window.innerWidth <= 420 ? 268 : 290, window.innerWidth - 32);
+      phone.style.setProperty('--pw', String(Math.floor(clamp((window.innerHeight - top() - 64) / 2.0943, Math.min(220, maxW), maxW))));
+    };
+    fit();
+    ScrollTrigger.addEventListener('refreshInit', fit);
+    const st1 = ScrollTrigger.create({ trigger: '#voiceText', start: 'top 85%', end: 'bottom 50%', scrub: true, onUpdate: (st) => lightWords(st.progress) });
+    // начало — телефон дошёл до места прилипания, конец — чуть раньше, чем он отлипнет: «Нашлось 3» постоит
+    const tw = gsap.to(vs, {
+      p: 1, ease: 'none', onUpdate: applyVoice,
+      scrollTrigger: {
+        // меряем от абзаца, а не от самого телефона: прилипший элемент ScrollTrigger измерил бы на месте прилипания
+        trigger: '#voice .copy', start: () => `bottom top+=${top() - (parseFloat(getComputedStyle(stage).rowGap) || 0)}`,
+        endTrigger: stage, end: () => `bottom top+=${top() + ph.offsetHeight + parseFloat(getComputedStyle(stage).paddingBottom) + window.innerHeight * 0.2}`,
+        scrub: 0.4,
+      },
+    });
+    return () => { ScrollTrigger.removeEventListener('refreshInit', fit); phone.style.removeProperty('--pw'); st1.kill(); tw.scrollTrigger?.kill(); };
   });
   ScrollTrigger.create({
     trigger: '#voice', start: 'top 70%', end: 'bottom 30%',
@@ -316,7 +360,7 @@ function start() {
     if (!app || !phone) return;
     const st = { p: 0 };
     gsap.to(st, { p: 1, ease: 'none', onUpdate: () => setApp(app, st.p), scrollTrigger: { trigger: phone, start: 'top 88%', end: 'center 42%', scrub: 0.6 } });
-    gsap.from($('.ph', sec), { y: 60, ease: 'none', scrollTrigger: { trigger: sec, start: 'top bottom', end: 'center center', scrub: 0.8 } });
+    gsap.from($('.ph', sec), { y: 60, scale: 0.94, ease: 'none', scrollTrigger: { trigger: sec, start: 'top bottom', end: 'center center', scrub: 0.8 } });
   });
   gsap.from('#chat', { y: 40, x: -20, scale: 0.94, ease: 'none', scrollTrigger: { trigger: '#togetherPh .phone', start: 'top 85%', end: 'center 50%', scrub: 0.8 } });
 
