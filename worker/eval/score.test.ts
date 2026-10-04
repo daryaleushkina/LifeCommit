@@ -235,8 +235,8 @@ describe('итоги', () => {
 });
 
 describe('эталонные фразы', () => {
-  it('49 кейсов: русских 25–45, английских 5–8, микрофон с группами — не меньше 10, id не повторяются', () => {
-    expect(CASES).toHaveLength(49);
+  it('50 кейсов: русских 25–45, английских 5–8, микрофон с группами — не меньше 10, id не повторяются', () => {
+    expect(CASES).toHaveLength(50);
     const ru = CASES.filter((c) => c.lang === 'ru').length;
     expect(ru).toBeGreaterThanOrEqual(25);
     expect(ru).toBeLessThanOrEqual(45);

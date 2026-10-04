@@ -44,6 +44,14 @@ describe('ответ модели → групповые дела', () => {
     expect(d[0]).toMatchObject({ mode: 'one', assignees: [] });
     expect(d[1]).toMatchObject({ mode: 'assign', all_members: true, rrule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' });
   });
+  it('дата в прошлом, дальше года или не настоящая — сегодня', () => {
+    const d = toGroupDrafts({ items: [
+      { title: 'Встреча', mode: 'one', repeat: 'once', day: '2030-01-02' },
+      { title: 'Уборка', mode: 'one', repeat: 'once', day: '2026-09-30' },
+      { title: 'Ужин', mode: 'one', repeat: 'once', day: '2026-10-03' },
+    ] }, today, members, 1);
+    expect(d.map((x) => x.day)).toEqual([today, today, '2026-10-03']);
+  });
 });
 
 describe('валюта цели — только названная', () => {
