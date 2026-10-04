@@ -4,7 +4,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { takeVoiceQuota } from './api';
 import { byTelegram, db, tg, type Env } from './env';
-import { bugCommand, check, cleanFeedback, FEEDBACK, notifyOwner, submitFeedback } from './feedback';
+import { bugCommand, check, cleanFeedback, FEEDBACK, notifyOwner, type Submitted } from './feedback';
 import { transcribe } from './voice';
 
 interface TgFrom {
@@ -41,6 +41,7 @@ const texts = {
     voiceTooLong: 'Слишком длинное голосовое — до двух минут.',
     voiceLimit: 'Голосовых на сегодня хватит — напиши, пожалуйста, текстом.',
     voiceFailed: 'Не получилось разобрать голосовое — напиши, пожалуйста, текстом.',
+    failed: 'Не получилось отправить — нажми ещё раз',
     heard: (text: string) => `Расслышал: «${text}»`,
     openFirst: 'Сначала открой LifeCommit — потом можно сообщить о проблеме.',
     open: 'Открыть LifeCommit',
@@ -59,6 +60,7 @@ const texts = {
     voiceTooLong: 'That voice message is too long — keep it under two minutes.',
     voiceLimit: "That's enough voice for today — please write it as text.",
     voiceFailed: 'Could not make out the voice message — please write it as text.',
+    failed: 'Could not send — tap again',
     heard: (text: string) => `I heard: "${text}"`,
     openFirst: 'Open LifeCommit first — then you can report a problem.',
     open: 'Open LifeCommit',
@@ -85,7 +87,6 @@ interface Draft {
   prompt_message_id: number | null;
 }
 
-const DRAFT_COLS = 'user_id, chat_id, text, attachments, prompt_message_id';
 const USER_COLS = 'id, first_name, username, language_code';
 
 async function findUser(sb: SupabaseClient, telegramId: number): Promise<FeedbackUser | null> {
@@ -183,7 +184,7 @@ async function collect(env: Env, sb: SupabaseClient, userId: number, language: s
       const audio = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${file.file_path}`);
       text = cleanFeedback(await transcribe(env, await audio.arrayBuffer(), t === texts.en ? 'en' : 'ru'));
     } catch (e) {
-      console.error('feedback: voice not transcribed', e);
+      console.error('feedback: voice not transcribed', userId, { duration: msg.voice.duration }, e);
       text = '';
     }
     if (!text) {
@@ -204,77 +205,105 @@ async function collect(env: Env, sb: SupabaseClient, userId: number, language: s
   await tg(env, 'setMessageReaction', { chat_id: chat, message_id: msg.message_id, reaction: [{ type: 'emoji', emoji: '👌' }] }).catch(() => {});
 }
 
+/** Что вернула база на «отправить черновик» (миграция 20261004000003). */
+type Sent = { result: 'empty'; draft?: Draft } | (Submitted & { draft: Draft });
+
 /**
- * Отдать черновик в жалобы: true — принята (или повтор), false — лимит. Владелице — только о новой; сообщение ей
- * уходит после ответа человеку (notify), чтобы «Получили» не ждало Telegram.
+ * Забрать черновик и записать жалобу — одной транзакцией в базе: сбой откатывает всё, черновик остаётся.
+ * null — черновика нет. before — для таймера: только если черновик всё ещё молчит с того времени.
  */
-async function deliver(env: Env, sb: SupabaseClient, user: FeedbackUser, draft: Draft, confirmed: boolean): Promise<{ accepted: boolean; notify: () => Promise<void> }> {
-  const submitted = await submitFeedback(sb, user.id, { source: 'bot', text: draft.text, attachments: draft.attachments, context: null, confirmed });
-  return {
-    accepted: submitted.result === 'ok' || submitted.result === 'duplicate',
-    notify: async () => {
-      if (submitted.result !== 'ok') return;
-      const note = { id: submitted.id, source: 'bot' as const, confirmed, text: draft.text, context: null, files: draft.attachments.length, user };
-      await notifyOwner(env, sb, note, draft.attachments);
-    },
-  };
+async function sendDraft(sb: SupabaseClient, userId: number, confirmed: boolean, before: string | null): Promise<Sent | null> {
+  const sent = check(
+    await sb.rpc('send_feedback_draft', {
+      p_user: userId,
+      p_confirmed: confirmed,
+      p_before: before,
+      p_per_hour: FEEDBACK.perHour,
+      p_per_day: FEEDBACK.perDay,
+      p_project_day: FEEDBACK.projectDay,
+    }),
+    'draft not sent',
+  );
+  return sent as Sent | null;
+}
+
+const accepted = (sent: Sent) => sent.result === 'ok' || sent.result === 'duplicate';
+
+/** Новая жалоба — владелице; повтор и лимит — нет. */
+async function notifyNew(env: Env, sb: SupabaseClient, user: FeedbackUser, sent: Sent, confirmed: boolean): Promise<void> {
+  if (sent.result !== 'ok') return;
+  const { draft } = sent;
+  await notifyOwner(env, sb, { id: sent.id, source: 'bot', confirmed, text: draft.text, context: null, files: draft.attachments.length, user }, draft.attachments);
 }
 
 async function onButton(env: Env, q: NonNullable<FeedbackUpdate['callback_query']>, action: 'fb:send' | 'fb:cancel'): Promise<void> {
   const sb = db(env);
   // Служебный ответ Telegram (часики на кнопке); не дошёл — кнопка просто погаснет сама.
   const answer = (text?: string) => tg(env, 'answerCallbackQuery', { callback_query_id: q.id, ...(text && { text }) }).catch(() => {});
-  // У очень старых сообщений Telegram может не прислать message — тогда менять нечего.
-  const edit = (text: string) => q.message && tg(env, 'editMessageText', { chat_id: q.message.chat.id, message_id: q.message.message_id, text });
   const user = await findUser(sb, q.from.id);
+  // У очень старых сообщений Telegram может не прислать message — тогда менять нечего. Правка не удалась — это не
+  // повод не сказать владелице о жалобе: в лог и дальше.
+  const edit = async (text: string) => {
+    if (q.message) await tg(env, 'editMessageText', { chat_id: q.message.chat.id, message_id: q.message.message_id, text }).catch((e: unknown) => console.error('feedback: prompt not edited', user?.id, e));
+  };
   const t = lang(user?.language_code ?? q.from.language_code);
-  // Забрать черновик целиком (кто первым удалил — кнопка или таймер, тот и отправляет); «Отправить» — только непустой.
-  const take = sb.from('feedback_drafts').delete().eq('user_id', user?.id ?? 0);
-  const draft = check(await (action === 'fb:send' ? take.or('text.neq.,attachments.neq.[]') : take).select(DRAFT_COLS).maybeSingle<Draft>(), 'draft not taken');
-  if (!draft) {
-    // Не забрали: черновик пустой (подсказать) или его уже нет (кнопки — прочь).
-    const open = check(await sb.from('feedback_drafts').select('user_id').eq('user_id', user?.id ?? 0).maybeSingle(), 'draft not read');
-    if (open) {
-      await answer(t.empty);
-      return;
-    }
+  const gone = async () => {
     await answer(t.gone);
     if (q.message) await dropButtons(env, q.message.chat.id, q.message.message_id);
-    return;
-  }
+  };
+  if (!user) return gone();
   if (action === 'fb:cancel') {
+    const dropped = check(await sb.from('feedback_drafts').delete().eq('user_id', user.id).select('user_id').maybeSingle(), 'draft not cancelled');
+    if (!dropped) return gone();
     await answer();
     await edit(t.cancelled);
     return;
   }
-  const { accepted, notify } = await deliver(env, sb, user!, draft, true);
+  let sent: Sent | null;
+  try {
+    sent = await sendDraft(sb, user.id, true, null);
+  } catch (e) {
+    // Черновик на месте (транзакция откатилась) — человек нажмёт ещё раз.
+    console.error('feedback: draft not sent', user.id, e);
+    await answer(t.failed);
+    return;
+  }
+  if (!sent) return gone();
+  if (sent.result === 'empty') {
+    await answer(t.empty);
+    return;
+  }
   await answer();
-  await edit(accepted ? t.thanks : t.limit);
-  await notify();
+  await edit(accepted(sent) ? t.thanks : t.limit);
+  await notifyNew(env, sb, user, sent, true);
 }
 
 /**
  * Cron раз в 5 минут: черновики, где 10 минут тишины, уходят сами — не подтверждёнными (человек не нажал
  * «Отправить», возможно, это не баг). Пустые закрываются молча. Кнопки у приглашения убираем в обоих случаях.
+ * Сбой базы на одном черновике оставляет его на месте до следующего тика и не держит остальные.
  */
 export async function feedbackTick(env: Env): Promise<void> {
   const sb = db(env);
   const before = new Date(Date.now() - FEEDBACK.draftMinutes * 60_000).toISOString();
-  const stale = check(await sb.from('feedback_drafts').delete().lt('updated_at', before).select(DRAFT_COLS).returns<Draft[]>(), 'stale drafts not taken');
-  for (const draft of stale) {
+  const stale = check(
+    await sb.from('feedback_drafts').select(`user_id, users(${USER_COLS})`).lt('updated_at', before).returns<{ user_id: number; users: FeedbackUser }[]>(),
+    'stale drafts not listed',
+  );
+  for (const { users: user } of stale) {
     try {
+      const sent = await sendDraft(sb, user.id, false, before);
+      // Пока шёл тик, черновик отправили кнопкой или в него написали — не наш.
+      if (!sent?.draft) continue;
       // Приглашения может не быть, если Telegram не принял его при /bug; тогда и убирать нечего (вызов не удастся — не важно).
-      await dropButtons(env, draft.chat_id, draft.prompt_message_id ?? 0);
-      if (!draft.text && !draft.attachments.length) continue;
-      const user = check(await sb.from('users').select(USER_COLS).eq('id', draft.user_id).single<FeedbackUser>(), 'user not read');
-      const { accepted, notify } = await deliver(env, sb, user, draft, false);
+      await dropButtons(env, sent.draft.chat_id, sent.draft.prompt_message_id ?? 0);
+      if (sent.result === 'empty') continue;
       const t = lang(user.language_code);
       // Человек мог заблокировать бота — владелице жалоба всё равно нужна.
-      await tg(env, 'sendMessage', { chat_id: draft.chat_id, text: accepted ? t.thanks : t.limit }).catch((e: unknown) => console.error('feedback: thanks not sent', draft.user_id, e));
-      await notify();
+      await tg(env, 'sendMessage', { chat_id: sent.draft.chat_id, text: accepted(sent) ? t.thanks : t.limit }).catch((e: unknown) => console.error('feedback: thanks not sent', user.id, e));
+      await notifyNew(env, sb, user, sent, false);
     } catch (e) {
-      // Один сбойный черновик не держит остальные. Он уже удалён — в логе, чей он, чтобы найти и спросить.
-      console.error('feedback: stale draft not sent', draft.user_id, e);
+      console.error('feedback: stale draft not sent', user.id, e);
     }
   }
 }

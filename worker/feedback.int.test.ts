@@ -153,11 +153,11 @@ afterEach(() => {
 const toOwner = (method: string, chat = env.OWNER_ID) => tg.sent(method).filter((c) => String(c.body.chat_id) === String(chat));
 
 /** Пока идёт run, запросы, на которые указывает match, отвечают 500 — как будто база или хранилище споткнулись. */
-async function failing<T>(match: (req: Request) => boolean, run: () => Promise<T>): Promise<T> {
+async function failing<T>(match: (req: Request) => boolean | Promise<boolean>, run: () => Promise<T>): Promise<T> {
   const real = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const req = new Request(input, init);
-    return match(req) ? Response.json({ message: 'boom', code: 'XX000', statusCode: '500', error: 'boom' }, { status: 500 }) : real(req);
+    return (await match(req)) ? Response.json({ message: 'boom', code: 'XX000', statusCode: '500', error: 'boom' }, { status: 500 }) : real(req);
   }) as typeof fetch;
   try {
     return await run();
@@ -165,6 +165,8 @@ async function failing<T>(match: (req: Request) => boolean, run: () => Promise<T
     globalThis.fetch = real;
   }
 }
+/** Запись жалобы в базе — и прямой вызов, и через черновик бота. */
+const submitting = (req: Request) => /\/rpc\/(submit_feedback|send_feedback_draft)/.test(req.url);
 const rest = (path: string, method?: string) => (req: Request) => req.url.includes(path) && (!method || req.method === method);
 
 describe.skipIf(!ready)('POST /api/feedback', () => {
@@ -478,6 +480,45 @@ describe.skipIf(!ready)('/bug в боте', () => {
     expect(toOwner('sendPhoto').map((c) => c.body)).toEqual([{ chat_id: Number(env.OWNER_ID), photo: 'shot-1', caption: `#${row!.id}` }]);
   });
 
+  it('база не приняла жалобу при «Отправить» — черновик на месте, человеку «не получилось, нажми ещё раз»; второй раз уходит', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, 'Важная жалоба');
+    await failing(submitting, () => press(u, 'fb:send', 561));
+    expect(await draft(u.id)).toEqual(expect.objectContaining({ text: 'Важная жалоба' }));
+    expect(tg.sent('answerCallbackQuery').map((c) => c.body.text)).toEqual(['Не получилось отправить — нажми ещё раз']);
+    expect(tg.sent('editMessageText')).toEqual([]);
+    await press(u, 'fb:send', 561);
+    expect((await sb.from('feedback').select('text').eq('user_id', u.id)).data).toEqual([{ text: 'Важная жалоба' }]);
+    expect(tg.sent('editMessageText').map((c) => c.body.text)).toEqual(['Получили, спасибо!']);
+  });
+
+  it('только скриншот, без текста — «Отправить» отправляет', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await photo(u, 'only-shot');
+    await press(u, 'fb:send', 562);
+    expect((await sb.from('feedback').select('text, attachments').eq('user_id', u.id)).data).toEqual([{ text: '', attachments: [{ kind: 'tg_photo', file_id: 'only-shot' }] }]);
+  });
+
+  it('альбом: 6 скриншотов разом — в черновике ровно 4 разных, про лишние сказано дважды', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await Promise.all([1, 2, 3, 4, 5, 6].map((n) => photo(u, `alb-${n}`)));
+    const files = (await draft(u.id))!.attachments as { file_id: string }[];
+    expect(new Set(files.map((f) => f.file_id)).size).toBe(4);
+    expect(replies(u.id).filter((c) => String(c.body.text).startsWith('Больше 4 скриншотов'))).toHaveLength(2);
+  });
+
+  it('Telegram не дал сменить кнопки на «Получили» — владелице жалоба всё равно приходит', async () => {
+    const u = await user();
+    await say(u, '/bug');
+    await say(u, 'Кнопки не сменились');
+    tg.reply('editMessageText', { ok: false, error_code: 400, description: 'Bad Request: message to edit not found' });
+    await press(u, 'fb:send', 563);
+    expect(toOwner('sendMessage')[0]?.body.text).toContain('Кнопки не сменились');
+  });
+
   it('«Отправить» без единого сообщения — подсказка, черновик остаётся', async () => {
     const u = await user();
     await say(u, '/bug');
@@ -673,15 +714,27 @@ describe.skipIf(!ready)('таймер черновиков (cron раз в 5 м�
     expect(toOwner('sendMessage')[0]?.body.text).toContain('Без приглашения');
   });
 
-  it('один черновик споткнулся о базу — остальные уходят; база не ответила вовсе — тик не падает', async () => {
+  it('один черновик споткнулся о базу — остальные уходят, а он остаётся до следующего тика; база не ответила вовсе — тик не падает', async () => {
     const a = await user();
     const b = await user();
     const stale = new Date(Date.now() - 11 * 60_000).toISOString();
     expect((await sb.from('feedback_drafts').insert([a, b].map((x) => ({ user_id: x.id, chat_id: x.id, text: `От ${x.id}`, updated_at: stale })))).error).toBeNull();
-    await failing((req) => req.url.includes('/rest/v1/users?') && req.url.includes(`id=eq.${a.id}`), () => cronTick('*/5 * * * *'));
+    await failing(async (req) => submitting(req) && (await req.clone().text()).includes(String(a.id)), () => cronTick('*/5 * * * *'));
     expect((await sb.from('feedback').select('text').eq('user_id', b.id)).data).toEqual([{ text: `От ${b.id}` }]);
     expect((await sb.from('feedback').select('text').eq('user_id', a.id)).data).toEqual([]);
+    // Жалоба не пропала: черновик на месте, следующий тик её отправит.
+    expect(await draft(a.id)).toEqual(expect.objectContaining({ text: `От ${a.id}` }));
+    await cronTick('*/5 * * * *');
+    expect((await sb.from('feedback').select('text').eq('user_id', a.id)).data).toEqual([{ text: `От ${a.id}` }]);
     await failing(rest('/rest/v1/feedback_drafts'), () => cronTick('*/5 * * * *'));
+  });
+
+  it('база не приняла жалобу по таймеру — черновик остаётся, человеку ничего не пишем', async () => {
+    const u = await user();
+    expect((await sb.from('feedback_drafts').insert({ user_id: u.id, chat_id: u.id, text: 'Не потерять', updated_at: new Date(Date.now() - 11 * 60_000).toISOString() })).error).toBeNull();
+    await failing(submitting, () => cronTick('*/5 * * * *'));
+    expect(await draft(u.id)).toEqual(expect.objectContaining({ text: 'Не потерять' }));
+    expect(replies(u.id)).toEqual([]);
   });
 
   // 15-минутный тик здесь не зовём: он забирает календари всех пользователей базы, в том числе чужих тестов,

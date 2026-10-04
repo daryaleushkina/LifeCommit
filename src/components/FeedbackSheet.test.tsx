@@ -10,6 +10,8 @@ vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()),
 const mic = vi.hoisted(() => ({
   can: true,
   startError: null as Error | null,
+  /** Пока не выполнен — запись «включается» (getUserMedia ещё не ответил). */
+  startGate: null as Promise<void> | null,
   made: [] as { cancel: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }[],
 }));
 vi.mock('../voice/recorder', () => ({
@@ -21,6 +23,7 @@ vi.mock('../voice/recorder', () => ({
       mic.made.push(this);
     }
     async start() {
+      if (mic.startGate) await mic.startGate;
       if (mic.startError) throw mic.startError;
     }
   },
@@ -35,6 +38,7 @@ beforeEach(() => {
   feedbackVoice.mockResolvedValue('и календарь пустой');
   mic.can = true;
   mic.startError = null;
+  mic.startGate = null;
   mic.made = [];
 });
 afterEach(() => vi.restoreAllMocks());
@@ -55,6 +59,7 @@ function open(lang: 'ru' | 'en' = 'ru') {
   return { r, onClose };
 }
 
+const open_ = (lang: 'ru' | 'en' = 'ru') => open(lang);
 const text = () => page.getByRole('textbox', { name: 'Что случилось?' });
 const send = () => page.getByRole('button', { name: 'Отправить' });
 const shotInput = () => page.getByLabelText('+ Скриншот');
@@ -202,6 +207,30 @@ describe('голос', () => {
     await micButton().click();
     await expect.element(micButton()).toBeVisible();
     expect(mic.made[0]!.cancel).toHaveBeenCalled();
+  });
+
+  it('пока запись включается, второе нажатие не заводит второй микрофон', async () => {
+    let open: () => void = () => {};
+    mic.startGate = new Promise((r) => (open = r));
+    const { r } = open_();
+    await r;
+    await micButton().click();
+    await expect.element(micButton()).toBeDisabled();
+    await micButton().click({ force: true });
+    open();
+    await expect.element(stopButton()).toBeVisible();
+    expect(mic.made).toHaveLength(1);
+  });
+
+  it('закрыли шторку, пока запись включалась, — микрофон отпускается, как только включился', async () => {
+    let open: () => void = () => {};
+    mic.startGate = new Promise((r) => (open = r));
+    const { r } = open_();
+    const screen = await r;
+    await micButton().click();
+    await screen.unmount();
+    open();
+    await expect.poll(() => mic.made[0]!.cancel.mock.calls.length).toBe(1);
   });
 
   it('закрыли шторку во время записи — микрофон отпущен', async () => {

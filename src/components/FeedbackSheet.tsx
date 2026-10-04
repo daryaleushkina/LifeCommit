@@ -29,14 +29,17 @@ export function FeedbackSheet({ theme, onClose }: Props): ReactNode {
   const [text, setText] = useState('');
   const [shots, setShots] = useState<Shot[]>([]);
   const [phase, setPhase] = useState<'edit' | 'sending' | 'sent'>('edit');
-  const [mic, setMic] = useState<'off' | 'recording' | 'hearing'>('off');
+  // starting — ждём микрофон (getUserMedia): кнопка в это время не нажимается, иначе заведётся второй.
+  const [mic, setMic] = useState<'off' | 'starting' | 'recording' | 'hearing'>('off');
   const [error, setError] = useState<string | null>(null);
   const recorder = useRef<Recorder | null>(null);
   const urls = useRef<string[]>([]);
+  const alive = useRef(true);
 
   // Закрыли шторку — микрофон отпускаем, превью скриншотов освобождаем.
   useEffect(
     () => () => {
+      alive.current = false;
       recorder.current?.cancel();
       urls.current.forEach((url) => URL.revokeObjectURL(url));
     },
@@ -82,12 +85,16 @@ export function FeedbackSheet({ theme, onClose }: Props): ReactNode {
     }
     if (!canRecord()) return setError(t.fb.noMic);
     const next = new Recorder();
+    setMic('starting');
     try {
       await next.start();
+      // Шторку закрыли, пока микрофон включался, — сразу отпускаем его.
+      if (!alive.current) return next.cancel();
       recorder.current = next;
       setMic('recording');
     } catch {
       next.cancel();
+      setMic('off');
       setError(t.fb.noMic);
     }
   };
@@ -123,13 +130,13 @@ export function FeedbackSheet({ theme, onClose }: Props): ReactNode {
           type="button"
           className={`feedback-mic${mic === 'recording' ? ' on' : ''}`}
           aria-label={mic === 'recording' ? t.fb.micStop : t.fb.mic}
-          disabled={mic === 'hearing' || phase === 'sending'}
+          disabled={mic === 'starting' || mic === 'hearing' || phase === 'sending'}
           onClick={() => void toggleMic()}
         >
           {mic === 'recording' ? <StopIcon /> : <MicIcon />}
         </button>
       </div>
-      {mic !== 'off' && <p className="sheet-note">{mic === 'recording' ? t.fb.recording : t.fb.hearing}</p>}
+      {mic !== 'off' && <p className="sheet-note">{mic === 'hearing' ? t.fb.hearing : t.fb.recording}</p>}
       <div className="feedback-shots">
         {shots.map((shot) => (
           <div key={shot.url} className="feedback-shot">

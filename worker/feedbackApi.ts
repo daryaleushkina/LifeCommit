@@ -95,7 +95,7 @@ feedbackApi.post('/feedback/voice', async (c) => {
     const text = await transcribe(c.env, audio, user.language_code === 'en' ? 'en' : 'ru');
     return c.json({ text: cleanFeedback(text) });
   } catch (e) {
-    console.error('feedback voice failed', e);
+    console.error('feedback voice failed', user.id, { bytes: audio.byteLength }, e);
     throw new HTTPException(502, { message: 'failed' });
   }
 });
