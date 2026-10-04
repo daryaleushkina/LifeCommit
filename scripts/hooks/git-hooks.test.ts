@@ -10,15 +10,15 @@ const HOOKS = path.dirname(fileURLToPath(import.meta.url));
 // Без GIT_* из окружения: хук pre-push в linked worktree получает абсолютный GIT_DIR (и GIT_INDEX_FILE и т. п.), и с
 // ним git init / config / commit временного репозитория уходили в настоящий — 04.10.2026 так в общий .git/config
 // записались core.bare = true и core.hooksPath, а тестовые коммиты легли в ветку.
-const ENV = {
+const env = () => ({
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
   GIT_CONFIG_GLOBAL: '/dev/null',
   GIT_CONFIG_NOSYSTEM: '1',
-};
+});
 
 function repo() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lc-git-hooks-'));
-  const git = (...args: string[]) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: dir, encoding: 'utf8', env: ENV });
+  const git = (...args: string[]) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: dir, encoding: 'utf8', env: env() });
   git('init', '-q', '-b', 'main');
   git('config', 'core.hooksPath', HOOKS);
   const write = (file: string, text = 'x') => {
@@ -104,5 +104,30 @@ describe('git commit с хуками проекта', () => {
     git('add', '-A');
     const r = git('commit', '-q', '-m', 'Убрали .mcp.json');
     expect(r.status, r.stderr).toBe(0);
+  });
+});
+
+// 04.10.2026: хук pre-push из отдельной копии репозитория (git worktree) передаёт тестам абсолютный GIT_DIR.
+// С ним git init/config/commit временного репозитория шли в настоящий: общий .git/config стал bare, хуки всех
+// копий — из чужой папки, тестовые коммиты — в чужую ветку. Временный репозиторий не должен видеть GIT_* родителя.
+describe('временный репозиторий изолирован от окружения хука', () => {
+  it('чужой GIT_DIR не задевает настоящий репозиторий', () => {
+    const real = fs.mkdtempSync(path.join(os.tmpdir(), 'lc-real-'));
+    spawnSync('git', ['init', '-q', '--bare', real], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+    const config = () => fs.readFileSync(path.join(real, 'config'), 'utf8');
+    const before = config();
+    const saved = process.env.GIT_DIR;
+    process.env.GIT_DIR = real;
+    try {
+      const r = repo();
+      r.write('a.txt');
+      r.git('add', 'a.txt');
+      r.git('commit', '-qm', 'тест');
+    } finally {
+      if (saved === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = saved;
+    }
+    expect(config()).toBe(before);
+    expect(spawnSync('git', ['--git-dir', real, 'rev-list', '--all'], { encoding: 'utf8', env: { PATH: process.env.PATH } }).stdout).toBe('');
   });
 });
