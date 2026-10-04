@@ -54,28 +54,30 @@ feedbackApi.post('/feedback', async (c) => {
 
   const user = c.get('user');
   const sb = c.get('sb');
-  const submitted = await submitFeedback(sb, user.id, { source: 'app', text, attachments: [], context, confirmed: true });
+  // Пути скриншотов — заранее, чтобы жалоба сразу легла с ними: со скриншотами она не склеится с прошлой «тем же
+  // текстом» (база считает повтором только жалобу без вложений), а при сбое загрузки её целиком уберём.
+  const folder = `${user.id}/${crypto.randomUUID()}`;
+  const paths = images.map((img, i) => `${folder}/${i + 1}.${EXT[img.type]}`);
+  const attachments: Attachment[] = paths.map((path) => ({ kind: 'storage', path }));
+  const submitted = await submitFeedback(sb, user.id, { source: 'app', text, attachments, context, confirmed: true });
   if (submitted.result === 'limit') throw new HTTPException(429, { message: 'feedback_limit' });
   if (submitted.result === 'project_limit') throw new HTTPException(429, { message: 'feedback_busy' });
   // Повтор того же текста за сутки — +1 у старой, владелице второй раз не пишем.
   if (submitted.result === 'duplicate') return c.json({ ok: true });
 
-  await storeImages(sb, submitted.id, images);
+  await storeImages(sb, submitted.id, paths, images);
   const note = { id: submitted.id, source: 'app' as const, confirmed: true, text, context, files: images.length, user };
   c.executionCtx.waitUntil(notifyOwner(c.env, sb, note, images));
   return c.json({ ok: true });
 });
 
 /**
- * Скриншоты — в хранилище, пути — в жалобу. Не вышло — убираем и загруженное, и саму жалобу (502): жалоба без
- * скриншотов — не та, что прислал человек, а повтор тогда считался бы «тем же текстом» и молча склеился бы с ней.
+ * Скриншоты — в хранилище по путям, которые уже записаны в жалобе. Не вышло — убираем и загруженное, и саму жалобу
+ * (502, человек повторит): жалоба со ссылками на файлы, которых нет, — не та, что прислал человек.
  */
-async function storeImages(sb: SupabaseClient, id: number, images: Image[]): Promise<void> {
-  if (!images.length) return;
-  const paths = images.map((img, i) => `${id}/${i + 1}.${EXT[img.type]}`);
-  const attachments: Attachment[] = paths.map((path) => ({ kind: 'storage', path }));
+async function storeImages(sb: SupabaseClient, id: number, paths: string[], images: Image[]): Promise<void> {
   const uploads = await Promise.all(images.map((img, i) => sb.storage.from(BUCKET).upload(paths[i]!, img.bytes, { contentType: img.type })));
-  const failed = uploads.find((u) => u.error)?.error ?? (await sb.from('feedback').update({ attachments }).eq('id', id)).error;
+  const failed = uploads.find((u) => u.error)?.error;
   if (!failed) return;
   const [{ error: removeError }, { error: deleteError }] = await Promise.all([sb.storage.from(BUCKET).remove(paths), sb.from('feedback').delete().eq('id', id)]);
   // Всё в один лог: что не сохранилось и удалось ли прибрать за собой.

@@ -1,4 +1,5 @@
 // Шторка «Сообщить о проблеме»: текст, голос в поле, до 4 скриншотов, контекст, «Отправить» → «Получили, спасибо!».
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { api, ApiError } from '../api';
@@ -149,6 +150,28 @@ describe('скриншоты', () => {
     await expect.element(shotInput()).not.toBeInTheDocument();
   });
 
+  it('два выбора подряд, пока первые ещё ужимаются, — всё равно не больше 4 и с предупреждением; «Отправить» ждёт ужатия', async () => {
+    const { r } = open_();
+    await r;
+    await text().fill('Скриншоты');
+    const a = await Promise.all([1, 2, 3].map((n) => png(1600, 1600, `a${n}.png`)));
+    const b = await Promise.all([1, 2].map((n) => png(1600, 1600, `b${n}.png`)));
+    const input = document.querySelector<HTMLInputElement>('.feedback-add input')!;
+    const pick = (files: File[]) => {
+      const dt = new DataTransfer();
+      files.forEach((f) => dt.items.add(f));
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    pick(a);
+    pick(b);
+    await expect.element(send()).toBeDisabled();
+    await expect.element(page.getByText('Не больше 4 скриншотов.')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Убрать скриншот' }).nth(3)).toBeVisible();
+    await expect.element(send()).toBeEnabled();
+    expect(document.querySelectorAll('.feedback-shot')).toHaveLength(4);
+  });
+
   it('не картинка — «попробуй другую», ничего не добавлено', async () => {
     const { r } = open();
     await r;
@@ -231,6 +254,18 @@ describe('голос', () => {
     await screen.unmount();
     open();
     await expect.poll(() => mic.made[0]!.cancel.mock.calls.length).toBe(1);
+  });
+
+  it('в StrictMode (эффекты дважды при разработке) микрофон всё равно включается', async () => {
+    const onClose = vi.fn();
+    await renderApp(
+      <StrictMode>
+        <FeedbackSheet theme="light" onClose={onClose} />
+      </StrictMode>,
+    );
+    await micButton().click();
+    await expect.element(stopButton()).toBeVisible();
+    expect(mic.made.at(-1)!.cancel).not.toHaveBeenCalled();
   });
 
   it('закрыли шторку во время записи — микрофон отпущен', async () => {

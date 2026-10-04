@@ -3,7 +3,7 @@
 // транзакции со вставкой. Пока рутины разбора нет, каждая новая жалоба уходит владелице в Telegram.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { cleanText } from '../shared/text';
-import { db, tg, type Env } from './env';
+import { db, tg, TgError, type Env } from './env';
 
 /** Все числа приёма в одном месте (решения владелицы 03–04.10.2026). */
 export const FEEDBACK = {
@@ -161,8 +161,8 @@ async function sendPhoto(env: Env, chat: number, photo: OwnerPhoto, caption: str
   form.set('photo', new Blob([photo.bytes], { type: photo.type }), `shot.${EXT[photo.type]}`);
   const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`, { method: 'POST', body: form });
   // Не JSON — тоже исключение: его ловит и пишет в лог notifyOwner.
-  const body: unknown = JSON.parse(await res.text());
-  if ((body as { ok?: unknown } | null)?.ok !== true) throw new Error(`Telegram sendPhoto: ${res.status}`);
+  const body = JSON.parse(await res.text()) as { ok?: unknown; error_code?: number; description?: string } | null;
+  if (body?.ok !== true) throw new TgError('sendPhoto', body?.error_code ?? res.status, body?.description ?? String(res.status));
 }
 
 /**
@@ -212,7 +212,8 @@ export async function feedbackCleanup(env: Env): Promise<void> {
       .from('feedback')
       .select('id, attachments')
       .or(`closed_at.lt.${ago(FEEDBACK.keepClosedDays)},created_at.lt.${ago(FEEDBACK.keepDays)}`)
-      .limit(500)
+      // Хранилище удаляет не больше 1000 файлов за раз: 200 жалоб × 4 скриншота с запасом. Остальные — на следующем тике.
+      .limit(200)
       .returns<{ id: number; attachments: Attachment[] }[]>(),
     'old not listed',
   );

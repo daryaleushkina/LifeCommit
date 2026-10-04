@@ -845,10 +845,11 @@ api.delete('/account', async (c) => {
   if (c.get('user').id !== c.get('tgUser').id) throw new HTTPException(403, { message: 'linked_account' });
   // Свои группы — дальше участникам (или в архив), иначе они остаются без владельца и ломаются.
   const sb = c.get('sb');
+  // Скриншоты жалоб: строки уйдут каскадом вместе с человеком, файлы в хранилище — нет. Первым шагом: если хранилище
+  // не ответит, аккаунт остаётся целым (группы ещё не переданы), и человек просто повторит.
+  await removeUserFeedbackFiles(sb, c.get('user').id);
   const owned = must(await sb.from('groups').select('id').eq('owner_id', c.get('user').id).is('archived_at', null)) as { id: number }[];
   for (const g of owned) await handOver(sb, g.id, c.get('user').id);
-  // Скриншоты жалоб: строки уйдут каскадом вместе с человеком, файлы в хранилище — нет.
-  await removeUserFeedbackFiles(sb, c.get('user').id);
   must(await sb.from('users').delete().eq('id', c.get('user').id));
   return c.json({ ok: true });
 });
