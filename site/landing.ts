@@ -11,6 +11,9 @@ import { currentTheme, initCommon, onTheme, type Theme } from './common';
 import { render, setState, loop, T, type GroupKind, type Lang, type Screen } from './screens';
 
 gsap.registerPlugin(ScrollTrigger, SplitText);
+// Без «сглаживания лага»: на медленном кадре анимация догоняет настоящее время, а не тянется в замедленной съёмке —
+// иначе на слабом устройстве (и в WebKit на GitHub Actions, где кадр — раз в секунды) появление шло бы минуты.
+gsap.ticker.lagSmoothing(0);
 
 const lang: Lang = document.documentElement.lang === 'en' ? 'en' : 'ru';
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
