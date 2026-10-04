@@ -7,7 +7,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const HOOKS = path.dirname(fileURLToPath(import.meta.url));
-const ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+// Без GIT_* из окружения: хук pre-push в linked worktree получает абсолютный GIT_DIR (и GIT_INDEX_FILE и т. п.), и с
+// ним git init / config / commit временного репозитория уходили в настоящий — 04.10.2026 так в общий .git/config
+// записались core.bare = true и core.hooksPath, а тестовые коммиты легли в ветку.
+const ENV = {
+  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_CONFIG_NOSYSTEM: '1',
+};
 
 function repo() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lc-git-hooks-'));
