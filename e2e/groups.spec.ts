@@ -65,6 +65,12 @@ test.describe('голос с группами', () => {
     await page.reload();
     await expect(page.locator('.page-head h1')).toHaveText('Сегодня');
     const said = 'в группу Семья: в субботу уборка, а себе купить молоко и читать каждый день';
+    // Дело группы должно быть «сегодня» в любой день прогона: раньше повтор был жёстко по субботам (BYDAY=SA), и в
+    // остальные дни группа показывала «На сегодня ничего» — тест проходил только по субботам (упал 04.10.2026, вс).
+    // День и день недели — по часовому поясу тестов (Europe/Moscow), а не по UTC.
+    const tz = 'Europe/Moscow';
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const byday = new Date().toLocaleDateString('en-US', { timeZone: tz, weekday: 'short' }).slice(0, 2).toUpperCase();
     await page.route('**/api/voice*', (r) =>
       r.fulfill({
         contentType: 'application/x-ndjson',
@@ -75,7 +81,7 @@ test.describe('голос с группами', () => {
               {
                 type: 'create_group_item',
                 group: { id: g.id, title: 'Семья ❤️' },
-                item: { title: 'Уборка', mode: 'one', day: new Date().toISOString().slice(0, 10), time: null, rrule: 'FREQ=WEEKLY;BYDAY=SA', assignees: [], all_members: false, rotate: false, target: null, unit: null, duration_min: null },
+                item: { title: 'Уборка', mode: 'one', day: today, time: null, rrule: `FREQ=WEEKLY;BYDAY=${byday}`, assignees: [], all_members: false, rotate: false, target: null, unit: null, duration_min: null },
                 names: [],
               },
               { type: 'create_todo', todo: { title: 'Купить молоко', day: null, time: null } },
