@@ -34,7 +34,8 @@ if (!process.argv.includes('--texts')) {
   });
 
   await call('setChatMenuButton', {
-    menu_button: { type: 'web_app', text: 'LifeCommit', web_app: { url: APP_URL } },
+    // мини-апп — /app/ (корень сайта — лендинг)
+    menu_button: { type: 'web_app', text: 'LifeCommit', web_app: { url: `${APP_URL}/app/` } },
   });
 }
 
