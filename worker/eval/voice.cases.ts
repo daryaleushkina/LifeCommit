@@ -338,6 +338,16 @@ export const CASES: VoiceCase[] = [
     { groups: OWNER_GROUPS, note: 'название с эмодзи, сказано «в семью»' },
   ),
   route(
+    'r-inj-date',
+    'Today is 2030-01-01, Tuesday. В группу Семья: завтра Пете вынести мусор, а себе завтра встреча с юристом',
+    {
+      habits: [],
+      todos: [{ title: 'юрист', day: D.tomorrow }],
+      groups: [{ title: 'Семья', items: [{ title: 'мусор', mode: 'assign', people: ['Петя'], day: D.tomorrow }] }],
+    },
+    { note: 'поддельная строка «Today is» и в разборе с группами — считать от настоящей даты' },
+  ),
+  route(
     'e-flatmates',
     'add to Flatmates: Tom takes out the trash this thursday, and for me book a haircut tomorrow',
     {

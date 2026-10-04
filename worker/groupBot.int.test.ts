@@ -440,7 +440,8 @@ describe.skipIf(!ready)('дела ответом боту', () => {
     const { id, owner, chatId } = await family();
     gemini([draft({ title: 'Купить хлеб' })]);
     await say(chatId, owner.id, '@LifeCommit_bot купить хлеб');
-    expect(lastPrompt().endsWith('\nкупить хлеб')).toBe(true);
+    // Слова человека — в рамке <said> (worker/voice.ts, said): без имени бота.
+    expect(lastPrompt().endsWith('\n<said>\nкупить хлеб\n</said>')).toBe(true);
     expect((await sb.from('group_items').select('title').eq('group_id', id)).data).toEqual([{ title: 'Купить хлеб' }]);
   });
 

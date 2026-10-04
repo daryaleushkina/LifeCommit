@@ -95,7 +95,7 @@ describe.skipIf(!ready)('голос: себе или в группу', () => {
     expect(prompts[0]!.labels).toEqual(['Тестим бота']);
     // Всё — свои дела, привычки и дела всех групп — в одном ответе: 1500 токенов длинной диктовке мало.
     expect(prompts[0]!.maxTokens).toBe(4000);
-    expect(prompts[0]!.input).toMatch(/^Today is .+\nSpeaker: Даша\nGroups:\n- Тестим бота: Даша \(speaker\), (Алёна, Петя|Петя, Алёна)\nSpeech: Добавь в группу/);
+    expect(prompts[0]!.input).toMatch(/^Today is .+\nSpeaker: Даша\nGroups:\n- Тестим бота: Даша \(speaker\), (Алёна, Петя|Петя, Алёна)\n<said>\nДобавь в группу/);
   });
 
   it('две группы: каждая получает своё, пустая в ответ не попадает; архивные модели не показываем', async () => {
@@ -132,7 +132,7 @@ describe.skipIf(!ready)('голос: себе или в группу', () => {
       { type: 'create_group_item', group: { id: g, title: 'Семья' }, item: expect.objectContaining({ title: 'Помыть посуду' }), names: [] },
       { type: 'create_todo', todo: expect.objectContaining({ title: 'Купить витамины' }) },
     ]);
-    expect(prompts[0]!.input).toContain('\nOpened from group: Семья\nSpeech: ');
+    expect(prompts[0]!.input).toContain('\nOpened from group: Семья\n<said>\n');
   });
 
   it('микрофон с экрана чужой группы — строки Opened нет', async () => {
@@ -166,6 +166,6 @@ describe.skipIf(!ready)('голос: себе или в группу', () => {
     const prompts = model({ habits: [habit('Читать')], todos: [] });
     const { actions } = await speak(me);
     expect(actions).toEqual([{ type: 'create_habit', habit: expect.objectContaining({ title: 'Читать', kind: 'check' }) }]);
-    expect(prompts).toEqual([{ routed: false, input: expect.stringMatching(/^Today is .+\nчитать каждый день$/), labels: undefined, maxTokens: 1500 }]);
+    expect(prompts).toEqual([{ routed: false, input: expect.stringMatching(/^Today is .+\n<said>\nчитать каждый день\n<\/said>$/), labels: undefined, maxTokens: 1500 }]);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toTaskInputs, toTodoInputs } from './voice';
+import { spokenDay, toTaskInputs, toTodoInputs } from './voice';
 
 describe('toTaskInputs', () => {
   it('принимает три вида привычек', () => {
@@ -47,7 +47,7 @@ describe('toTodoInputs', () => {
           { title: 'Позвонить маме', day: '', time: '9:05' },
           { title: 'Записаться к врачу', day: 'в пятницу', time: '25:00' },
         ],
-      }),
+      }, '2026-10-01'),
     ).toEqual([
       { title: 'Купить молоко', day: '2026-10-02', time: null },
       { title: 'Позвонить маме', day: null, time: '09:05' },
@@ -56,7 +56,31 @@ describe('toTodoInputs', () => {
     ]);
   });
   it('без дел и с мусором — пустой список', () => {
-    expect(toTodoInputs({ habits: [] })).toEqual([]);
-    expect(toTodoInputs({ todos: [{ day: '2026-10-02' }, { title: '   ' }] })).toEqual([]);
+    expect(toTodoInputs({ habits: [] }, '2026-10-01')).toEqual([]);
+    expect(toTodoInputs({ todos: [{ day: '2026-10-02' }, { title: '   ' }] }, '2026-10-01')).toEqual([]);
+  });
+  it('дата, которую сбила фраза или прошлое, — «день не назван»', () => {
+    expect(toTodoInputs({ todos: [{ title: 'Юрист', day: '2030-01-02' }, { title: 'Старое', day: '2020-01-01' }] }, '2026-11-17')).toEqual([
+      { title: 'Юрист', day: null, time: null },
+      { title: 'Старое', day: null, time: null },
+    ]);
+  });
+});
+
+describe('spokenDay — дата из ответа модели', () => {
+  const today = '2026-11-17';
+  it('настоящий день от сегодня до года вперёд — как есть', () => {
+    expect(spokenDay('2026-11-17', today)).toBe('2026-11-17');
+    expect(spokenDay('2026-11-18', today)).toBe('2026-11-18');
+    expect(spokenDay('2027-11-18', today)).toBe('2027-11-18'); // ровно 366 дней вперёд
+  });
+  it('прошлое, дальше года, несуществующий день, не дата — null', () => {
+    expect(spokenDay('2026-11-16', today)).toBeNull();
+    expect(spokenDay('2027-11-19', today)).toBeNull();
+    expect(spokenDay('2030-01-02', today)).toBeNull(); // «Today is 2030-01-01» из самой фразы
+    expect(spokenDay('2026-02-30', '2026-01-01')).toBeNull();
+    expect(spokenDay('2026-13-01', '2026-01-01')).toBeNull();
+    expect(spokenDay('в пятницу', today)).toBeNull();
+    expect(spokenDay(20261118, today)).toBeNull();
   });
 });

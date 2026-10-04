@@ -1,6 +1,7 @@
 // Микрофон в мини-аппе (POST /api/voice): запись → фраза сразу → список действий (NDJSON).
 // Проверки записи, дневной лимит, запасной разбор Workers AI, сбои. Куда сказано (себе или в группу) — voice.int.test.ts.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { addDays } from './day';
 import { ai, dbReady, env, net, sb, user, type TestUser } from './test/harness';
 
 const ready = await dbReady();
@@ -67,7 +68,7 @@ describe.skipIf(!ready)('голос: разбор', () => {
     ai.transcript = '  завтра в три к стоматологу, и читать двадцать страниц  ';
     const asked = gemini({
       habits: [{ title: 'Читать', kind: 'count', target: 20, unit: 'страниц', schedule: 'daily', weekdays: [], per_week: 0 }],
-      todos: [{ title: 'Стоматолог', day: '2026-10-04', time: '15:00', duration: 0, location: '' }],
+      todos: [{ title: 'Стоматолог', day: addDays(day, 1), time: '15:00', duration: 0, location: '' }],
     });
     // Номер группы не числом — как будто микрофон нажали не в группе.
     const events = await speak(u, '?group=abc');
@@ -75,7 +76,7 @@ describe.skipIf(!ready)('голос: разбор', () => {
       { text: 'завтра в три к стоматологу, и читать двадцать страниц' },
       {
         actions: [
-          { type: 'create_todo', todo: { title: 'Стоматолог', day: '2026-10-04', time: '15:00' } },
+          { type: 'create_todo', todo: { title: 'Стоматолог', day: addDays(day, 1), time: '15:00' } },
           { type: 'create_habit', habit: expect.objectContaining({ title: 'Читать', kind: 'count', target: 20, unit: 'страниц', schedule: 'daily' }) },
         ],
       },
