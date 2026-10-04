@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Проверка прода сразу после `wrangler deploy` (хук scripts/hooks/pre-push и GitHub Actions). Не прошла — вызывающий
 // откатывает Worker на предыдущую версию. Только чтение и ни одного секрета: главная, один её скрипт, API без подписи
-// Telegram и вебхук бота без секрета. В базу ничего не пишется.
+// Telegram, вебхук бота без секрета и страницы лендинга. В базу ничего не пишется.
 //   node scripts/postdeploy-check.mjs          — адрес прода из APP_URL в wrangler.jsonc
 //   POSTDEPLOY_URL=https://… node …            — другой адрес
 // Если рядом есть свежая сборка (dist/client/index.html), прод должен отдавать именно её скрипт: новый Worker
@@ -20,6 +20,9 @@ export function prodUrl(env, wranglerText) {
 export function mainScript(html) {
   return /<script[^>]*\ssrc="(\/assets\/[^"]+\.js)"/.exec(html)?.[1] ?? null;
 }
+
+/** Страницы сайта, которые должны отдаваться сами по себе (браузер с корня переадресуется на /ru/ или /en/). */
+export const LANDING = ['/ru/', '/en/', '/ru/privacy/'];
 
 /** Один проход проверок. Возвращает список того, что не так (пустой — всё хорошо). */
 export async function checkOnce(base, fetchFn, expectedScript) {
@@ -54,6 +57,15 @@ export async function checkOnce(base, fetchFn, expectedScript) {
       if (asset.status !== 200) problems.push(`скрипт ${script}: ${asset.status}, ждали 200`);
       else if (!type.includes('javascript')) problems.push(`скрипт ${script}: content-type «${type}», ждали javascript`);
     }
+  }
+
+  // Лендинг и документы (site/): 200 и своя страница, а не мини-апп из SPA-заглушки (тогда в HTML нет шапки сайта).
+  for (const path of LANDING) {
+    const page = await get(`лендинг ${path}`, path);
+    if (!page) continue;
+    const html = await page.text();
+    if (page.status !== 200) problems.push(`лендинг ${path}: ${page.status}, ждали 200`);
+    else if (!html.includes('class="site-top"')) problems.push(`лендинг ${path}: отдаётся не страница сайта (нет шапки site-top)`);
   }
 
   // API без подписи Telegram — 401 (worker/auth.ts). 500 значит, что Worker падает раньше проверки.

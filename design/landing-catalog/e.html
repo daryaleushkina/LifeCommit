@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LifeCommit · Стекло</title>
+<script>document.documentElement.classList.add('js');setTimeout(function(){document.documentElement.classList.remove('js')},3200);</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="kit.css">
+<style>
+/* «Стекло»: одна длинная сцена. Слева текст, справа телефон в 3D среди стеклянных карточек;
+   при прокрутке телефон разворачивается к нам, карточки влетают в экран, а экраны сменяют друг друга. */
+:root {
+  --bg: #F6F4EE;
+  --fg: #1F2A1F;
+  --mut: #566055;
+  --acc: #237A46;
+  --glass-card: rgba(255, 255, 255, 0.66);
+  --glass-line: rgba(255, 255, 255, 0.85);
+  --shadow-soft: 0 24px 60px -24px rgba(31, 52, 36, 0.28), 0 4px 14px -6px rgba(31, 52, 36, 0.12);
+  --gut: clamp(16px, 4.4vw, 72px);
+  --hh: 68px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); -webkit-font-smoothing: antialiased; overflow-x: clip; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--green-hi); outline-offset: 3px; border-radius: 8px; }
+
+/* фон: мягкие пятна, как в приложении, медленно дрейфуют */
+.blobs { position: fixed; inset: -10vmax; z-index: 0; pointer-events: none; }
+.blobs i { position: absolute; width: 62vmax; height: 62vmax; border-radius: 50%; opacity: 0.9; will-change: transform; }
+.blobs i:nth-child(1) { left: -8vmax; top: -6vmax; background: radial-gradient(circle, rgba(178, 228, 196, 0.85), rgba(178, 228, 196, 0) 64%); animation: drift1 38s ease-in-out infinite alternate; }
+.blobs i:nth-child(2) { right: -14vmax; top: 8vmax; background: radial-gradient(circle, rgba(243, 226, 184, 0.8), rgba(243, 226, 184, 0) 64%); animation: drift2 44s ease-in-out infinite alternate; }
+.blobs i:nth-child(3) { left: 4vmax; bottom: -22vmax; background: radial-gradient(circle, rgba(246, 211, 194, 0.7), rgba(246, 211, 194, 0) 62%); animation: drift3 50s ease-in-out infinite alternate; }
+.blobs i:nth-child(4) { right: 0; bottom: -18vmax; background: radial-gradient(circle, rgba(190, 232, 206, 0.8), rgba(190, 232, 206, 0) 64%); animation: drift1 56s ease-in-out infinite alternate-reverse; }
+@keyframes drift1 { to { transform: translate(9vmax, 7vmax) scale(1.08); } }
+@keyframes drift2 { to { transform: translate(-10vmax, 9vmax) scale(0.94); } }
+@keyframes drift3 { to { transform: translate(12vmax, -8vmax) scale(1.1); } }
+
+/* шапка */
+.top {
+  position: fixed; z-index: 50; left: 0; right: 0; top: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) var(--gut) 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  transition: background-color 400ms, box-shadow 400ms, backdrop-filter 400ms;
+}
+.top.scrolled { background: rgba(246, 244, 238, 0.62); -webkit-backdrop-filter: blur(20px) saturate(1.3); backdrop-filter: blur(20px) saturate(1.3); box-shadow: inset 0 -1px 0 rgba(31, 42, 31, 0.06); }
+.brand { display: flex; align-items: center; gap: 11px; text-decoration: none; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
+.brand .mark { padding: 4px; border-radius: 9px; background: #fff; box-shadow: 0 1px 2px rgba(31, 42, 31, 0.08); }
+.right { display: flex; align-items: center; gap: 18px; font-size: 14px; font-weight: 500; }
+.lang { color: var(--mut); white-space: nowrap; }
+.lang b { color: var(--fg); font-weight: 700; }
+.lang a { color: var(--mut); text-decoration: none; padding: 6px 2px; }
+.lang a:hover { color: var(--fg); }
+.dl { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 999px; background: #0F1511; color: #fff; text-decoration: none; font-weight: 600; transition: transform 300ms var(--ease-out); }
+.dl:hover { transform: translateY(-1px); }
+
+/* большая сцена */
+.story { position: relative; z-index: 1; height: 620vh; }
+.sticky { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
+.copy { position: absolute; z-index: 3; left: var(--gut); top: 0; bottom: 0; width: min(46vw, 640px); }
+.frame { position: absolute; left: 0; right: 0; top: 0; bottom: 0; padding-top: var(--hh); display: flex; flex-direction: column; justify-content: center; gap: 22px; }
+.frame.f-scene { visibility: hidden; }
+html:not(.js) .frame.f-scene, .no-gsap .frame.f-scene { visibility: hidden; }
+
+h1 { margin: 0; font-size: clamp(44px, 5.9vw, 96px); line-height: 0.98; font-weight: 800; letter-spacing: -0.04em; text-wrap: balance; }
+html.js .f-hero h1 { visibility: hidden; }
+.for { margin: 0; font-size: 18px; line-height: 1.4; color: var(--mut); }
+.f-hero [data-stores] { margin-top: 10px; }
+
+.kick { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px 7px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.62); box-shadow: inset 0 0 0 1px var(--glass-line), 0 6px 18px -10px rgba(31, 52, 36, 0.3); font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--acc); }
+.kick i { width: 8px; height: 8px; border-radius: 2.5px; background: var(--h3); }
+h2 { margin: 0; font-size: clamp(32px, 4.3vw, 66px); line-height: 1.02; font-weight: 800; letter-spacing: -0.035em; text-wrap: balance; }
+.frame p.t { margin: 0; max-width: 31em; font-size: clamp(16px, 1.25vw, 19px); line-height: 1.55; color: var(--mut); text-wrap: pretty; }
+.frame p.t q { quotes: none; color: var(--fg); font-weight: 500; }
+
+/* индекс сцен */
+.idx { position: absolute; z-index: 3; left: var(--gut); bottom: 40px; display: flex; gap: 26px; margin: 0; padding: 0; list-style: none; font-size: 14px; font-weight: 500; color: var(--mut); opacity: 0; }
+.idx li { position: relative; padding-bottom: 10px; transition: color 300ms; }
+.idx li::after { content: ''; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; border-radius: 1px; background: rgba(31, 42, 31, 0.1); }
+.idx li b { position: absolute; z-index: 1; left: 0; bottom: 0; height: 2px; width: 0; border-radius: 1px; background: var(--acc); font-size: 0; }
+.idx li.on { color: var(--fg); }
+
+/* 3D-сцена */
+.stage { position: absolute; z-index: 2; left: 44%; right: 0; top: 0; bottom: 0; display: grid; place-items: center; perspective: 1700px; perspective-origin: 50% 45%; }
+.stage .light { position: absolute; width: 520px; height: 520px; margin: -260px 0 0 -260px; left: 0; top: 0; border-radius: 50%; background: radial-gradient(circle, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 62%); pointer-events: none; mix-blend-mode: soft-light; opacity: 0; transition: opacity 600ms; }
+.tilt, .float, .cluster, .orb { transform-style: preserve-3d; }
+.orb { position: absolute; inset: 0; pointer-events: none; }
+.tilt { position: relative; }
+.cluster { position: relative; }
+.cluster > .phone { position: relative; z-index: 1; }
+.orbits { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; pointer-events: none; }
+.orbits svg { position: absolute; overflow: visible; left: 0; top: 0; }
+.orbits ellipse { fill: none; stroke: rgba(35, 122, 70, 0.42); stroke-width: 1.2; stroke-dasharray: 3 7; }
+.orbits circle { fill: #fff; stroke: rgba(35, 122, 70, 0.5); stroke-width: 1.2; }
+
+/* стеклянные карточки вокруг телефона */
+.gcw { position: absolute; z-index: 2; left: 50%; top: 50%; width: 0; height: 0; display: flex; align-items: center; justify-content: center; transform-style: preserve-3d; }
+.gc {
+  flex: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px 12px 12px; border-radius: 20px; white-space: nowrap;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.52));
+  -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: inset 0 0 0 1px var(--glass-line), inset 0 1px 0 #fff, var(--shadow-soft);
+  font-size: 15px; line-height: 1.25; color: var(--fg);
+}
+.gc .tl { flex: none; width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; }
+.gc .tl svg { width: 21px; height: 21px; }
+.tl.check { background: #E6F2E9; color: #237A46; }
+.tl.count { background: #F5EBD3; color: #8A6412; }
+.tl.quit { background: #F8E4DA; color: #B4532A; }
+.tl.blue { background: #E4EBF8; color: #3D63B8; }
+.gc b { font-weight: 600; }
+.gc small { display: block; font-size: 13px; color: var(--mut); }
+.gc small em { font-style: normal; font-weight: 700; color: var(--fg); }
+.gc .col { display: flex; flex-direction: column; gap: 2px; }
+.gc .pb { display: block; width: 150px; height: 5px; margin-top: 7px; border-radius: 3px; background: rgba(31, 42, 31, 0.08); overflow: hidden; }
+.gc .pb i { display: block; height: 100%; border-radius: 3px; background: var(--h3); }
+.gc .evbar { flex: none; width: 4px; height: 34px; border-radius: 2px; background: #6E8FD9; }
+.gc .time { font-weight: 700; color: var(--acc); }
+.gc .src { flex: none; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: #E4E8DF; color: var(--mut); }
+.gc.big .num { font-size: 30px; line-height: 1; font-weight: 800; letter-spacing: -0.03em; }
+.gc.pill { padding: 8px 18px 8px 8px; border-radius: 999px; gap: 12px; }
+.gc.pill .mic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--acc); color: #fff; box-shadow: 0 6px 16px -6px rgba(35, 122, 70, 0.6); }
+.gc.pill .mic svg { width: 20px; height: 20px; }
+.mini { display: flex; align-items: center; gap: 3px; height: 26px; }
+.mini i { width: 3px; height: 100%; border-radius: 2px; background: var(--h3); transform-origin: center; animation: mini 1.1s ease-in-out infinite; }
+.mini i:nth-child(2n) { animation-delay: -0.3s; } .mini i:nth-child(3n) { animation-delay: -0.6s; } .mini i:nth-child(5n) { animation-delay: -0.8s; }
+@keyframes mini { 0%, 100% { transform: scaleY(0.25); } 50% { transform: scaleY(1); } }
+.ava { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; box-shadow: 0 0 0 2px #fff; }
+.ava + .ava { margin-left: -8px; }
+.bubble { flex-direction: column; align-items: flex-start; gap: 4px; max-width: 260px; white-space: normal; border-radius: 20px 20px 20px 6px; }
+.bubble .who { font-size: 13px; font-weight: 700; color: #2A8BD0; }
+.gc.far { filter: blur(0.6px); }
+
+/* финал */
+.get { position: relative; z-index: 1; padding: clamp(110px, 16vh, 180px) var(--gut) clamp(90px, 12vh, 140px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 22px; }
+.gmark { perspective: 900px; margin-bottom: 18px; }
+.gm-tilt { display: grid; grid-template-columns: repeat(3, 62px); gap: 14px; transform-style: preserve-3d; }
+.gm-tilt i { width: 62px; height: 62px; border-radius: 18px; background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.45)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.95), 0 22px 34px -16px rgba(31, 52, 36, 0.35); }
+.gm-tilt i.l1 { background: linear-gradient(150deg, rgba(216, 240, 224, 0.98), rgba(184, 224, 196, 0.7)); }
+.gm-tilt i.l2 { background: linear-gradient(150deg, rgba(160, 216, 178, 0.98), rgba(124, 203, 150, 0.75)); }
+.gm-tilt i.l4 { background: linear-gradient(150deg, #48B572, #1D6239); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 26px 40px -14px rgba(29, 98, 57, 0.55); }
+.get h2 { font-size: clamp(40px, 6.2vw, 92px); }
+.get p { margin: 0; font-size: 19px; color: var(--mut); }
+.get [data-stores] { justify-content: center; margin-top: 14px; }
+
+footer { position: relative; z-index: 1; margin: 0 var(--gut); padding: 28px 0 calc(96px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid rgba(31, 42, 31, 0.1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 28px; font-size: 14px; color: var(--mut); }
+footer .l { display: flex; align-items: center; gap: 12px; }
+footer nav { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+footer nav a { text-decoration: none; padding: 6px 0; }
+footer nav a:hover { color: var(--fg); }
+.soc { display: flex; gap: 10px; }
+.soc a { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.7); box-shadow: inset 0 0 0 1px rgba(31, 42, 31, 0.06); color: var(--fg); transition: transform 300ms var(--ease-out); }
+.soc a:hover { transform: translateY(-2px); }
+.soc svg { width: 20px; height: 20px; }
+
+/* узкие экраны: текст сверху, телефон ниже, без карточек сцен */
+@media (max-width: 899px) {
+  :root { --hh: 62px; }
+  .right .lang { display: none; }
+  .copy { left: var(--gut); right: var(--gut); width: auto; top: var(--hh); bottom: auto; }
+  .frame { position: absolute; top: 0; bottom: auto; padding-top: 14px; justify-content: flex-start; gap: 14px; }
+  h1 { font-size: clamp(38px, 11.4vw, 60px); }
+  .for { font-size: 16px; }
+  .frame p.t { font-size: 15px; line-height: 1.5; }
+  h2 { font-size: clamp(28px, 8.4vw, 44px); }
+  .stage { left: 0; }
+  .f-hero .qr-card { display: none; }
+  .store { height: 54px; padding: 0 16px 0 14px; border-radius: 16px; }
+  .store b { font-size: 17px; }
+  .orb, .orbits, .idx, .hc[data-k="event"], .hc[data-k="quit"] { display: none; }
+  .gc { font-size: 13px; padding: 9px 12px 9px 9px; gap: 9px; border-radius: 16px; }
+  .gc .tl { width: 32px; height: 32px; border-radius: 10px; }
+  .gc .tl svg { width: 17px; height: 17px; }
+  .gc .pb { width: 100px; }
+  .gc.big .num { font-size: 22px; }
+  .gc.pill .mic { width: 32px; height: 32px; }
+  .gm-tilt { grid-template-columns: repeat(3, 48px); gap: 10px; }
+  .gm-tilt i { width: 48px; height: 48px; border-radius: 14px; }
+  .get p { font-size: 17px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blobs i, .mini i { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="blobs" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+<header class="top">
+  <a class="brand" href="#top" aria-label="LifeCommit — наверх">
+    <span class="mark" style="--m: 8px; --g: 2.5px" aria-hidden="true"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></span>
+    LifeCommit
+  </a>
+  <div class="right">
+    <span class="lang"><b>RU</b> · <a href="#" hreflang="en">EN</a></span>
+    <a class="dl" href="#get">Скачать</a>
+  </div>
+</header>
+
+<main>
+  <section class="story" id="top">
+    <div class="sticky">
+      <div class="copy">
+        <div class="frame f-hero">
+          <h1>Привычки, дела, цели и календарь в одном месте</h1>
+          <p class="for">Для iPhone, Android и Telegram.</p>
+          <div data-stores data-qr data-tone="dark"></div>
+        </div>
+        <div class="frame f-scene" aria-label="Голос">
+          <span class="kick"><i></i>Голос</span>
+          <h2>Скажите одной фразой</h2>
+          <p class="t"><q>„Каждый день пить восемь стаканов воды, по понедельникам и средам спортзал, а завтра в три позвонить в банк“.</q> LifeCommit сам разберёт, где привычка, а где дело со временем. Так же можно написать или сказать боту в Telegram.</p>
+        </div>
+        <div class="frame f-scene" aria-label="Привычки">
+          <span class="kick"><i></i>Привычки</span>
+          <h2>Делать, считать или бросить</h2>
+          <p class="t">Спортзал три раза в неделю, восемь стаканов воды в день, сколько дней без сладкого. Отметка — одно касание.</p>
+        </div>
+        <div class="frame f-scene" aria-label="Дела и календарь">
+          <span class="kick"><i></i>Дела и календарь</span>
+          <h2>Дела и календарь в одном списке</h2>
+          <p class="t">События из Apple и Google Календаря появляются сами, а ваши дела со временем попадают в календарь телефона. Несделанное переезжает на завтра.</p>
+        </div>
+        <div class="frame f-scene" aria-label="Вместе">
+          <span class="kick"><i></i>Вместе</span>
+          <h2>Общие дела с семьёй и друзьями</h2>
+          <p class="t">Кто сегодня выносит мусор, сколько собрали на отпуск, кто уже покормил кота. Бот подскажет в общем чате.</p>
+        </div>
+      </div>
+
+      <ol class="idx" aria-hidden="true">
+        <li>Голос<b></b></li><li>Привычки<b></b></li><li>Дела и календарь<b></b></li><li>Вместе<b></b></li>
+      </ol>
+
+      <div class="stage" aria-hidden="true">
+        <span class="light"></span>
+        <div class="tilt"><div class="float"><div class="cluster">
+
+          <div class="orbits">
+            <svg width="1" height="1"><ellipse cx="0" cy="0" rx="300" ry="300"></ellipse><circle cx="300" cy="0" r="4"></circle></svg>
+            <svg width="1" height="1"><ellipse cx="0" cy="0" rx="380" ry="380"></ellipse><circle cx="-268" cy="-268" r="4"></circle></svg>
+          </div>
+
+          <div class="phone" id="ph" style="--pw: 300"><div class="phone-screen">
+            <div class="app" data-screen="voice" id="sVoice"></div>
+            <div class="app" data-screen="today" id="sToday"></div>
+            <div class="app" data-screen="calendar" id="sCal"></div>
+            <div class="app" data-screen="group" id="sGroup"></div>
+          </div></div>
+
+          <!-- карточки первого экрана: влетают в экран телефона -->
+          <div class="gcw hc" data-k="count"><div class="gc">
+            <span class="tl count"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c3.6 4.4 6 7.7 6 10.7a6 6 0 0 1-12 0c0-3 2.4-6.3 6-10.7z"/></svg></span>
+            <span class="col"><b>Пить воду</b><small><em>5</em> из 8 стаканов</small><span class="pb"><i style="width: 62%"></i></span></span>
+          </div></div>
+          <div class="gcw hc" data-k="event"><div class="gc far">
+            <span class="evbar"></span><span class="col"><span class="time">19:00</span><b>День рождения Пети</b></span><span class="src">A</span>
+          </div></div>
+          <div class="gcw hc" data-k="goal"><div class="gc">
+            <span class="col"><b>Отпуск</b><small><em>128 000</em> из 150 000</small><span class="pb"><i style="width: 85%"></i></span></span>
+          </div></div>
+          <div class="gcw hc" data-k="quit"><div class="gc big far">
+            <span class="tl quit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M7.8 12L4 9.3v5.4zM16.2 12L20 9.3v5.4z"/></svg></span>
+            <span class="col"><span class="num">12 дней</span><small>без сладкого</small></span>
+          </div></div>
+          <div class="gcw hc" data-k="voice"><div class="gc pill">
+            <span class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></span>
+            <span class="mini"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          </div></div>
+
+          <!-- карточки сцен: облетают телефон -->
+          <div class="orb" id="orbH">
+            <div class="gcw" data-o="-250,-140,90"><div class="gc"><span class="tl check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="col"><b>Делать регулярно</b><small>спортзал · пн, ср, пт</small></span></div></div>
+            <div class="gcw" data-o="250,-40,140"><div class="gc"><span class="tl count"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c3.6 4.4 6 7.7 6 10.7a6 6 0 0 1-12 0c0-3 2.4-6.3 6-10.7z"/></svg></span><span class="col"><b>Считать что-то</b><small>вода · 8 стаканов</small></span></div></div>
+            <div class="gcw" data-o="-230,190,160"><div class="gc"><span class="tl quit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg></span><span class="col"><b>Бросить</b><small>сладкое · 12 дней без</small></span></div></div>
+          </div>
+          <div class="orb" id="orbC">
+            <div class="gcw" data-o="-255,-150,110"><div class="gc"><span class="tl" style="background:#EDEDED;color:#111"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.75.73 1.05 1.6 2.24 2.73 2.2 1.1-.05 1.51-.71 2.84-.71 1.32 0 1.7.71 2.86.69 1.18-.02 1.93-1.07 2.65-2.13.84-1.22 1.18-2.4 1.2-2.46-.03-.01-2.3-.88-2.32-3.5zM14.2 6.13c.6-.73 1-1.74.9-2.75-.87.04-1.92.58-2.54 1.3-.56.64-1.05 1.67-.92 2.66.97.07 1.96-.49 2.56-1.21z"/></svg></span><span class="col"><b>Apple Календарь</b><small>09:30 · Йога в парке</small></span></div></div>
+            <div class="gcw" data-o="255,-60,150"><div class="gc"><span class="tl blue" style="font-weight:800;font-size:16px">G</span><span class="col"><b>Google Календарь</b><small>12:00 · Обед с Аней</small></span></div></div>
+            <div class="gcw" data-o="-215,200,170"><div class="gc"><span class="tl check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span><span class="col"><b>Записаться к врачу</b><small>переехало на завтра</small></span></div></div>
+          </div>
+          <div class="orb" id="orbG">
+            <div class="gcw" data-o="-250,-170,120"><div class="gc bubble"><span class="who">LifeCommit</span><span>Сегодня мусор выносит Маша. Кота уже покормил Петя.</span></div></div>
+            <div class="gcw" data-o="250,-80,150"><div class="gc"><span style="display:flex"><span class="ava" style="background:#DDE3F0;color:#23365C">М</span><span class="ava" style="background:#F1E3C8;color:#5A4214">П</span><span class="ava" style="background:#EBDCE6;color:#5A2748">А</span></span><span class="col"><b>Семья</b><small>3 человека</small></span></div></div>
+            <div class="gcw" data-o="-205,210,170"><div class="gc"><span class="tl check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span class="col"><b>Вынести мусор</b><small>по очереди · сегодня Маша</small></span></div></div>
+          </div>
+
+        </div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="get" id="get">
+    <div class="gmark" aria-hidden="true">
+      <div class="gm-tilt"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></div>
+    </div>
+    <h2>Скачайте LifeCommit</h2>
+    <p>На iPhone, Android и в Telegram.</p>
+    <div data-stores data-qr data-tone="dark"></div>
+  </section>
+</main>
+
+<footer>
+  <div class="l">
+    <span class="mark" style="--m: 7px; --g: 2px" aria-hidden="true"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></span>
+    © 2026 LifeCommit
+  </div>
+  <nav aria-label="Документы"><a href="#">Политика конфиденциальности</a><a href="#">Условия использования</a></nav>
+  <div class="soc">
+    <a href="#" aria-label="Telegram-канал LifeCommit"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.4 11.2l15.1-5.8c.7-.26 1.32.17 1.09 1.23l-2.57 12.1c-.19.86-.7 1.07-1.43.67l-3.9-2.9-1.89 1.82c-.21.21-.39.39-.79.39l.28-3.98 7.25-6.55c.32-.28-.07-.43-.49-.16l-8.96 5.64-3.86-1.2c-.84-.26-.86-.84.17-1.25z"/></svg></a>
+    <a href="#" aria-label="LifeCommit в Threads"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M16.5 12c0 2.6 1 4.1 2.6 4.1s2.4-1.9 2.4-4.6a9.5 9.5 0 1 0-3.9 7.7"/><circle cx="12" cy="12" r="4.5"/></svg></a>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/ScrollTrigger.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/SplitText.min.js"></script>
+<script src="kit.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const R = LC.reduced;
+  const h1 = $('.f-hero h1');
+  const reveal = () => { h1.style.visibility = 'visible'; document.documentElement.classList.remove('js'); };
+
+  if (!window.gsap || !window.ScrollTrigger) { reveal(); document.body.classList.add('no-gsap'); LC.switcher('e'); return; }
+  LC.mount();
+  gsap.registerPlugin(ScrollTrigger);
+  if (window.SplitText) gsap.registerPlugin(SplitText);
+  ScrollTrigger.config({ ignoreMobileResize: true });
+
+  const top = $('.top');
+  const copy = $('.copy');
+  const frames = $$('.frame');
+  const ph = $('#ph');
+  const stage = $('.stage');
+  const tilt = $('.tilt');
+  const floatEl = $('.float');
+  const cluster = $('.cluster');
+  const light = $('.stage .light');
+  const scr = { voice: $('#sVoice'), today: $('#sToday'), cal: $('#sCal'), group: $('#sGroup') };
+  const heroCards = $$('.gcw.hc');
+  const orbs = [$('#orbH'), $('#orbC'), $('#orbG')];
+  const idx = $$('.idx li');
+  const PH_RATIO = 2.0943;
+  const CARD = { count: [-218, -150, 150], event: [262, -238, -60], goal: [228, 128, 190], quit: [-270, 184, -20], voice: [24, 302, 240] };
+
+  const mobile = () => window.innerWidth < 900;
+
+  /* размер телефона — от высоты окна */
+  function sizePhone() {
+    const vh = window.innerHeight;
+    const pw = mobile() ? Math.min(244, window.innerWidth * 0.62) : Math.max(240, Math.min(320, (vh * 0.7) / PH_RATIO));
+    ph.style.setProperty('--pw', pw.toFixed(1));
+    document.documentElement.style.setProperty('--hh', top.offsetHeight + 'px');
+    return pw;
+  }
+
+  /* геометрия: где стоит телефон в первом экране и в сценах */
+  let G = {};
+  function measure() {
+    const pw = sizePhone();
+    const vh = window.innerHeight;
+    const phH = pw * PH_RATIO;
+    if (mobile()) {
+      const base = copy.offsetTop;
+      const heroBottom = base + frames[0].offsetTop + frames[0].offsetHeight;
+      const sceneBottom = base + Math.max(...frames.slice(1).map((f) => f.offsetTop + f.offsetHeight));
+      const sc = Math.min(1, (vh - sceneBottom - 56) / phH);
+      G = {
+        yHero: heroBottom + 34 + phH / 2 - vh / 2,
+        yScene: sceneBottom + 14 + (phH * sc) / 2 - vh / 2,
+        scHero: 1, sc, f: 0.56 * (pw / 244), cs: 0.84,
+      };
+    } else {
+      const f = Math.min(1, stage.clientWidth / 800) * (pw / 300);
+      G = { yHero: vh * 0.02, yScene: vh * 0.012, scHero: 1, sc: 1.05, f, cs: Math.min(1, 0.7 + f * 0.3) };
+    }
+    return G;
+  }
+  measure();
+
+  /* карточки сцен по местам */
+  function placeOrbs() {
+    orbs.forEach((o) => $$('.gcw', o).forEach((w) => {
+      const [x, y, z] = w.dataset.o.split(',').map(Number);
+      gsap.set(w, { x: x * G.f, y: y * G.f, z: z * G.f, scale: G.cs });
+    }));
+  }
+  placeOrbs();
+
+  /* ── прокрутка: одна шкала на 100 делений ── */
+  const seg = (v, a, b) => Math.min(1, Math.max(0, (v - a) / (b - a)));
+  let lastScene = -1;
+  function drive(p) {
+    const t = p * 100;
+    LC.set(scr.voice, R ? (t > 16 ? 1 : 0) : seg(t, 17, 40));
+    LC.set(scr.today, R ? 1 : seg(t, 46, 60));
+    LC.set(scr.cal, R ? 1 : seg(t, 66, 80));
+    LC.set(scr.group, R ? 1 : seg(t, 86, 98));
+    const s = t < 13 ? -1 : t < 42 ? 0 : t < 62 ? 1 : t < 82 ? 2 : 3;
+    if (s !== lastScene) { idx.forEach((li, i) => li.classList.toggle('on', i === s)); lastScene = s; }
+    const ranges = [[13, 42], [42, 62], [62, 82], [82, 100]];
+    idx.forEach((li, i) => { li.lastElementChild.style.width = seg(t, ranges[i][0], ranges[i][1]) * 100 + '%'; });
+  }
+
+  gsap.set(frames.slice(1), { autoAlpha: 0, y: 46 });
+  gsap.set([scr.today, scr.cal, scr.group], { autoAlpha: 0 });
+  gsap.set(orbs, { autoAlpha: 0, rotationY: 38 });
+  gsap.set('.orbits', { rotationX: 66 });
+
+  const tl = gsap.timeline({
+    defaults: { ease: 'power2.inOut' },
+    onUpdate: () => drive(tl.progress()),
+    scrollTrigger: { trigger: '.story', start: 'top top', end: 'bottom bottom', scrub: R ? true : 0.6, invalidateOnRefresh: true },
+  });
+
+  // 1. Первый экран → «Голос»: телефон разворачивается к нам, карточки влетают в экран
+  tl.fromTo(cluster,
+    { rotationY: R ? 0 : -22, rotationX: R ? 0 : 10, rotationZ: R ? 0 : 2.5, y: () => G.yHero, scale: () => G.scHero },
+    { rotationY: 0, rotationX: 0, rotationZ: 0, y: () => G.yScene, scale: () => G.sc, duration: 12 }, 3);
+  tl.to(frames[0], { autoAlpha: 0, y: -56, duration: 7, ease: 'power2.in' }, 3);
+  heroCards.forEach((c, i) => {
+    const k = CARD[c.dataset.k];
+    tl.fromTo(c,
+      { x: () => k[0] * G.f, y: () => k[1] * G.f, z: () => k[2] * G.f, scale: () => G.cs, autoAlpha: 1 },
+      { x: 0, y: () => -40 * G.f, z: 0, scale: 0.22, autoAlpha: 0, duration: 6.5, ease: 'power3.in' }, 4.2 + i * 0.75);
+  });
+  tl.to('.orbits', { autoAlpha: 0, scale: 0.7, duration: 8 }, 4);
+  tl.to(frames[1], { autoAlpha: 1, y: 0, duration: 5, ease: 'power3.out' }, 12.5);
+  tl.to('.idx', { opacity: 1, duration: 4 }, 12);
+
+  // 2. «Голос» → «Привычки»
+  tl.to(frames[1], { autoAlpha: 0, y: -46, duration: 4, ease: 'power2.in' }, 40);
+  tl.to(scr.today, { autoAlpha: 1, duration: 4 }, 41);
+  tl.to(frames[2], { autoAlpha: 1, y: 0, duration: 5, ease: 'power3.out' }, 44.5);
+  tl.to(orbs[0], { autoAlpha: 1, rotationY: 0, duration: 6, ease: 'power3.out' }, 42);
+  tl.to(orbs[0], { autoAlpha: 0, rotationY: -38, duration: 5, ease: 'power2.in' }, 58);
+
+  // 3. → «Дела и календарь»
+  tl.to(frames[2], { autoAlpha: 0, y: -46, duration: 4, ease: 'power2.in' }, 60);
+  tl.to(scr.cal, { autoAlpha: 1, duration: 4 }, 61);
+  tl.to(frames[3], { autoAlpha: 1, y: 0, duration: 5, ease: 'power3.out' }, 64.5);
+  tl.to(orbs[1], { autoAlpha: 1, rotationY: 0, duration: 6, ease: 'power3.out' }, 62);
+  tl.to(orbs[1], { autoAlpha: 0, rotationY: -38, duration: 5, ease: 'power2.in' }, 78);
+
+  // 4. → «Вместе»
+  tl.to(frames[3], { autoAlpha: 0, y: -46, duration: 4, ease: 'power2.in' }, 80);
+  tl.to(scr.group, { autoAlpha: 1, duration: 4 }, 81);
+  tl.to(frames[4], { autoAlpha: 1, y: 0, duration: 5, ease: 'power3.out' }, 84.5);
+  tl.to(orbs[2], { autoAlpha: 1, rotationY: 0, duration: 6, ease: 'power3.out' }, 82);
+  tl.to({}, { duration: 0.001 }, 100);
+
+  ScrollTrigger.addEventListener('refreshInit', () => { measure(); placeOrbs(); });
+
+  /* шапка становится стеклянной после первого экрана */
+  ScrollTrigger.create({ start: 40, end: 'max', onToggle: (s) => top.classList.toggle('scrolled', s.isActive) });
+
+  /* ── свет и наклон за курсором: маленький угол, сильное сглаживание ── */
+  if (!R) {
+    gsap.to(floatEl, { y: -9, rotationZ: 0.5, duration: 4.6, ease: 'sine.inOut', yoyo: true, repeat: -1 });
+    if (window.matchMedia('(pointer: fine)').matches) {
+      const rx = gsap.quickTo(tilt, 'rotationX', { duration: 1.6, ease: 'power3' });
+      const ry = gsap.quickTo(tilt, 'rotationY', { duration: 1.6, ease: 'power3' });
+      const lx = gsap.quickTo(light, 'x', { duration: 0.9, ease: 'power3' });
+      const ly = gsap.quickTo(light, 'y', { duration: 0.9, ease: 'power3' });
+      const gm = $('.gm-tilt');
+      gsap.set(gm, { rotationX: 16, rotationY: -18 });
+      const gx = gsap.quickTo(gm, 'rotationX', { duration: 1.4, ease: 'power3' });
+      const gy = gsap.quickTo(gm, 'rotationY', { duration: 1.4, ease: 'power3' });
+      window.addEventListener('pointermove', (e) => {
+        const x = e.clientX / window.innerWidth - 0.5;
+        const y = e.clientY / window.innerHeight - 0.5;
+        ry(x * 5); rx(-y * 4);
+        const r = stage.getBoundingClientRect();
+        lx(e.clientX - r.left); ly(e.clientY - r.top);
+        gx(16 - y * 14); gy(-18 + x * 22);
+      }, { passive: true });
+      light.style.opacity = '1';
+    } else {
+      gsap.set('.gm-tilt', { rotationX: 16, rotationY: -18 });
+    }
+  } else {
+    gsap.set('.gm-tilt', { rotationX: 12, rotationY: -14 });
+  }
+
+  /* ── финал: стеклянный знак собирается по клеткам ── */
+  const cells = $$('.gm-tilt i');
+  const lift = [0, 10, 34, 10, 34, 20, 34, 20, 0];
+  gsap.set(cells, { z: (i) => lift[i] });
+  if (!R) {
+    gsap.from(cells, {
+      z: -320, rotationX: -50, autoAlpha: 0, duration: 1.6, ease: 'expo.out',
+      stagger: { each: 0.07, from: 'center' },
+      scrollTrigger: { trigger: '.get', start: 'top 72%', once: true },
+    });
+  }
+
+  /* ── загрузка: окружности-построения рисуются, карточки собираются из глубины, телефон встаёт последним ── */
+  function intro() {
+    reveal();
+    if (R) return;
+    let lines = [h1];
+    if (window.SplitText) {
+      const split = SplitText.create(h1, { type: 'lines', mask: 'lines' });
+      lines = split.lines;
+    }
+    const lt = gsap.timeline({ delay: 0.1 });
+    lt.from(top, { y: -18, autoAlpha: 0, duration: 1, ease: 'power3.out' }, 0.1)
+      .from(lines, { yPercent: 112, duration: 1.35, ease: 'expo.out', stagger: 0.09 }, 0.15)
+      .from(['.f-hero .for', '.f-hero [data-stores]'], { y: 18, autoAlpha: 0, duration: 1, ease: 'power3.out', stagger: 0.1 }, 0.55)
+      .from('.orbits svg', { scale: 0.6, autoAlpha: 0, rotationZ: -40, duration: 2.2, ease: 'expo.out', stagger: 0.12 }, 0.1)
+      .from($$('.gc', $('.cluster')).filter((g) => g.closest('.hc')), {
+        x: (i) => [-160, 140, 170, -150, 40][i], y: (i) => [-90, -130, 80, 120, 160][i], z: -620,
+        rotationX: (i) => [-34, 28, -22, 36, -18][i], rotationY: (i) => [30, -26, 34, -30, 20][i],
+        autoAlpha: 0, duration: 1.9, ease: 'expo.out', stagger: 0.09,
+      }, 0.3)
+      .from(ph, { y: 150, z: -280, rotationY: 30, autoAlpha: 0, duration: 2.1, ease: 'expo.out' }, 0.5);
+  }
+
+  const fontsReady = document.fonts && document.fonts.ready ? Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1400))]) : Promise.resolve();
+  fontsReady.then(() => { measure(); placeOrbs(); ScrollTrigger.refresh(); intro(); });
+
+  LC.switcher('e');
+})();
+</script>
+</body>
+</html>

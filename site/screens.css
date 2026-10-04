@@ -1,0 +1,154 @@
+/* Телефон и экраны приложения на лендинге (по app.css, стиль A). Экран рисуется в 390×844 и масштабируется:
+   <div class="phone" style="--pw: 300"><div class="phone-screen"><div class="app" data-screen="…"></div></div></div> */
+.phone {
+  --pw: 300;
+  position: relative; flex: none;
+  width: calc(var(--pw) * 1px);
+  height: calc(var(--pw) * 2.0943px); /* экран ровно 390:844, рамка по 3% ширины с каждой стороны */
+  padding: calc(var(--pw) * 0.03px);
+  border-radius: calc(var(--pw) * 0.165px);
+  background: linear-gradient(145deg, #2a2f2c, #0c0e0d 40%, #1d211f);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.14), inset 0 0 0 calc(var(--pw) * 0.012px) #050605,
+    0 calc(var(--pw) * 0.1px) calc(var(--pw) * 0.22px) rgba(16, 32, 20, 0.22), 0 calc(var(--pw) * 0.02px) calc(var(--pw) * 0.04px) rgba(16, 32, 20, 0.18);
+}
+.phone-screen { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: calc(var(--pw) * 0.138px); background: #F6F4EE; isolation: isolate; }
+.phone-screen > .app { position: absolute; left: 0; top: 0; transform-origin: 0 0; transform: scale(calc(var(--pw) * 0.94 / 390)); }
+.phone::after { content: ''; position: absolute; inset: calc(var(--pw) * 0.03px); border-radius: calc(var(--pw) * 0.138px); background: linear-gradient(115deg, rgba(255, 255, 255, 0.16), transparent 32%); pointer-events: none; mix-blend-mode: screen; }
+
+.app {
+  --bg: #F6F4EE; --surface: #FFFFFF; --text: #1F2A1F; --muted: #5E665B; --line: #E3E0D6;
+  --accent: #237A46; --accent-text: #FFFFFF; --accent-soft: #E6F2E9; --warn: #B4532A; --warn-soft: #F8E4DA;
+  --heat-0: #E4E8DF; --heat-3: #3FA968;
+  --glass: rgba(255, 255, 255, 0.58);
+  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 8px 24px rgba(31, 42, 31, 0.07);
+  --glow: radial-gradient(60% 34% at 0% 18%, rgba(178, 228, 196, 0.7), transparent 70%), radial-gradient(60% 32% at 100% 40%, rgba(243, 226, 184, 0.7), transparent 70%),
+    radial-gradient(60% 32% at 0% 70%, rgba(246, 211, 194, 0.65), transparent 70%), radial-gradient(70% 34% at 100% 88%, rgba(190, 232, 206, 0.7), transparent 70%);
+  --k-check-bg: #E6F2E9; --k-check: #237A46; --k-count-bg: #F5EBD3; --k-count: #8A6412; --k-quit-bg: #F8E4DA; --k-quit: #B4532A; --k-todo-bg: #E3ECF8; --k-todo: #3D63B8;
+  position: relative; width: 390px; height: 844px; overflow: hidden;
+  background: var(--glow), var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 16px; line-height: 1.35; text-align: left; -webkit-font-smoothing: antialiased;
+}
+.app.dark {
+  --bg: #0F1511; --surface: #1B211C; --text: #E8EEE6; --muted: #A3AD9F; --line: #2A322B;
+  --accent: #3FA968; --accent-text: #0E1A12; --accent-soft: #1E3325; --warn: #E38A62; --warn-soft: #3A241B; --heat-0: rgba(255, 255, 255, 0.09);
+  --glass: rgba(255, 255, 255, 0.07);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.07), 0 10px 30px rgba(0, 0, 0, 0.25);
+  --glow: radial-gradient(70% 36% at 0% 16%, rgba(31, 107, 63, 0.55), transparent 70%), radial-gradient(60% 32% at 100% 42%, rgba(90, 74, 18, 0.5), transparent 70%),
+    radial-gradient(60% 32% at 0% 72%, rgba(107, 46, 24, 0.5), transparent 70%), radial-gradient(70% 34% at 100% 88%, rgba(27, 92, 56, 0.55), transparent 70%);
+  --k-check-bg: #1E3325; --k-check: #8FD6A6; --k-count-bg: #3A3116; --k-count: #E2C36B; --k-quit-bg: #3A241B; --k-quit: #E38A62; --k-todo-bg: #1D2A40; --k-todo: #8FB0F0;
+}
+.app * { box-sizing: border-box; margin: 0; }
+.app .island { position: absolute; z-index: 50; left: 50%; top: 11px; width: 122px; height: 35px; margin-left: -61px; border-radius: 20px; background: #000; }
+.app .status { position: absolute; z-index: 40; left: 0; right: 0; top: 0; height: 54px; padding: 0 34px 0 46px; display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 600; }
+.app .status-r { display: flex; gap: 6px; align-items: center; }
+.app .status svg { display: block; }
+.app .body { position: absolute; inset: 0; padding: 70px 20px 120px; display: flex; flex-direction: column; }
+.app h1 { font-size: 32px; line-height: 38px; font-weight: 700; letter-spacing: -0.02em; }
+.app .sub { margin-top: 2px; font-size: 15px; color: var(--muted); }
+.app .sec { margin: 22px 4px 8px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.app .seg { display: flex; padding: 3px; border-radius: 14px; background: var(--heat-0); letter-spacing: 0; text-transform: none; font-size: 13px; }
+.app .seg span { padding: 5px 10px; border-radius: 11px; }
+.app .seg span.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(31, 42, 31, 0.12); }
+.app .glass { background: var(--glass); -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px); box-shadow: var(--glass-edge); border-radius: 20px; }
+.app .todos { list-style: none; padding: 0; }
+.app .todos li { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 7px 14px 7px 12px; transition: opacity 400ms, transform 500ms var(--ease-out); }
+.app .todos li + li { border-top: 1px solid var(--line); }
+.app .todo-box { flex: none; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--muted); display: grid; place-items: center; color: transparent; transition: background-color 220ms, box-shadow 220ms, color 220ms; }
+.app .todo-box svg { width: 14px; height: 14px; }
+.app .todos li.done .todo-box { background: var(--accent); box-shadow: none; color: var(--accent-text); }
+.app .todos li.ev .todo-box { box-shadow: none; }
+.app .todos li.ev .todo-box::before { content: ''; width: 4px; height: 22px; border-radius: 2px; background: #6E8FD9; }
+.app .todo-time { flex: none; min-width: 42px; font-size: 14px; font-weight: 600; color: var(--accent); }
+.app .todo-text { flex: 1; min-width: 0; font-size: 16px; transition: color 220ms; }
+.app .todo-text.col { display: flex; flex-direction: column; align-items: flex-start; }
+.app .todos li.done .todo-text > span:first-child, .app .todos li.done > .todo-text:not(.col) { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.app .todos li.done .todo-time { color: var(--muted); }
+.app .src { flex: none; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--heat-0); color: var(--muted); }
+.app .src.g { background: color-mix(in srgb, #4A78D6 16%, var(--surface)); color: #4A78D6; }
+.app .chip { display: inline-flex; margin-top: 4px; padding: 3px 9px; border-radius: 9px; background: var(--heat-0); font-size: 12px; color: var(--muted); }
+.app .todos li > .chip { margin: 0; }
+.app .habits { display: flex; flex-direction: column; gap: 10px; }
+.app .habit { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px 12px 12px 14px; }
+.app .habit.count { flex-wrap: wrap; row-gap: 10px; padding-bottom: 14px; }
+.app .tile { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; }
+.app .tile svg { width: 22px; height: 22px; }
+.app .tile.check, .app .tile.group { background: var(--k-check-bg); color: var(--k-check); }
+.app .tile.count { background: var(--k-count-bg); color: var(--k-count); }
+.app .tile.quit { background: var(--k-quit-bg); color: var(--k-quit); }
+.app .tile.todo { background: var(--k-todo-bg); color: var(--k-todo); }
+.app .h-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.app .h-main b { font-size: 16px; line-height: 22px; font-weight: 500; }
+.app .h-main span { font-size: 14px; line-height: 18px; color: var(--muted); }
+.app .h-main span em { font-style: normal; font-weight: 700; color: var(--text); }
+.app .rb { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; transition: background-color 240ms, color 240ms, opacity 240ms; }
+.app .rb svg { width: 22px; height: 22px; }
+.app .rb.ok { background: var(--accent-soft); color: var(--accent); }
+.app .rb.no { background: var(--warn-soft); color: var(--warn); }
+.app .rb.edit { background: var(--heat-0); color: var(--muted); }
+.app .rb.ok.on { background: var(--accent); color: var(--accent-text); }
+.app .rb.dim { background: var(--heat-0); color: var(--muted); opacity: 0.6; }
+.app .rb-pair { flex: none; display: flex; gap: 8px; }
+.app .bar { display: block; flex: 0 0 100%; height: 6px; border-radius: 3px; background: var(--heat-0); overflow: hidden; }
+.app .bar i { display: block; height: 100%; width: 62%; border-radius: 3px; background: var(--heat-3); transition: width 500ms var(--ease-out); }
+.app .tabbar { position: absolute; z-index: 30; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 1fr 80px 1fr 1fr; padding: 6px 4px 28px; background: var(--glass); -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+.app.dark .tabbar { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+.app .tab { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.app .tab .pill { width: 48px; height: 30px; border-radius: 999px; display: grid; place-items: center; }
+.app .tab svg { width: 22px; height: 22px; }
+.app .tab.on { color: var(--accent); font-weight: 700; }
+.app .tab.on .pill { background: var(--accent-soft); }
+.app .mic { justify-self: center; align-self: start; width: 68px; height: 68px; margin-top: -26px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-text); box-shadow: 0 0 0 7px var(--bg), 0 8px 22px rgba(35, 122, 70, 0.28); }
+.app .mic svg { width: 28px; height: 28px; }
+
+/* голос: шторка */
+.app .scrim { position: absolute; z-index: 60; inset: 0; background: rgba(15, 21, 17, 0.32); opacity: 0; transition: opacity 400ms; }
+.app .sheet { position: absolute; z-index: 61; left: 0; right: 0; bottom: 0; min-height: 560px; padding: 12px 20px 34px; border-radius: 28px 28px 0 0; background: var(--surface); transform: translateY(105%); transition: transform 620ms var(--ease-out); display: flex; flex-direction: column; }
+.app .sheet .grab { align-self: center; width: 40px; height: 5px; border-radius: 3px; background: var(--heat-0); }
+.app .sheet h2 { margin-top: 18px; font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.01em; }
+.app .heard { margin-top: 10px; min-height: 66px; font-size: 17px; line-height: 23px; color: var(--muted); transition: opacity 300ms; }
+.app .heard.faded { opacity: 0.55; }
+.app .heard .w { opacity: 0.18; filter: blur(3px); transition: opacity 260ms, filter 260ms; }
+.app .heard .w.on { opacity: 1; filter: none; color: var(--text); }
+.app .waves { margin-top: 18px; height: 110px; display: flex; align-items: center; justify-content: center; gap: 5px; transition: height 420ms var(--ease-out), opacity 300ms, margin 420ms; }
+.app .waves.gone { height: 0; opacity: 0; margin: 0; }
+.app .waves i { width: 6px; height: 100%; border-radius: 3px; background: var(--heat-3); transform: scaleY(0.12); transition: transform 180ms; }
+.app .vlist { margin-top: 6px; display: flex; flex-direction: column; gap: 8px; opacity: 0; transition: opacity 300ms; }
+.app .vlist.in { opacity: 1; }
+.app .vsec { margin: 10px 4px 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.app .vrow { display: flex; align-items: center; gap: 12px; min-height: 62px; padding: 10px 14px; border-radius: 18px; background: var(--bg); opacity: 0; transform: translateY(14px); transition: opacity 420ms, transform 520ms cubic-bezier(0.34, 1.3, 0.64, 1); }
+.app .vrow.in { opacity: 1; transform: none; }
+.app .vrow .tile { width: 40px; height: 40px; border-radius: 13px; }
+.app .vrow small { display: block; font-size: 13px; color: var(--muted); }
+.app .vrow b { font-weight: 600; }
+.app .add-btn { margin-top: auto; height: 54px; border-radius: 16px; display: grid; place-items: center; background: var(--accent); color: var(--accent-text); font-size: 17px; font-weight: 700; opacity: 0; transition: opacity 400ms; }
+.app .add-btn.in { opacity: 1; }
+.app.voice-on .scrim { opacity: 1; }
+.app.voice-on .sheet { transform: none; }
+
+/* календарь */
+.app .week { margin-top: 16px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; text-align: center; }
+.app .week span { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 14px; font-size: 12px; color: var(--muted); }
+.app .week span b { font-size: 17px; font-weight: 600; color: var(--text); }
+.app .week span.on { background: var(--accent); color: rgba(255, 255, 255, 0.8); }
+.app .week span.on b { color: #fff; }
+.app .week span i { width: 5px; height: 5px; border-radius: 50%; background: var(--heat-3); }
+.app .week span.on i { background: #fff; }
+
+/* группа */
+.app .ghead { display: flex; align-items: center; gap: 14px; }
+.app .gname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.app .gname h1 { font-size: 28px; line-height: 34px; }
+.app .gtile { flex: none; width: 60px; height: 60px; border-radius: 18px; display: grid; place-items: center; font-size: 24px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+.app .people { display: flex; align-items: center; margin-top: 4px; }
+.app .ava { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; box-shadow: 0 0 0 2px var(--bg); }
+.app .ava + .ava { margin-left: -6px; }
+.app .pcount { margin-left: 8px; font-size: 14px; color: var(--muted); }
+.app .goal { margin-top: 18px; padding: 16px; }
+.app .goal b { font-size: 17px; font-weight: 600; }
+.app .goal .num { margin-top: 2px; font-size: 14px; color: var(--muted); }
+.app .goal .num em { font-style: normal; font-weight: 700; color: var(--text); }
+.app .goal .bar { margin-top: 12px; height: 8px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app * { transition: none !important; }
+}

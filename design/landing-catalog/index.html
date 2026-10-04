@@ -1,0 +1,70 @@
+<title>LifeCommit Landing Catalog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Обложка каталога: одна колонка, крупная строка с названием, ниже — варианты списком, у каждого живой значок-цвет. */
+:root {
+  --bg: #F6F4EE; --fg: #1F2A1F; --mut: #5E665B; --card: #FFFFFF; --edge: rgba(31, 42, 31, 0.08); --acc: #237A46;
+  --display: 'Onest', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0F1511; --fg: #E8EEE6; --mut: #A3AD9F; --card: #171E19; --edge: rgba(255, 255, 255, 0.08); --acc: #4CB878; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #0F1511; --fg: #E8EEE6; --mut: #A3AD9F; --card: #171E19; --edge: rgba(255, 255, 255, 0.08); --acc: #4CB878; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--display); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 72px 20px 120px; }
+.top { display: flex; align-items: center; gap: 14px; color: var(--mut); font-size: 15px; font-weight: 500; }
+h1 { margin: 28px 0 0; font-size: clamp(40px, 7vw, 76px); line-height: 1; font-weight: 800; letter-spacing: -0.035em; text-wrap: balance; }
+.lead { margin: 20px 0 0; max-width: 58ch; font-size: 18px; line-height: 1.5; color: var(--mut); }
+.list { margin-top: 48px; display: grid; gap: 10px; }
+.row {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 20px;
+  padding: 18px 22px 18px 18px; border-radius: 22px; background: var(--card); color: inherit; text-decoration: none;
+  box-shadow: inset 0 0 0 1px var(--edge);
+  transition: transform 400ms var(--ease-out), box-shadow 400ms var(--ease-out);
+}
+.row:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px var(--edge), 0 20px 40px -24px rgba(15, 21, 17, 0.35); }
+.row:focus-visible { outline: 3px solid var(--acc); outline-offset: 3px; }
+.sw { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; font-size: 26px; font-weight: 800; }
+.row h2 { margin: 0; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; }
+.row p { margin: 4px 0 0; color: var(--mut); font-size: 15px; line-height: 1.45; }
+.go { display: flex; align-items: center; gap: 8px; color: var(--acc); font-weight: 600; font-size: 15px; white-space: nowrap; }
+.note { margin-top: 36px; color: var(--mut); font-size: 14px; line-height: 1.5; max-width: 62ch; }
+@media (max-width: 560px) {
+  .row { grid-template-columns: 52px minmax(0, 1fr); gap: 14px; }
+  .sw { width: 52px; height: 52px; border-radius: 15px; font-size: 21px; }
+  .go { display: none; }
+}
+</style>
+
+<main class="wrap">
+  <div class="top">
+    <span class="mark" style="--m: 9px; --g: 3px" aria-hidden="true"><i></i><i class="l1"></i><i class="l4"></i><i class="l1"></i><i class="l4"></i><i class="l2"></i><i class="l4"></i><i class="l2"></i><i></i></span>
+    LifeCommit · лендинг, круг 1
+  </div>
+  <h1>Направления первого экрана</h1>
+  <p class="lead">Откройте любое и прокрутите вниз: у каждого свой первый экран и своя анимация сцены «Голос». Переключаться между вариантами можно панелью внизу.</p>
+  <div class="list" id="list"></div>
+  <p class="note">Кнопки скачивания показываются под устройство: на iPhone — App Store и Telegram, на Android — Google Play и Telegram, на компьютере — все три. Ссылки на сторы пока заглушки.</p>
+</main>
+
+<script>
+  const V = [
+    { id: 'a', name: 'Тишина', bg: '#F6F4EE', fg: '#1F2A1F', text: 'Как страница продукта Apple: один телефон, много воздуха. При прокрутке телефон закрепляется, а экраны в нём сменяются.' },
+    { id: 'b', name: 'Ночь', bg: '#0F1511', fg: '#7CCB96', text: 'Тёмный, со свечением. Поле клеток реагирует на курсор и загорается в ритм голоса.' },
+    { id: 'c', name: 'Клетки', bg: '#B8E0C4', fg: '#1F2A1F', text: 'Заставка: сетка дней заполняется и собирается в знак. При прокрутке каждая сцена «закрашивает» свои клетки.' },
+    { id: 'd', name: 'Голос', bg: '#E8F4EB', fg: '#237A46', text: 'Главное — голос: фраза появляется крупным текстом, рассыпается на три карточки, и они ложатся в телефон.' },
+    { id: 'e', name: 'Стекло', bg: '#FFFFFF', fg: '#237A46', text: 'Телефон в объёме, вокруг парят стеклянные карточки и чуть следят за курсором. При прокрутке всё влетает в экран.' },
+  ];
+  const SOON = [];
+  document.getElementById('list').innerHTML = V.map((v) => SOON.includes(v.id) ? `
+    <div class="row" style="opacity:.55">
+      <span class="sw" style="background:${v.bg};color:${v.fg}">${v.id.toUpperCase()}</span>
+      <span style="min-width:0"><h2>${v.name}</h2><p>${v.text}</p></span>
+      <span class="go" style="color:var(--mut)">Собирается</span>
+    </div>` : `
+    <a class="row" href="${v.id}.html">
+      <span class="sw" style="background:${v.bg};color:${v.fg}">${v.id.toUpperCase()}</span>
+      <span style="min-width:0"><h2>${v.name}</h2><p>${v.text}</p></span>
+      <span class="go">Открыть <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+    </a>`).join('');
+</script>

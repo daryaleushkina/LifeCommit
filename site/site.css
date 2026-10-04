@@ -1,0 +1,147 @@
+/* Сайт lifecommit.app (лендинг и документы): общие токены, две темы, шапка, подвал, кнопки скачивания.
+   Тема — по системе; выбор человека (переключатель в шапке) ставит data-theme на <html> и помнится. */
+@import '@fontsource-variable/onest/wght.css';
+
+:root {
+  --bg: #F6F4EE;
+  --bg-2: #EEECE4;
+  --fg: #1F2A1F;
+  --mut: #566055;
+  --dim: #8A9287;
+  --acc: #237A46;
+  --acc-hi: #2E8F55;
+  --acc-text: #FFFFFF;
+  --line: rgba(31, 42, 31, 0.1);
+  --card: rgba(255, 255, 255, 0.62);
+  --card-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.8), 0 18px 40px -26px rgba(31, 52, 36, 0.35);
+  --btn: #0F1511;
+  --btn-text: #FFFFFF;
+  --btn-edge: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --halo: rgba(63, 169, 104, 0.32);
+  --font: 'Onest Variable', 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --gut: clamp(16px, 4vw, 56px);
+  --max: 1280px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0A0F0C; --bg-2: #0F1511; --fg: #E8EEE6; --mut: #A3AD9F; --dim: #7E887B; --acc: #3FA968; --acc-hi: #7CCB96; --acc-text: #0E1A12;
+    --line: rgba(255, 255, 255, 0.08); --card: rgba(255, 255, 255, 0.04); --card-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    --btn: rgba(255, 255, 255, 0.08); --btn-text: #FFFFFF; --btn-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    --halo: rgba(63, 169, 104, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #0A0F0C; --bg-2: #0F1511; --fg: #E8EEE6; --mut: #A3AD9F; --dim: #7E887B; --acc: #3FA968; --acc-hi: #7CCB96; --acc-text: #0E1A12;
+  --line: rgba(255, 255, 255, 0.08); --card: rgba(255, 255, 255, 0.04); --card-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --btn: rgba(255, 255, 255, 0.08); --btn-text: #FFFFFF; --btn-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  --halo: rgba(63, 169, 104, 0.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--fg); overflow-x: clip; }
+body { margin: 0; font-family: var(--font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; transition: background-color 400ms, color 400ms; }
+a { color: inherit; }
+::selection { background: rgba(63, 169, 104, 0.35); }
+:focus-visible { outline: 3px solid var(--acc-hi); outline-offset: 3px; border-radius: 8px; }
+
+/* знак 3×3: самые тёмные клетки складываются в галочку */
+.mark { --m: 8px; --g: 3px; flex: none; display: inline-grid; grid-template-columns: repeat(3, var(--m)); gap: var(--g); }
+.mark i { width: var(--m); height: var(--m); border-radius: calc(var(--m) * 0.28); background: #E4E8DF; }
+.mark i.l1 { background: #B8E0C4; } .mark i.l2 { background: #7CCB96; } .mark i.l4 { background: #237A46; }
+:root[data-theme='dark'] .mark i { background: rgba(255, 255, 255, 0.12); }
+:root[data-theme='dark'] .mark i.l1 { background: #1E4A2E; } :root[data-theme='dark'] .mark i.l2 { background: #2B7143; } :root[data-theme='dark'] .mark i.l4 { background: #4CB878; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .mark i { background: rgba(255, 255, 255, 0.12); }
+  :root:not([data-theme='light']) .mark i.l1 { background: #1E4A2E; } :root:not([data-theme='light']) .mark i.l2 { background: #2B7143; } :root:not([data-theme='light']) .mark i.l4 { background: #4CB878; }
+}
+
+/* ── шапка ── */
+.site-top {
+  position: fixed; z-index: 50; top: 0; left: 0; right: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) var(--gut) 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  transition: background-color 400ms, box-shadow 400ms;
+}
+.site-top.solid { background: color-mix(in srgb, var(--bg) 70%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3); box-shadow: inset 0 -1px 0 var(--line); }
+.brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.top-r { display: flex; align-items: center; gap: 14px; font-size: 14px; }
+.lang { display: inline-flex; align-items: center; gap: 2px; color: var(--mut); }
+.lang a, .lang b { min-width: 32px; height: 32px; display: inline-grid; place-items: center; border-radius: 8px; text-decoration: none; }
+.lang b { color: var(--fg); font-weight: 650; }
+.lang a:hover { color: var(--fg); }
+.theme-btn { width: 40px; height: 40px; border: 0; border-radius: 12px; display: grid; place-items: center; background: transparent; color: var(--mut); cursor: pointer; transition: color 200ms, background-color 200ms; }
+.theme-btn:hover { color: var(--fg); background: var(--line); }
+.theme-btn svg { width: 20px; height: 20px; }
+.theme-btn .sun { display: none; }
+:root[data-theme='dark'] .theme-btn .sun { display: block; } :root[data-theme='dark'] .theme-btn .moon { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .theme-btn .sun { display: block; } :root:not([data-theme='light']) .theme-btn .moon { display: none; } }
+.get { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; background: var(--fg); color: var(--bg); font-weight: 600; text-decoration: none; transition: translate 300ms var(--ease-out), opacity 200ms; }
+.get:hover { translate: 0 -1px; }
+
+/* ── кнопки скачивания ── */
+.stores { display: flex; flex-wrap: wrap; gap: 12px; }
+.store {
+  display: inline-flex; align-items: center; gap: 12px; height: 60px; padding: 0 22px 0 18px; border-radius: 18px;
+  text-decoration: none; color: var(--btn-text); background: var(--btn); box-shadow: var(--btn-edge), 0 10px 24px -14px rgba(15, 21, 17, 0.55);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); line-height: 1.1;
+  /* translate/scale, а не transform: transform свободен для анимации появления */
+  transition: translate 300ms var(--ease-out), scale 200ms var(--ease-out), background-color 300ms;
+}
+.store:hover { translate: 0 -2px; }
+.store:active { scale: 0.97; }
+.store svg { flex: none; width: 26px; height: 26px; }
+.store span { display: flex; flex-direction: column; text-align: left; }
+.store small { font-size: 11px; font-weight: 500; letter-spacing: 0.02em; opacity: 0.72; }
+.store b { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+.store.tg svg { color: #2AABEE; }
+/* на iPhone — App Store и Telegram, на Android — Google Play и Telegram, на компьютере — все три */
+:root[data-os='ios'] .store.play, :root[data-os='android'] .store.apple { display: none; }
+
+/* ── подвал ── */
+.site-foot { position: relative; z-index: 1; max-width: var(--max); margin: 0 auto; padding: 28px var(--gut) calc(40px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 28px; color: var(--mut); font-size: 14px; border-top: 1px solid var(--line); }
+.site-foot .brand { font-size: 15px; font-weight: 500; color: var(--mut); }
+.site-foot nav { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.site-foot nav a { text-decoration: none; padding: 6px 0; }
+.site-foot nav a:hover { color: var(--fg); }
+.foot-lang { display: inline-flex; gap: 4px; }
+.foot-lang a, .foot-lang b { padding: 6px 4px; text-decoration: none; }
+.foot-lang b { color: var(--fg); font-weight: 600; }
+.soc { margin-left: auto; display: flex; gap: 8px; }
+.soc a { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: var(--mut); box-shadow: inset 0 0 0 1px var(--line); transition: color 200ms, background-color 200ms; }
+.soc a:hover { color: var(--fg); background: var(--line); }
+.soc svg { width: 19px; height: 19px; }
+
+/* ── документы (политика, условия) ── */
+.doc-main { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; padding: calc(env(safe-area-inset-top, 0px) + 120px) var(--gut) 96px; }
+.doc-main h1 { margin: 0; font-size: clamp(34px, 5vw, 56px); line-height: 1.04; font-weight: 700; letter-spacing: -0.035em; text-wrap: balance; }
+.doc-main .updated { margin: 16px 0 0; color: var(--mut); font-size: 15px; }
+.doc-main .lead { margin: 28px 0 0; font-size: 19px; line-height: 1.55; }
+.doc-main h2 { margin: 48px 0 0; font-size: 24px; line-height: 1.2; font-weight: 650; letter-spacing: -0.02em; }
+.doc-main h3 { margin: 28px 0 0; font-size: 18px; font-weight: 650; }
+.doc-main p, .doc-main li { font-size: 17px; line-height: 1.65; color: var(--fg); }
+.doc-main p { margin: 14px 0 0; max-width: 68ch; }
+.doc-main ul { margin: 12px 0 0; padding-left: 22px; max-width: 68ch; }
+.doc-main li + li { margin-top: 6px; }
+.doc-main .muted { color: var(--mut); }
+.doc-main table { width: 100%; margin-top: 16px; border-collapse: collapse; font-size: 15px; }
+.doc-main .table-wrap { overflow-x: auto; }
+.doc-main th, .doc-main td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.doc-main th { color: var(--mut); font-weight: 600; }
+
+@media (max-width: 560px) {
+  .top-r .lang { display: none; }
+  .top-r { gap: 8px; }
+  .stores { flex-direction: column; align-items: stretch; }
+  .store { justify-content: center; height: 56px; }
+  .store b { font-size: 17px; }
+  .soc { margin-left: 0; }
+}
+/* «Уменьшить движение» — никаких переходов и анимаций CSS: всё сразу в конечном состоянии */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; animation-duration: 0s !important; animation-iteration-count: 1 !important; }
+}
