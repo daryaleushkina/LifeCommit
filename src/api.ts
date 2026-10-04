@@ -59,8 +59,25 @@ async function share(image: Blob): Promise<{ url: string; file_id: string }> {
   return read<{ url: string; file_id: string }>(res);
 }
 
+/** Жалоба из шторки «Сообщить о проблеме»: текст, контекст и скриншоты одной формой (multipart). */
+async function feedback(text: string, context: Record<string, string>, shots: Blob[]): Promise<void> {
+  const form = new FormData();
+  form.set('text', text);
+  form.set('context', JSON.stringify(context));
+  shots.forEach((shot, i) => form.append('files', shot, `shot-${i + 1}.jpg`));
+  await read<{ ok: true }>(await fetch('/api/feedback', { method: 'POST', headers: { Authorization: auth() }, body: form }));
+}
+
+/** Голос в шторке жалобы → текст для поля (в дела не разбирается). */
+async function feedbackVoice(audio: Blob): Promise<string> {
+  const res = await fetch('/api/feedback/voice', { method: 'POST', headers: { Authorization: auth(), 'content-type': audio.type || 'audio/webm' }, body: audio });
+  return (await read<{ text: string }>(res)).text;
+}
+
 export const api = {
   share,
+  feedback,
+  feedbackVoice,
   /** В чат: подготовленное сообщение для shareMessage; не вышло — картинка пришла в личку с ботом (sent). */
   shareChat: (fileId: string, caption: string) => call<{ prepared_id?: string; sent?: boolean }>('POST', '/share/chat', { file_id: fileId, caption }),
   session: (timezone: string) =>

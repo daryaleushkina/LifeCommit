@@ -59,6 +59,8 @@ export const env: Env = {
   GOOGLE_CLIENT_SECRET: 'test-google-secret',
   CALDAV_APPLE_URL: 'https://caldav.test',
   DEV_AUTH_BYPASS: '1',
+  // Владелица — не пользователь базы: жалобы уходят в этот чат (тест может подменить на настоящего пользователя).
+  OWNER_ID: '7000000099',
 };
 
 /** Прямой доступ к локальной базе — проверить, что записалось. */
@@ -184,10 +186,10 @@ export async function request<T = any>(path: string, init: RequestInit = {}): Pr
   return { status: res.status, body: body as T };
 }
 
-/** Тик cron (напоминания, чаты групп, календари) — как его запускает Cloudflare. */
-export async function cronTick() {
+/** Тик cron — как его запускает Cloudflare: 15 минут — напоминания, чаты групп, календари, срок жалоб; 5 минут — черновики /bug. */
+export async function cronTick(cron: '*/15 * * * *' | '*/5 * * * *' = '*/15 * * * *') {
   const c = ctx();
-  await worker.scheduled!({ cron: '*/15 * * * *', scheduledTime: Date.now(), type: 'scheduled', noRetry() {} } as unknown as ScheduledController, env, c as unknown as ExecutionContext);
+  await worker.scheduled!({ cron, scheduledTime: Date.now(), type: 'scheduled', noRetry() {} } as unknown as ScheduledController, env, c as unknown as ExecutionContext);
   await c.settle();
 }
 

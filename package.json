@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "dev:prod": "pnpm build && wrangler dev --env-file .dev.vars.prod",
-    "db:start": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,studio,postgres-meta",
+    "db:start": "supabase start -x realtime,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,studio,postgres-meta",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "load": "k6 run scripts/load.js",

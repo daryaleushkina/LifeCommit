@@ -20,6 +20,8 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   /** Только для проверки: свой CalDAV-сервер вместо iCloud (например, локальный Radicale). */
   CALDAV_APPLE_URL?: string;
+  /** Telegram id владелицы (vars в wrangler.jsonc): ей бот присылает каждую новую жалобу. Нет — не присылает. */
+  OWNER_ID?: string;
   /** Только в .dev.vars: принимать подделанную initData из mockEnv. */
   DEV_AUTH_BYPASS?: string;
 }

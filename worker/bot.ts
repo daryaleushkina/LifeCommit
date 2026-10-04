@@ -5,6 +5,7 @@ import { cleanText } from '../shared/text';
 import { countActive, insertTasks, insertTodos, isPremium, takeVoiceQuota, today, USER_COLS, type UserRow } from './api';
 import { addDays } from './day';
 import { byTelegram, db, tg, type Env } from './env';
+import { handleFeedbackUpdate, type FeedbackUpdate } from './feedbackBot';
 import { acceptRequest, blockPerson, declineRequest } from './friends';
 import { handleGroupUpdate, type GroupUpdate } from './groupBot';
 import { parseGroupItems } from './groupVoice';
@@ -125,6 +126,8 @@ bot.post('/webhook', async (c) => {
 async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
   // Всё, что про групповые чаты (привязка, отметки кнопками, дела ответом боту), — в groupBot.ts.
   if (await handleGroupUpdate(env, update as GroupUpdate)) return;
+  // Жалобы: /bug, кнопки «Отправить» / «Отмена» и сообщения, пока черновик открыт (worker/feedbackBot.ts).
+  if (await handleFeedbackUpdate(env, update as FeedbackUpdate, appUrl)) return;
   if (update.callback_query?.data?.startsWith('fr:')) return friendRequest(env, update.callback_query);
   if (update.callback_query) return undo(env, update.callback_query);
   const msg = update.message;

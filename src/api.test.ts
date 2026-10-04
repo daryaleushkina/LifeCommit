@@ -189,6 +189,38 @@ describe('share — картинка через бота', () => {
   });
 });
 
+describe('жалоба — форма и голос', () => {
+  it('текст, контекст и скриншоты — одной формой multipart с Authorization', async () => {
+    const shot = new Blob(['jpg'], { type: 'image/jpeg' });
+    await expect(api.feedback('Белый экран', { screen: 'me' }, [shot, shot])).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.lastCall!;
+    expect(url).toBe('/api/feedback');
+    expect(init!.method).toBe('POST');
+    expect(init!.headers).toEqual({ Authorization: `tma ${sdk.raw}` });
+    const form = init!.body as FormData;
+    expect(form.get('text')).toBe('Белый экран');
+    expect(JSON.parse(form.get('context') as string)).toEqual({ screen: 'me' });
+    expect(form.getAll('files').map((f) => (f as File).name)).toEqual(['shot-1.jpg', 'shot-2.jpg']);
+  });
+
+  it('лимит — ApiError с кодом', async () => {
+    fetchMock.mockResolvedValueOnce(json({ error: 'feedback_limit' }, 429));
+    await expect(api.feedback('a', {}, [])).rejects.toMatchObject({ status: 429, code: 'feedback_limit' });
+  });
+
+  it('голос — сам Blob с его типом (нет — audio/webm), в ответ текст', async () => {
+    fetchMock.mockImplementation(async () => json({ text: 'кнопка не жмётся' }));
+    const audio = new Blob(['ogg'], { type: 'audio/mp4' });
+    await expect(api.feedbackVoice(audio)).resolves.toBe('кнопка не жмётся');
+    const [url, init] = fetchMock.mock.lastCall!;
+    expect(url).toBe('/api/feedback/voice');
+    expect(init!.body).toBe(audio);
+    expect(init!.headers).toEqual({ Authorization: `tma ${sdk.raw}`, 'content-type': 'audio/mp4' });
+    await api.feedbackVoice(new Blob(['x']));
+    expect((fetchMock.mock.lastCall![1]!.headers as Record<string, string>)['content-type']).toBe('audio/webm');
+  });
+});
+
 describe('voice — построчный ответ', () => {
   const actions = [{ type: 'create_todo', todo: { title: 'Купить молоко', day: '2026-10-04' } }];
 

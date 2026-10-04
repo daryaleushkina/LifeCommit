@@ -5,6 +5,7 @@ import { api } from '../api';
 import type { Theme } from '../App';
 import { HeatCard, useMonthName } from '../components/HeatCard';
 import { monthOf, shiftMonth } from '../components/Heatmap';
+import { FeedbackSheet } from '../components/FeedbackSheet';
 import { Avatar } from '../components/groupUi';
 import { SelectRow, Sheet, TimeRow } from '../components/Picker';
 import { useT } from '../i18n';
@@ -49,6 +50,7 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   // Заблокированные (друзья, 03.10.2026): строка видна, только если кто-то есть; там же — «Разблокировать».
   const [blocked, setBlocked] = useState<Person[]>([]);
   const [blockedOpen, setBlockedOpen] = useState(false);
@@ -256,7 +258,14 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
         </Sheet>
       )}
 
+      {feedbackOpen && <FeedbackSheet theme={theme} onClose={() => setFeedbackOpen(false)} />}
+
       <section className="card">
+        {/* Жалобы (docs/feedback.md): текст, голос, скриншоты — владелице. */}
+        <button className="row" aria-haspopup="dialog" onClick={() => setFeedbackOpen(true)}>
+          <span className="label">{t.fb.open}</span>
+          <Chevron />
+        </button>
         <button className="row" onClick={() => openTelegramLink.ifAvailable(SUPPORT_URL)}>
           <span className="label">{t.support}</span>
           <svg className="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

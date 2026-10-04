@@ -8,7 +8,7 @@ import { renderApp } from '../test/render';
 import { Profile } from './Profile';
 
 const m = vi.hoisted(() => ({
-  api: { settings: vi.fn(), writeAccess: vi.fn(), deleteAccount: vi.fn(), summary: vi.fn(), blocks: vi.fn(), unblock: vi.fn() },
+  api: { settings: vi.fn(), writeAccess: vi.fn(), deleteAccount: vi.fn(), summary: vi.fn(), blocks: vi.fn(), unblock: vi.fn(), feedback: vi.fn() },
   share: { templates: null as Template[] | null },
   tg: { popup: false, answer: 'delete' as string | null, popups: [] as unknown[], writeAccess: false, writeAnswer: 'allowed', links: [] as string[] },
 }));
@@ -325,5 +325,20 @@ describe('бот и аккаунт', () => {
     m.tg.answer = 'delete';
     await del.click();
     await expect.poll(() => m.api.deleteAccount.mock.calls.length).toBe(1);
+  });
+});
+
+describe('«Сообщить о проблеме»', () => {
+  it('строка внизу открывает шторку жалобы, тема уходит в контекст; закрыли — шторки нет', async () => {
+    m.api.feedback.mockResolvedValue(undefined);
+    await setup();
+    await page.getByRole('button', { name: 'Сообщить о проблеме' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Что случилось?' });
+    await expect.element(sheet).toBeVisible();
+    await sheet.getByRole('textbox', { name: 'Что случилось?' }).fill('Не листается');
+    await sheet.getByRole('button', { name: 'Отправить' }).click();
+    await page.getByRole('button', { name: 'Готово' }).click();
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+    expect(m.api.feedback).toHaveBeenCalledWith('Не листается', expect.objectContaining({ theme: 'light', screen: 'me' }), []);
   });
 });
