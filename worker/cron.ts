@@ -1,5 +1,6 @@
 import { logicalDay, localTime, minutesOf, weekdayIndex, weekStart } from './day';
 import { db, tg, type Env } from './env';
+import { miniAppUrl } from './site';
 
 interface ReminderUser {
   id: number;
@@ -72,7 +73,7 @@ async function remindOne(env: Env, u: ReminderUser, day: string, kind: 'morning'
       : ru
         ? `Осталось ${left.length} 🌙 Даже немного — уже засчитается:\n\n${list}`
         : `${left.length} left 🌙 Even a little counts:\n\n${list}`;
-  const message = { text, reply_markup: { inline_keyboard: [[{ text: ru ? 'Отметить' : 'Check in', web_app: { url: appUrl } }]] } };
+  const message = { text, reply_markup: { inline_keyboard: [[{ text: ru ? 'Отметить' : 'Check in', web_app: { url: miniAppUrl(appUrl) } }]] } };
   await tg(env, 'sendMessage', { chat_id: u.id, ...message }).catch(async (e: Error) => {
     // Человек заблокировал бота — больше не пишем.
     if (/blocked|deactivated|chat not found/i.test(e.message)) await sb.from('users').update({ bot_chat_ok: false }).eq('id', u.id);

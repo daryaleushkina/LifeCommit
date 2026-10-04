@@ -8,6 +8,7 @@ import { sendReminders } from './cron';
 import { db } from './env';
 import { google } from './google';
 import { shareFiles } from './share';
+import { site } from './site';
 import type { Env } from './env';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -18,6 +19,8 @@ app.route('/google', google);
 // Картинки «Поделиться» по ссылке — для сторис Telegram и «Сохранить».
 app.route('/share', shareFiles);
 app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
+// Лендинг и документы без языка в адресе; мини-апп — статика /app/.
+app.route('/', site);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);

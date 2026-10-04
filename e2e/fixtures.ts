@@ -76,7 +76,7 @@ export const test = base.extend<TgOptions & { tgViewportExtra: number; me: Me; p
     });
     // Внешнее подменяем: картинка «Поделиться» уходит в Telegram от имени человека, а у тестового чата с ботом нет.
     await page.route('**/api/share', (r) => r.fulfill({ json: { url: 'https://example.com/e2e.jpg', file_id: 'e2e'.repeat(10) } }));
-    await page.goto(`/?tgTheme=${tgTheme}&tgPlatform=${tgPlatform}&tgInsets=${tgInsets}&tgUserId=${me.id}&tgViewportExtra=${tgViewportExtra}`);
+    await page.goto(`/app/?tgTheme=${tgTheme}&tgPlatform=${tgPlatform}&tgInsets=${tgInsets}&tgUserId=${me.id}&tgViewportExtra=${tgViewportExtra}`);
     await expect(page.locator('main.app-shell').first()).toBeVisible({ timeout: 30_000 });
     // Отступы выреза приходят от Telegram после первой отрисовки — ждём их, иначе снимок «до» и «после» разный.
     const [safeTop, , contentTop] = tgInsets.split(',');

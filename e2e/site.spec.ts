@@ -1,6 +1,7 @@
-// Сайт lifecommit.app: лендинг и документы. Корень — мини-апп; человека из браузера (не из Telegram) встроенный
-// скрипт отправляет на лендинг (src/site/route.ts). Здесь — как это видит человек: переадресация и её отсутствие
-// в Telegram, тема по системе и переключатель, примеры групп, голос «себе и в группу», кнопки, документы, ширина
+// Сайт lifecommit.app: лендинг и документы без языка в адресе (решение владелицы 04.10.2026). Корень — лендинг,
+// мини-апп — /app/; запуск из Telegram на корне встроенный скрипт отправляет в мини-апп (src/site/route.ts), язык
+// выбирает Worker (worker/site.ts). Здесь — как это видит человек: язык, старые адреса /ru/ и /en/, Telegram,
+// тема по системе и переключатель, примеры групп, голос «себе и в группу», кнопки, документы, ширина
 // экрана, доступность и эталон первого экрана. Тест идёт без Telegram-подмены: сайт — обычная страница.
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from './fixtures';
@@ -16,9 +17,13 @@ async function noSideScroll(page: Page) {
   expect(extra, 'страница шире экрана').toBeLessThanOrEqual(0);
 }
 
-test('браузер на корне без Telegram — лендинг на русском, кнопки под устройство', async ({ page, tgPlatform }) => {
+/** Путь адреса страницы. */
+const path = (page: Page) => new URL(page.url()).pathname;
+
+test('браузер на корне без Telegram — лендинг на русском прямо на корне, кнопки под устройство', async ({ page, tgPlatform }) => {
   await page.goto('/');
-  await expect(page).toHaveURL(/\/ru\/$/);
+  await expect.poll(() => path(page)).toBe('/');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Привычки, дела, цели и календарь в одном месте');
   // на первом экране кнопок скачивания нет (решение владелицы 04.10): есть «Скачать» в шапке, кнопки — внизу
   await expect(page.locator('.hero').getByRole('link')).toHaveCount(0);
@@ -32,48 +37,70 @@ test('браузер на корне без Telegram — лендинг на р�
   await noSideScroll(page);
 });
 
-test('метки рекламы переезжают с корня на лендинг', async ({ page }) => {
+test('метки рекламы остаются в адресе лендинга', async ({ page }) => {
   await page.goto('/?utm_source=threads');
-  await expect(page).toHaveURL(/\/ru\/\?utm_source=threads$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Привычки, дела, цели и календарь в одном месте');
+  expect(page.url()).toMatch(/\/\?utm_source=threads$/);
+});
+
+test('старые адреса /ru/ и /en/ ведут на те же страницы без языка и запоминают язык', async ({ page }) => {
+  await page.goto('/en/');
+  await expect.poll(() => path(page)).toBe('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Habits, to-dos, goals and calendar in one place');
+  await page.goto('/ru/privacy/');
+  await expect.poll(() => path(page)).toBe('/privacy/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Политика конфиденциальности');
+  // русский запомнился: корень снова по-русски, хотя до этого выбрали английский
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
 });
 
 test.describe('английский браузер', () => {
   test.use({ locale: 'en-US' });
-  test('корень ведёт на английский лендинг', async ({ page }) => {
+  test('корень — английский лендинг, адрес без языка', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveURL(/\/en\/$/);
+    await expect.poll(() => path(page)).toBe('/');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Habits, to-dos, goals and calendar in one place');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await noSideScroll(page);
   });
+  test('запуск из Telegram и с английского лендинга уходит в мини-апп', async ({ page }) => {
+    await page.goto('/?join=abc#tgWebAppPlatform=ios&tgWebAppVersion=8.0');
+    await expect.poll(() => path(page)).toBe('/app/');
+    const u = new URL(page.url());
+    expect(u.search).toBe('?join=abc');
+    expect(u.hash).toBe('#tgWebAppPlatform=ios&tgWebAppVersion=8.0');
+  });
 });
 
-test.describe('в Telegram корень остаётся мини-аппом', () => {
-  test('параметры запуска в «#»', async ({ page }) => {
-    await page.goto('/#tgWebAppPlatform=ios&tgWebAppVersion=8.0');
-    await page.waitForLoadState('load');
-    expect(new URL(page.url()).pathname).toBe('/');
-  });
-
-  test('мост Telegram (мобильные и десктоп)', async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as { TelegramWebviewProxy: unknown }).TelegramWebviewProxy = { postEvent: () => {} };
-    });
-    await page.goto('/');
-    await page.waitForLoadState('load');
-    expect(new URL(page.url()).pathname).toBe('/');
+test.describe('запуск из Telegram на корне — в мини-апп /app/', () => {
+  test('параметры запуска в «#» (и старые кнопки бота с ?join=) переезжают целиком', async ({ page }) => {
+    await page.goto('/?join=abc#tgWebAppPlatform=ios&tgWebAppVersion=8.0');
+    await expect.poll(() => path(page)).toBe('/app/');
+    const u = new URL(page.url());
+    expect(u.search).toBe('?join=abc');
+    expect(u.hash).toBe('#tgWebAppPlatform=ios&tgWebAppVersion=8.0');
   });
 
   test('после перезагрузки: параметры, сохранённые SDK', async ({ page }) => {
     await page.addInitScript(() => sessionStorage.setItem('tapps/launchParams', '"tgWebAppPlatform=ios"'));
     await page.goto('/');
-    await page.waitForLoadState('load');
-    expect(new URL(page.url()).pathname).toBe('/');
+    await expect.poll(() => path(page)).toBe('/app/');
+  });
+
+  test('ссылка, открытая во встроенном браузере Telegram (есть мост, нет параметров запуска), — лендинг', async ({ page }) => {
+    // так корень раньше оставался мини-аппом без данных запуска и не работал
+    await page.addInitScript(() => {
+      (window as unknown as { TelegramWebviewProxy: unknown }).TelegramWebviewProxy = { postEvent: () => {} };
+    });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Привычки, дела, цели и календарь в одном месте');
+    await expect.poll(() => path(page)).toBe('/');
   });
 });
 
 test('тема — по системе, переключатель её меняет и запоминает', async ({ page, tgTheme }) => {
-  await page.goto('/ru/');
+  await page.goto('/');
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   const dark = 'rgb(10, 15, 12)';
   const light = 'rgb(246, 244, 238)';
@@ -87,7 +114,7 @@ test('тема — по системе, переключатель её меня
 });
 
 test('голос: одна фраза — и себе, и в группу', async ({ page }) => {
-  await page.goto('/ru/');
+  await page.goto('/');
   const voice = page.locator('#voiceApp');
   await voice.scrollIntoViewIfNeeded();
   await expect(voice.locator('.v-title')).toHaveText('Нашлось 3');
@@ -101,7 +128,7 @@ test.describe('с анимацией', () => {
   test.use({ reducedMotion: 'no-preference' });
 
 test('голос на телефоне: экран прилипает под шапкой, шаги над ним идут вместе с ним', async ({ page }) => {
-  await page.goto('/ru/');
+  await page.goto('/');
   const ph = page.locator('#voicePh');
   const steps = ph.locator('.steps-m span');
   await expect(steps).toHaveText(['Слушаю', 'Разбираю', 'Нашлось 3']);
@@ -127,7 +154,7 @@ test('голос на телефоне: экран прилипает под ш�
 test.describe('узкий телефон, английский', () => {
   test.use({ viewport: { width: 320, height: 820 } });
   test('прилипший телефон «Голоса» и шаги над ним не шире экрана', async ({ page }) => {
-    await page.goto('/en/');
+    await page.goto('/lang/en?to=/');
     const ph = page.locator('#voicePh');
     const stuckAt = await ph.evaluate((el) => parseFloat(getComputedStyle(el).top));
     const box = await ph.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
@@ -144,7 +171,7 @@ test.describe('узкий телефон, английский', () => {
 });
 
 test('«уменьшить движение» выключено — заголовки сцен выезжают и остаются целыми', async ({ page }) => {
-  await page.goto('/ru/');
+  await page.goto('/');
   const h2 = page.getByRole('heading', { name: 'Дела и календарь в одном списке' });
   await h2.scrollIntoViewIfNeeded();
   // после появления строки собраны обратно: заголовок — обычный текст, без обёрток анимации
@@ -155,7 +182,7 @@ test('«уменьшить движение» выключено — загол�
 });
 
 test('«Вместе»: примеры групп — работа, семья, друзья — и чат Telegram рядом', async ({ page }) => {
-  await page.goto('/ru/');
+  await page.goto('/');
   const tabs = page.getByRole('group', { name: 'Примеры групп' });
   await tabs.scrollIntoViewIfNeeded();
   const phone = page.locator('#groupApp');
@@ -184,7 +211,7 @@ test.describe('компьютер', () => {
   // правило владелицы 04.10: лендинг проверяется и на телефоне, и на компьютере
   test.use({ viewport: { width: 1280, height: 800 }, isMobile: false, hasTouch: false });
   test('первый экран без кнопок, «Вместе»: телефон слева, текст и заметка про чат справа', async ({ page }) => {
-    await page.goto('/ru/');
+    await page.goto('/');
     await expect(page.locator('.hero').getByRole('link')).toHaveCount(0);
     await expect(page.locator('#heroPh .phone')).toBeInViewport();
     await page.locator('#together .gtabs').scrollIntoViewIfNeeded();
@@ -197,29 +224,36 @@ test.describe('компьютер', () => {
 });
 
 test('кнопка стора пока никуда не ведёт, «Скачать» ведёт к кнопкам внизу', async ({ page, tgPlatform }) => {
-  await page.goto('/ru/');
+  await page.goto('/');
   const store = page.locator('#download').getByRole('link', { name: tgPlatform === 'ios' ? /App Store/ : /Google Play/ });
   await store.click();
-  await expect(page).toHaveURL(/\/ru\/$/);
+  await expect.poll(() => path(page)).toBe('/');
   await page.locator('.site-top').getByRole('link', { name: 'Скачать' }).click();
   await expect(page.getByRole('heading', { name: 'Скачайте LifeCommit' })).toBeInViewport();
 });
 
-test('документы из подвала на двух языках', async ({ page }) => {
-  await page.goto('/ru/');
+test('документы из подвала на двух языках, переключатель языка не меняет адрес', async ({ page }) => {
+  await page.goto('/');
   const foot = page.locator('.site-foot');
   await foot.getByRole('link', { name: 'Политика конфиденциальности' }).click();
-  await expect(page).toHaveURL(/\/ru\/privacy\/$/);
+  await expect(page).toHaveURL(/\/privacy\/$/);
+  await expect.poll(() => path(page)).toBe('/privacy/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Политика конфиденциальности');
   await noSideScroll(page);
   await page.locator('.site-foot').getByRole('link', { name: 'Условия использования' }).click();
-  await expect(page).toHaveURL(/\/ru\/terms\/$/);
+  await expect.poll(() => path(page)).toBe('/terms/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Условия использования');
   await noSideScroll(page);
-  await page.locator('.site-top .brand').click();
-  await expect(page).toHaveURL(/\/ru\/$/);
+  // переключатель на странице документа — тот же документ на другом языке
   await page.locator('.site-foot').getByRole('link', { name: 'EN' }).click();
-  await expect(page).toHaveURL(/\/en\/$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Terms of use');
+  await expect.poll(() => path(page)).toBe('/terms/');
+  await page.locator('.site-top .brand').click();
+  await expect.poll(() => path(page)).toBe('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Habits, to-dos, goals and calendar in one place');
+  // выбор запомнился
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await page.locator('.site-foot').getByRole('link', { name: 'Privacy policy' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy policy');
   await page.locator('.site-foot').getByRole('link', { name: 'Terms of use' }).click();
@@ -227,20 +261,21 @@ test('документы из подвала на двух языках', async 
   await noSideScroll(page);
 });
 
-for (const path of ['/ru/', '/en/', '/ru/privacy/', '/ru/terms/', '/en/privacy/', '/en/terms/']) {
-  test(`доступность: ${path}`, async ({ page }) => {
-    await page.goto(path);
+for (const [lang, to] of [['ru', '/'], ['en', '/'], ['ru', '/privacy/'], ['ru', '/terms/'], ['en', '/privacy/'], ['en', '/terms/']] as const) {
+  test(`доступность: ${to} (${lang})`, async ({ page }) => {
+    await page.goto(`/lang/${lang}?to=${to}`);
+    await expect(page.locator('html')).toHaveAttribute('lang', lang);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     // контраст считаем по ровному фону: поле клеток, зерно, виньетка и подложки под текстом на время проверки убраны
     await page.addStyleTag({ content: '#field, .grain, .vignette { display: none !important } .copy::before, .hero-text::before { display: none !important }' });
     const res = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     const found = res.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.length} × ${v.nodes.slice(0, 3).map((n) => `${n.target.join(' ')} — ${n.any.map((a) => a.message).join('; ')}`).join(' | ')}`);
-    expect(found, `нарушения доступности на ${path}`).toEqual([]);
+    expect(found, `нарушения доступности на ${to} (${lang})`).toEqual([]);
   });
 }
 
 test('эталон первого экрана лендинга', async ({ page }) => {
-  await page.goto('/ru/');
+  await page.goto('/');
   await expect(page.locator('#heroPh .app .habit').first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   // поле клеток рисуется со случайными фазами — на снимке его нет, остальное сравнивается целиком
