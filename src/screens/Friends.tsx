@@ -445,7 +445,7 @@ export function FriendScreen({ id, onBack }: { id: number; onBack: () => void })
         <button className="quiet-link" onClick={() => void leave(false)}>
           {fr.remove}
         </button>
-        <button className="quiet-link danger" onClick={() => void leave(true)}>
+        <button className="quiet-link warn" onClick={() => void leave(true)}>
           {fr.block}
         </button>
       </div>

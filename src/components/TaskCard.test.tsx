@@ -113,7 +113,7 @@ describe('карточка «Считать»: ввод числа', () => {
     const task = { ...base, value: 0, unit: null } as TodayTask;
     const { container } = await renderApp(<TaskCard task={task} onLog={onLog} onOpen={() => {}} />);
     await expect.element(page.getByRole('button', { name: 'Вода: ввести число' }).first()).toHaveTextContent('0 из 8');
-    expect(container.querySelector<HTMLElement>('.progress i')!.style.width).toBe('0%');
+    expect(container.querySelector<HTMLElement>('.progress i')!.style.transform).toBe('translateX(-100%)');
     await page.getByRole('button', { name: 'Вода: ввести число' }).last().click();
     await expect.element(input()).toHaveValue('');
     await expect.element(input()).toHaveAttribute('placeholder', '0');
@@ -128,7 +128,7 @@ describe('карточка «Считать»: ввод числа', () => {
     const task = { ...base, value: 12 } as TodayTask;
     const { container } = await renderApp(<TaskCard task={task} onLog={onLog} onOpen={onOpen} />);
     expect(container.querySelector('article')!.className).toBe('task count done');
-    expect(container.querySelector<HTMLElement>('.progress i')!.style.width).toBe('100%');
+    expect(container.querySelector<HTMLElement>('.progress i')!.style.transform).toBe('translateX(0%)');
     const done = page.getByRole('button', { name: 'Вода — сделано' });
     await expect.element(done).toHaveAttribute('aria-pressed', 'true');
     await done.click();

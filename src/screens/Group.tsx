@@ -424,7 +424,7 @@ function GroupSettingsSheet({
               <span className="chat-actions">
                 <button onClick={onConnectChat}>{g.chatOther}</button>
                 <span aria-hidden>·</span>
-                <button className="danger" onClick={onDisconnectChat}>
+                <button className="warn" onClick={onDisconnectChat}>
                   {g.chatOff}
                 </button>
               </span>
@@ -441,7 +441,7 @@ function GroupSettingsSheet({
           </>
         )
       )}
-      <button className="quiet-link danger" onClick={onLeave}>
+      <button className="quiet-link warn" onClick={onLeave}>
         {g.leave}
       </button>
       {group.role === 'owner' && (

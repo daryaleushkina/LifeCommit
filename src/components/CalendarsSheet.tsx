@@ -251,7 +251,7 @@ function AccountSettings({
           <CollectionToggles account={account} onToggle={(url, on) => void toggle(url, on)} />
         </>
       )}
-      <button className="quiet-link danger" onClick={() => void disconnect()}>
+      <button className="quiet-link warn" onClick={() => void disconnect()}>
         {t.cal.disconnectOf(name)}
       </button>
     </>
