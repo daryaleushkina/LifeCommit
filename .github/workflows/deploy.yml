@@ -27,7 +27,9 @@ jobs:
       # Та же проверка, что в scripts/hooks/pre-push (решение владелицы 03.10.2026: пуш из облака
       # деплоится, только если всё зелёное): локальная Supabase, тесты сервера и фронта, сквозные.
       - run: pnpm db:start
-      - name: .dev.vars для локального Worker (токен бота ненастоящий — в Telegram тесты не пишут)
+      # Секрет Google ненастоящий: без него /api/calendars/google/url отвечает 503, и e2e падают на любом 5xx;
+      # ссылку Google Worker собирает сам, в Google тесты не ходят.
+      - name: .dev.vars для локального Worker (токены ненастоящие — в Telegram и Google тесты не пишут)
         run: |
           eval "$(pnpm exec supabase status -o env)"
           cat > .dev.vars <<EOF
@@ -38,6 +40,7 @@ jobs:
           DEV_AUTH_BYPASS=1
           APP_URL=http://localhost:5173
           CALENDAR_KEY=$(openssl rand -base64 32)
+          GOOGLE_CLIENT_SECRET=ci-google-secret
           EOF
       - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm typecheck
@@ -45,7 +48,12 @@ jobs:
       - run: pnpm lint
       # тесты vitest и порог покрытия (vitest.config.ts → thresholds)
       - run: pnpm coverage
+      # Локальный сервер для сквозных тестов с привязкой Workers AI (wrangler.jsonc → ai) поднимает удалённый прокси
+      # Cloudflare — без токена он не стартует (так упал первый же деплой из облака, 04.10.2026).
       - run: pnpm e2e
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
