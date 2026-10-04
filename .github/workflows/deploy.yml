@@ -38,6 +38,7 @@ jobs:
           DEV_AUTH_BYPASS=1
           APP_URL=http://localhost:5173
           CALENDAR_KEY=$(openssl rand -base64 32)
+          GOOGLE_CLIENT_SECRET=ci-google-secret
           EOF
       - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm typecheck
