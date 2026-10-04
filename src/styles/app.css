@@ -23,10 +23,28 @@
   --heat-2: #7CCB96;
   --heat-3: #3FA968;
   --heat-4: #237A46;
+  /* Подпись активной вкладки: на светлом — обычный зелёный, в тёмной теме своя (контраст на тёмном стекле). */
+  --accent-label: var(--accent);
+  /* Опасное действие — только «Удалить» (DESIGN.md, The No-Shame Color Rule). Текст на нём ≥ 4,5:1 (белый на #C4413A — 5,0). */
+  --danger: #C4413A;
+  --danger-text: #FFFFFF;
+  /* Серая таблетка свайпа (не удаление): белый на ней 4,9:1. */
+  --neutral-pill: #6B7368;
+  --neutral-pill-text: #FFFFFF;
+  /* Синий «извне»: событие из календаря телефона, Google, групповое дело в разборе голоса. Один на роль. */
+  --outside: #4470CC;
+  --outside-ink: #2B4579;
+  /* Песочный бейдж и значок чата Telegram (цвет самого Telegram). */
+  --amber: #D9A441;
+  --amber-ink: #6E4F0E;
+  --telegram: #2AABEE;
+  --telegram-ink: #2A8BC8;
+  --line-strong: color-mix(in srgb, var(--text) 25%, transparent);
   --shadow: 0 1px 2px rgba(31, 42, 31, 0.06);
   /* Матовое стекло: панели полупрозрачные, под ними — мягкие цветные пятна фона. */
   --glass: rgba(255, 255, 255, 0.58);
-  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 8px 24px rgba(31, 42, 31, 0.07);
+  --glass-shadow: 0 8px 24px rgba(31, 42, 31, 0.07);
+  --glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.75), var(--glass-shadow);
   --glass-blur: blur(22px);
   --glow: radial-gradient(60% 34% at 0% 18%, rgba(178, 228, 196, 0.7), transparent 70%),
     radial-gradient(60% 32% at 100% 40%, rgba(243, 226, 184, 0.7), transparent 70%),
@@ -61,9 +79,20 @@
   --heat-2: #2B7143;
   --heat-3: #3FA968;
   --heat-4: #7CCB96;
+  /* #3FA968 на тёмной панели давал контраст 4,26 при норме 4,5 (axe, 03.10.2026). */
+  --accent-label: #4CB878;
+  /* На тёмном — светлая заливка и тёмный текст, как у терракоты: 6,8:1; как текст на шторке — 5,9:1. */
+  --danger: #EC7A6F;
+  --danger-text: #1F0D0B;
+  --neutral-pill: #A3AD9F;
+  --neutral-pill-text: #0F1511;
+  --outside: #7F9FE3;
+  --outside-ink: #A9C1F0;
+  --amber-ink: #E8C98A;
   --shadow: none;
   --glass: rgba(255, 255, 255, 0.07);
-  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.07), 0 10px 30px rgba(0, 0, 0, 0.25);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.07), var(--glass-shadow);
   --glass-blur: blur(24px);
   --glow: radial-gradient(70% 36% at 0% 16%, rgba(31, 107, 63, 0.55), transparent 70%),
     radial-gradient(60% 32% at 100% 42%, rgba(90, 74, 18, 0.5), transparent 70%),
@@ -77,6 +106,8 @@ body { background: var(--glow) var(--bg); color: var(--text); }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 button:disabled { opacity: 0.4; cursor: default; }
+/* Фокус с клавиатуры — одно кольцо на всё нажимаемое (касание и мышь его не включают). */
+:is(button, a, [role='button']):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 input, select, textarea { font-size: 16px; /* без зума на iOS */ }
 /* iOS дорисовывает полям свою тень и скругление — поле «меняется» при вводе (02.10.2026). Сбрасываем. */
 input:not([type='checkbox']):not([type='radio']), textarea { -webkit-appearance: none; appearance: none; background-clip: padding-box; }
@@ -149,7 +180,8 @@ h1, h2, p { margin: 0; }
 /* Количество: кнопки в строке, полоса прогресса — отдельной строкой во всю ширину. */
 .task.count { flex-wrap: wrap; row-gap: 8px; padding-bottom: 14px; }
 .progress { flex: 0 0 100%; height: 6px; margin-right: 4px; border-radius: 3px; background: var(--heat-0); overflow: hidden; }
-.progress i { display: block; height: 100%; border-radius: 3px; background: var(--heat-3); transition: width 260ms var(--ease-out); }
+/* Полоса во всю ширину, сдвинутая влево (TaskCard): анимируется transform, а не ширина. */
+.progress i { display: block; width: 100%; height: 100%; border-radius: 3px; background: var(--heat-3); transition: transform 240ms var(--ease-out); }
 .task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .task-main h2 { font-size: 16px; line-height: 22px; font-weight: 500; overflow-wrap: anywhere; }
 .task.done .task-main h2 { color: var(--muted); }
@@ -160,15 +192,14 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .task-value.editing { display: flex; align-items: center; gap: 6px; min-height: 28px; }
 /* 16px — иначе iOS приближает страницу при фокусе. */
 .task-value input { width: 72px; padding: 2px 8px; font: inherit; font-size: 16px; font-weight: 700; color: var(--text); background: var(--bg); border: 1px solid var(--accent); border-radius: 8px; outline: none; }
-.act { flex: none; min-width: 64px; height: var(--tap); padding: 0 14px; border-radius: var(--radius-btn); font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; transition: transform 160ms var(--ease-out), background-color 200ms; }
+.act { flex: none; min-width: 64px; height: var(--tap); padding: 0 14px; border-radius: var(--radius-btn); font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; transition: transform 160ms var(--ease-out), background-color 200ms var(--ease-out); }
 .act:active { transform: scale(0.96); }
 .act.primary { background: var(--accent); color: var(--accent-text); font-size: 17px; }
-.act.soft { background: var(--accent-soft); color: var(--accent); }
 .act.undo { min-width: 40px; padding: 0 8px; color: var(--muted); font-weight: 500; }
 /* Круглые кнопки отметки: всегда в своём цвете; выбранная заливается, вторая гаснет. */
 .rb-pair { flex: none; display: flex; gap: 8px; }
-.rb { flex: none; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; transition: transform 160ms var(--ease-out), background-color 200ms, color 200ms; }
-.rb:active { transform: scale(0.92); }
+.rb { flex: none; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; transition: transform 160ms var(--ease-out), background-color 200ms var(--ease-out), color 200ms var(--ease-out); }
+.rb:active { transform: scale(0.96); }
 .rb.ok { background: var(--accent-soft); color: var(--accent); }
 .rb.no { background: var(--warn-soft); color: var(--warn); }
 .rb.edit { background: var(--heat-0); color: var(--muted); }
@@ -180,8 +211,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 /* ── Онбординг ── */
 .intents { margin-top: 28px; display: flex; flex-direction: column; gap: 12px; }
-.intent { min-height: 88px; padding: 16px; border-radius: 22px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); display: flex; align-items: center; gap: 16px; text-align: left; transition: transform 160ms var(--ease-out); }
-.intent:active { transform: scale(0.98); }
+.intent { min-height: 88px; padding: 16px; border-radius: var(--radius); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); display: flex; align-items: center; gap: 16px; text-align: left; transition: transform 160ms var(--ease-out); }
+.intent:active { transform: scale(0.96); }
 .intent .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .intent b { font-size: 17px; line-height: 22px; font-weight: 600; }
 .intent .text span { font-size: 14px; line-height: 18px; color: var(--muted); }
@@ -211,7 +242,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .theme-toggle button.on { background: var(--surface); box-shadow: var(--shadow); color: var(--text); }
 
 /* ── Шторка снизу: выбор значения вместо системных списков ── */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(0, 0, 0, 0.4); animation: fade 180ms ease-out; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: rgba(0, 0, 0, 0.4); animation: fade 240ms var(--ease-out); }
 /* Внутри шторки ничего не сжимается: длинная шторка прокручивается, а не плющит поля. */
 .sheet > * { flex-shrink: 0; }
 .sheet { width: 100%; max-height: 85%; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 20px 16px calc(var(--app-inset-bottom) + 20px); border-radius: 24px 24px 0 0; background: var(--surface); animation: sheet-up 240ms var(--ease-out); }
@@ -238,7 +269,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @media (prefers-reduced-motion: reduce) { .sheet-backdrop, .sheet { animation: none; } }
 .title-input { margin-top: 14px; width: 100%; height: 56px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); font-size: 17px; font-weight: 500; outline: none; }
-.title-input:focus { box-shadow: inset 0 0 0 2px var(--accent), 0 8px 24px rgba(31, 42, 31, 0.07); }
+.title-input:focus { box-shadow: inset 0 0 0 2px var(--accent), var(--glass-shadow); }
 .segmented { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--heat-0); }
 .segmented.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
 .segmented.three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
@@ -252,14 +283,17 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .weekdays button { height: 40px; border-radius: 12px; background: var(--heat-0); font-size: 13px; font-weight: 600; }
 .weekdays button.on { background: var(--accent); color: var(--accent-text); }
 .quiet-link { align-self: center; margin-top: 20px; min-height: var(--tap); padding: 0 12px; color: var(--muted); font-size: 15px; }
-.quiet-link.danger { color: var(--warn); }
+/* Удалить — красный опасного действия; выйти, заблокировать, отключить — терракота: это не удаление. */
+.quiet-link.danger { color: var(--danger); }
+.quiet-link.warn { color: var(--warn); }
 .quiet-links { display: flex; justify-content: center; gap: 12px; }
 .note { margin-top: 12px; padding: 0 4px; font-size: 14px; color: var(--muted); }
 
 /* ── Профиль ── */
 .profile-head { display: flex; align-items: center; gap: 14px; padding: calc(var(--app-inset-top) + 24px) 4px 0; }
-.avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-soft-text); display: grid; place-items: center; font-weight: 700; font-size: 22px; object-fit: cover; flex: none; }
-.profile-head h1 { font-size: 22px; line-height: 28px; font-weight: 700; }
+/* Аватарка: одна для профиля и групп (размер и цвет у людей в группах — из groupUi.tsx). */
+.avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-soft-text); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 22px; object-fit: cover; flex: none; }
+.profile-head h1 { font-size: 26px; line-height: 30px; font-weight: 700; letter-spacing: -0.02em; }
 .big-number { font-size: 17px; font-weight: 700; }
 .big-number span { color: var(--muted); font-weight: 500; }
 
@@ -270,25 +304,19 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 /* ── Нижняя навигация ── */
 /* Панель всегда поверх содержимого: строки со свайпом (position: relative) иначе рисовались поверх неё (02.10.2026). */
-.tabbar { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 1fr 80px 1fr 1fr; padding: 6px 4px calc(var(--app-inset-bottom) + 12px); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+.tabbar { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 1fr 80px 1fr 1fr; padding: 6px 4px calc(var(--app-inset-bottom) + 12px); background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); }
 .tabbar button { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 500; color: var(--muted); }
-.tabbar button.active { color: var(--accent); font-weight: 700; }
-/* В тёмной теме зелёный подписи чуть светлее: #3FA968 на тёмной панели давал контраст 4,26 при норме 4,5 (axe, 03.10.2026). */
-:root[data-color-scheme='dark'] .tabbar button.active { color: #4CB878; }
+.tabbar button.active { color: var(--accent-label); font-weight: 700; }
 /* Вкладки: Сегодня · Календарь · микрофон · Я. Микрофон крупнее вкладок и чуть выступает над панелью. */
 .tabbar .tab-mic { justify-self: center; align-self: start; width: 68px; height: 68px; min-height: 0; margin-top: -26px; border-radius: 50%; background: var(--accent); color: var(--accent-text); box-shadow: 0 0 0 7px var(--bg), 0 8px 22px rgba(35, 122, 70, 0.28); transition: transform 160ms var(--ease-out); }
-.tabbar .tab-mic:active { transform: scale(0.94); }
+.tabbar .tab-mic:active { transform: scale(0.96); }
 .tabbar .pill { width: 48px; height: 30px; border-radius: 999px; display: grid; place-items: center; }
 .tabbar button.active .pill { background: var(--accent-soft); }
-
-.skeleton { margin-top: calc(var(--app-inset-top) + 24px); height: 280px; border-radius: var(--radius); background: var(--surface); animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: 0.55; } }
-@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 
 /* ── Экран привычки ── */
 .detail-head { padding: calc(var(--app-inset-top) + 24px) 0 4px; display: flex; align-items: center; gap: 12px; }
 .detail-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.detail-head h1 { font-size: 24px; line-height: 30px; font-weight: 700; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.detail-head h1 { font-size: 26px; line-height: 30px; font-weight: 700; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .detail-head p { font-size: 14px; line-height: 18px; color: var(--muted); }
 .icon-btn { flex: none; width: 44px; height: 44px; border-radius: 14px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); display: grid; place-items: center; color: var(--muted); }
 .today-block { padding: 12px 12px 12px 18px; display: flex; align-items: center; gap: 10px; }
@@ -337,9 +365,9 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .wave i { width: 3px; height: 44px; border-radius: 2px; background: var(--accent); opacity: 0.85; transform: scaleY(0.18); transition: transform 90ms linear; }
 .wave i:nth-child(odd) { opacity: 0.5; }
 .voice-timer { margin-top: 14px; font-size: 18px; font-weight: 700; }
-.voice-stop { margin-top: 46px; width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 16%, transparent), 0 0 0 28px color-mix(in srgb, var(--accent) 8%, transparent); animation: halo 1.8s ease-in-out infinite; }
+.voice-stop { margin-top: 46px; width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); box-shadow: 0 0 0 14px color-mix(in srgb, var(--accent) 16%, transparent), 0 0 0 28px color-mix(in srgb, var(--accent) 8%, transparent); animation: halo 1.8s ease-in-out infinite; transition: transform 160ms var(--ease-out); }
 .voice-stop i { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-text); }
-.voice-stop:active { transform: scale(0.95); }
+.voice-stop:active { transform: scale(0.96); }
 @keyframes halo { 50% { box-shadow: 0 0 0 18px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 0 34px color-mix(in srgb, var(--accent) 5%, transparent); } }
 .voice-example { margin-top: 50px; max-width: 320px; color: var(--muted); font-size: 14px; line-height: 20px; }
 .voice-tip { margin-top: 10px; max-width: 320px; color: var(--muted); font-size: 14px; line-height: 20px; }
@@ -347,7 +375,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .voice-quote { margin-top: 14px; padding: 14px 16px; border-radius: 16px; background: var(--bg); font-size: 16px; line-height: 22px; }
 .voice-quote small { display: block; margin-bottom: 4px; color: var(--muted); font-size: 13px; }
 .voice-list { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.voice-list li { display: flex; align-items: center; border-radius: 18px; background: var(--bg); transition: opacity 200ms; }
+.voice-list li { display: flex; align-items: center; border-radius: 16px; background: var(--bg); transition: opacity 200ms var(--ease-out); }
 .voice-list li.wont-fit { opacity: 0.45; }
 .voice-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 12px 0 12px 12px; text-align: left; }
 .voice-row .voice-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -355,17 +383,19 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .voice-row small { color: var(--muted); font-size: 14px; line-height: 19px; }
 .voice-x { flex: none; width: var(--tap); height: var(--tap); margin-right: 4px; display: grid; place-items: center; color: var(--muted); border-radius: 12px; }
 .act.with-icon { gap: 8px; }
-@media (prefers-reduced-motion: reduce) { .voice-stop { animation: none; } .wave i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .voice-stop { animation: none; transition: none; } .wave i { transition: none; } }
 
 /* ── Дела на день ── */
-.section-label { margin: 24px 4px 8px; font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+/* Подпись раздела (Label): одна на всё — на экране, в разборе голоса и в шторке; отступы у каждого свои. */
+.section-label, .voice-section, .sheet-subtitle { font-size: 13px; line-height: 18px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.section-label { margin: 24px 4px 8px; }
 .section-label + .tasks, .section-label + .empty, .section-label + .card { margin-top: 0; }
 /* Шапка блока «Дела»: название слева, на «Сегодня» справа — «Все · Осталось» (круг 22E). */
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; margin: 16px 4px 6px; }
 .section-head .section-label { margin: 0; }
 .section-head + .card { margin-top: 0; }
 .seg-mini { flex: none; display: flex; padding: 3px; border-radius: 14px; background: var(--heat-0); }
-.seg-mini button { min-height: 30px; padding: 0 12px; border-radius: 11px; color: var(--muted); font-size: 13px; font-weight: 600; transition: background-color 160ms, color 160ms; }
+.seg-mini button { min-height: 30px; padding: 0 12px; border-radius: 11px; color: var(--muted); font-size: 13px; font-weight: 600; transition: background-color 200ms var(--ease-out), color 200ms var(--ease-out); }
 .seg-mini button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 /* Без отступа сверху и снизу: кнопка свайпа первой и последней строки стоит на том же расстоянии от края карточки,
    что и от соседних строк. */
@@ -373,12 +403,12 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .todo-list li { display: flex; align-items: center; min-height: 52px; padding-left: 8px; }
 .todo-list li + li { border-top: 1px solid var(--line); }
 .todo-check { flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center; }
-.todo-check svg { box-sizing: content-box; width: 16px; height: 16px; padding: 4px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--muted); color: transparent; transition: background-color 180ms, color 180ms, box-shadow 180ms; }
+.todo-check svg { box-sizing: content-box; width: 16px; height: 16px; padding: 4px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--muted); color: transparent; transition: transform 160ms var(--ease-out), background-color 200ms var(--ease-out), color 200ms var(--ease-out), box-shadow 200ms var(--ease-out); }
 .todo-list li.done .todo-check svg { background: var(--accent); color: var(--accent-text); box-shadow: none; }
 /* Событие из календаря: вместо кружка — полоска, как у событий в календаре телефона. */
 .todo-event { flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center; }
-.todo-event::before { content: ''; width: 4px; height: 22px; border-radius: 2px; background: #6E8FD9; }
-.todo-check:active svg { transform: scale(0.9); }
+.todo-event::before { content: ''; width: 4px; height: 22px; border-radius: 2px; background: var(--outside); }
+.todo-check:active svg { transform: scale(0.96); }
 /* Ещё сохраняется — кружок как обычно, не бледный: это доли секунды. */
 .todo-check:disabled { opacity: 1; }
 .todo-main { flex: 1; min-width: 0; min-height: 52px; padding: 8px 14px 8px 4px; display: flex; flex-direction: column; justify-content: center; text-align: left; }
@@ -387,7 +417,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .todo-add button, .todo-add form { flex: 1; min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 14px; color: var(--muted); font-size: 15px; font-weight: 500; }
 .todo-add form { padding-left: 6px; }
 .todo-add input { flex: 1; height: 44px; border: 0; background: none; font-size: 16px; color: var(--text); outline: none; }
-.sheet-input { width: 100%; height: 52px; padding: 0 16px; border: 0; border-radius: 14px; background: var(--bg); font-size: 17px; font-weight: 500; outline: none; }
+.sheet-input { width: 100%; height: 52px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--bg); font-size: 17px; font-weight: 500; outline: none; }
 /* При вводе поле остаётся тем же: без обводки, только чуть светлее фон. */
 .sheet-input:focus { background: color-mix(in srgb, var(--bg) 55%, var(--surface)); }
 .segmented.todo-days { margin-top: 10px; }
@@ -395,13 +425,13 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .todo-list.flat { background: var(--bg); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .later-day h3 { margin: 14px 4px 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .later-day h3::first-letter { text-transform: uppercase; }
-.voice-section { margin: 16px 4px 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.voice-section { margin: 16px 4px 0; }
 .todo-tile { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
 
 /* Разбор — «список пишется»: перо выводит строки будущего списка, у каждой появляется кружок.
    Цикл 6 с, строки со сдвигом 1,2 с; ширина строк разная, чтобы было похоже на настоящие названия. */
 .parse-list { margin: 16px 0 8px; display: flex; flex-direction: column; gap: 8px; }
-.parse-row { display: flex; align-items: center; gap: 14px; height: 68px; padding: 0 16px; border-radius: 18px; background: var(--bg); }
+.parse-row { display: flex; align-items: center; gap: 14px; height: 68px; padding: 0 16px; border-radius: 16px; background: var(--bg); }
 .parse-box { flex: none; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--heat-1); opacity: 0; animation: parse-box 6s ease infinite; animation-delay: calc(var(--i) * 1.2s); }
 .parse-ink { position: relative; height: 10px; border-radius: 5px; background: var(--heat-0); width: 0; animation: parse-ink 6s cubic-bezier(0.45, 0.05, 0.35, 1) infinite; animation-delay: calc(var(--i) * 1.2s); }
 .parse-row:nth-child(1) .parse-ink { --w: 62%; } .parse-row:nth-child(2) .parse-ink { --w: 44%; } .parse-row:nth-child(3) .parse-ink { --w: 54%; }
@@ -410,7 +440,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 @keyframes parse-nib { 0%, 18% { opacity: 1; } 22%, 100% { opacity: 0; } }
 @keyframes parse-box { 0% { opacity: 0; transform: scale(0.6); } 6% { opacity: 1; transform: none; } 80% { opacity: 1; } 92%, 100% { opacity: 0; } }
 /* Пришёл список — его строки выплывают по одной, будто дописались. */
-.voice-list li { animation: row-in 420ms cubic-bezier(0.34, 1.3, 0.64, 1) both; }
+.voice-list li { animation: row-in 240ms var(--ease-out) both; }
 .voice-list li:nth-child(2) { animation-delay: 70ms; } .voice-list li:nth-child(3) { animation-delay: 140ms; } .voice-list li:nth-child(4) { animation-delay: 210ms; } .voice-list li:nth-child(n + 5) { animation-delay: 280ms; }
 @keyframes row-in { from { opacity: 0; transform: translateY(10px); } }
 @media (prefers-reduced-motion: reduce) {
@@ -425,7 +455,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .todo-list li.done .todo-time { color: var(--muted); }
 .todo-list li.done .todo-text > span { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
 .src-mark { flex: none; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--heat-0); color: var(--muted); }
-.src-mark.google { background: color-mix(in srgb, #4A78D6 16%, var(--surface)); color: #4A78D6; }
+.src-mark.google { background: color-mix(in srgb, var(--outside) 16%, var(--surface)); color: var(--outside); }
 .todo-empty { justify-content: center; color: var(--muted); font-size: 14px; }
 .sheet-note { margin: 10px 4px 0; color: var(--muted); font-size: 14px; }
 
@@ -433,7 +463,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .segmented.cal-mode { margin-top: 16px; }
 .cal-grid { margin-top: 4px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; text-align: center; }
 .cal-wd { font-size: 11px; font-weight: 600; color: var(--muted); padding-bottom: 2px; }
-.cal-day { min-height: 52px; padding: 6px 0 4px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 3px; transition: background-color 160ms; }
+.cal-day { min-height: 52px; padding: 6px 0 4px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 3px; transition: background-color 200ms var(--ease-out); }
 .cal-grid.month .cal-day { min-height: 44px; padding-top: 5px; }
 .cal-day b { font-size: 16px; font-weight: 600; }
 .cal-grid.month .cal-day b { font-size: 14px; font-weight: 500; }
@@ -443,27 +473,27 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .cal-day.out { opacity: 0.4; }
 .cal-dots { height: 5px; display: flex; gap: 3px; }
 .cal-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--heat-3); }
-.cal-dots i.ext { background: #6E8FD9; }
+.cal-dots i.ext { background: var(--outside); }
 .cal-day.on .cal-dots i { background: var(--accent-text); }
 
 /* ── Подключение календарей ── */
 .page-head.with-action { flex-direction: row; align-items: center; justify-content: space-between; }
 .icon-btn.spinning svg { animation: spin-once 1s linear infinite; }
 @keyframes spin-once { to { transform: rotate(360deg); } }
-.cal-banner { position: relative; margin-top: 14px; padding: 14px 40px 14px 16px; border-radius: 18px; background: var(--accent-soft); display: flex; align-items: center; gap: 12px; }
+.cal-banner { position: relative; margin-top: 14px; padding: 14px 40px 14px 16px; border-radius: var(--radius); background: var(--accent-soft); display: flex; align-items: center; gap: 12px; }
 .cal-banner-text { flex: 1; font-size: 13px; line-height: 18px; color: var(--muted); }
 .cal-banner-text b { display: block; font-size: 15px; color: var(--text); }
 .cal-banner .act { height: 40px; font-size: 14px; }
 .cal-banner-x { position: absolute; top: 2px; right: 2px; width: 36px; height: 36px; font-size: 20px; color: var(--muted); }
 .cal-chips { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-.cal-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px 4px 6px; border-radius: 12px; background: var(--glass); box-shadow: var(--glass-edge); font-size: 13px; color: var(--muted); }
+.cal-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px 4px 6px; border-radius: 12px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); font-size: 13px; color: var(--muted); }
 .cal-chip.bad { color: var(--warn); }
 .src-mark.apple { background: var(--heat-0); color: var(--text); }
 .sheet-note.first { margin-top: 0; }
 .provider { margin-top: 10px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: var(--bg); }
 .provider.off { opacity: 0.6; }
 .provider-logo { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-weight: 700; font-size: 17px; }
-.provider-logo.google { background: color-mix(in srgb, #4A78D6 16%, var(--surface)); color: #4A78D6; }
+.provider-logo.google { background: color-mix(in srgb, var(--outside) 16%, var(--surface)); color: var(--outside); }
 .provider-logo.apple { background: var(--heat-0); color: var(--text); }
 .provider-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .provider-text b { font-size: 16px; }
@@ -474,10 +504,10 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .inline-link { color: var(--accent); font-weight: 600; font-size: inherit; }
 .inline-link.center { align-self: center; min-height: 40px; margin: 6px 0; }
 .cal-warn .inline-link { color: var(--warn); text-decoration: underline; }
-.sheet-subtitle { margin: 16px 4px 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.sheet-subtitle { margin: 16px 4px 0; }
 .toggle-row { cursor: pointer; }
 .cal-color { flex: none; width: 10px; height: 10px; border-radius: 50%; }
-.switch { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 44px; height: 26px; border-radius: 13px; background: var(--heat-0); transition: background-color 180ms; cursor: pointer; }
+.switch { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 44px; height: 26px; border-radius: 13px; background: var(--heat-0); transition: background-color 200ms var(--ease-out); cursor: pointer; }
 .switch::after { content: ''; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); transition: transform 200ms var(--ease-out); }
 .switch:checked { background: var(--accent); }
 .switch:checked::after { transform: translateX(18px); }
@@ -509,7 +539,6 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .heat-card .year-week { grid-template-columns: 22px; grid-template-rows: 16px repeat(7, 22px); }
 
 /* ── Группы (docs/groups-architecture.md, дизайн 16–18) ── */
-.avatar { flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; object-fit: cover; }
 .avatar-stack { display: inline-flex; align-items: center; }
 .avatar-stack .avatar { box-shadow: 0 0 0 2px var(--bg); }
 .avatar-stack .avatar + .avatar { margin-left: -5px; }
@@ -524,7 +553,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .group-card-title small, .group-card-note { font-size: 13px; color: var(--muted); }
 .group-progress { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .group-progress .goal-bar { flex: 1; margin: 0; }
-.add-dashed { min-height: 52px; border-radius: 16px; background: var(--glass); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.add-dashed { min-height: 52px; border-radius: 16px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
 
 .goal-bar { display: block; height: 8px; margin-top: 8px; border-radius: 4px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
 .goal-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
@@ -551,10 +580,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .badge { flex: none; height: 22px; padding: 0 8px; border-radius: 11px; display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent-soft-text); }
 .badge.gray { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--muted); }
 .badge.me { background: var(--accent); color: var(--accent-text); }
-.badge.blue { background: color-mix(in srgb, #4A78D6 16%, var(--surface)); color: #2B4579; }
-.badge.amber { background: color-mix(in srgb, #D9A441 20%, var(--surface)); color: #6E4F0E; }
-:root[data-color-scheme='dark'] .badge.blue { color: #A9C1F0; }
-:root[data-color-scheme='dark'] .badge.amber { color: #E8C98A; }
+.badge.blue { background: color-mix(in srgb, var(--outside) 16%, var(--surface)); color: var(--outside-ink); }
+.badge.amber { background: color-mix(in srgb, var(--amber) 20%, var(--surface)); color: var(--amber-ink); }
 .todo-text small.group-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .group-time { font-size: 13px; color: var(--accent); }
 .todo-check.ghost svg { box-shadow: inset 0 0 0 2px var(--line); }
@@ -586,7 +613,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .join-screen { padding-bottom: 40px; }
 .join-hero { padding-top: 48px; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .join-from { margin-top: 16px; font-size: 15px; color: var(--muted); }
-.join-hero h1 { margin: 4px 0 0; font-size: 32px; line-height: 38px; letter-spacing: -0.02em; }
+.join-hero h1 { margin: 4px 0 0; font-size: 26px; line-height: 30px; letter-spacing: -0.02em; }
 .join-members { margin-top: 10px; display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--muted); }
 .join-point { gap: 12px; padding: 10px 12px; }
 .join-point svg { flex: none; color: var(--accent); }
@@ -595,13 +622,13 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .chat-connect { margin-top: 20px; background: var(--accent-soft); color: var(--accent-soft-text); }
 /* Подключённый чат Telegram: значок, «Чат Telegram», название; у админов под ним — «Другой чат · Отключить». */
 .chat-row { margin-top: 20px; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
-.chat-icon { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb, #2AABEE 14%, var(--surface)); color: #2A8BC8; }
+.chat-icon { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb, var(--telegram) 14%, var(--surface)); color: var(--telegram-ink); }
 .chat-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chat-text small { color: var(--muted); font-size: 13px; line-height: 18px; }
 .chat-text b { font-size: 16px; line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
 .chat-actions { margin: 2px 0 -10px -8px; display: flex; align-items: center; gap: 2px; color: var(--muted); }
 .chat-actions button { min-height: var(--tap); padding: 0 8px; color: var(--accent); font-size: 15px; font-weight: 600; }
-.chat-actions button.danger { color: var(--warn); }
+.chat-actions button.warn { color: var(--warn); }
 
 /* Клетки месяца — плитки со своей заливкой: одна рамка терялась на цветных пятнах фона (02.10.2026).
    Заливка от цвета поверхности, рамка — от цвета текста: видно и в светлой, и в тёмной теме на любом фоне. */
@@ -628,12 +655,12 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .row-icon { flex: none; width: 36px; height: 36px; margin-right: -6px; border-radius: 10px; display: grid; place-items: center; color: var(--accent); }
 
 /* Короткая подсказка после действия — поверх экрана, над нижней панелью: ничего не сдвигает. */
-.toast { position: fixed; left: 50%; bottom: calc(var(--app-inset-bottom) + 176px); transform: translateX(-50%); z-index: 6; max-width: calc(100% - 40px); padding: 10px 16px; border-radius: 14px; background: color-mix(in srgb, var(--text) 88%, transparent); color: var(--bg); font-size: 14px; font-weight: 500; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); animation: toast-in 200ms var(--ease-out); }
+.toast { position: fixed; left: 50%; bottom: calc(var(--app-inset-bottom) + 176px); transform: translateX(-50%); z-index: 6; max-width: calc(100% - 40px); padding: 10px 16px; border-radius: 16px; background: color-mix(in srgb, var(--text) 88%, transparent); color: var(--bg); font-size: 14px; font-weight: 500; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); animation: toast-in 200ms var(--ease-out); }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 6px); } }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 
 /* Дело в группу в разборе голоса — значок в цвете групп, чтобы отличалось от своих дел. */
-.todo-tile.group { background: color-mix(in srgb, #4A78D6 14%, var(--surface)); color: #4A78D6; }
+.todo-tile.group { background: color-mix(in srgb, var(--outside) 14%, var(--surface)); color: var(--outside); }
 
 /* Календарь привычки: прошедший день — кнопка, его отмечают задним числом. */
 .hcal .hcal-day { font-family: inherit; cursor: pointer; }
@@ -647,22 +674,24 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .swipe.dragging .swipe-body, .swipe.dragging .swipe-actions { transition: none; }
 /* Кнопка — прозрачная полоса во всю высоту строки, внутри — скруглённая «таблетка» с отступами:
    в списке она концентрична углу карточки (радиус карточки минус отступ 4px). */
-.swipe-btn { flex: none; height: 100%; display: flex; padding: 4px 0 4px 6px; color: #FFFFFF; font-size: 12px; font-weight: 600; }
+.swipe-btn { flex: none; height: 100%; display: flex; padding: 4px 0 4px 6px; font-size: 12px; font-weight: 600; }
 .swipe-btn:last-child { padding-right: 4px; }
-.swipe-pill { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden; white-space: nowrap; border-radius: calc(var(--radius) - 4px); }
-.swipe-btn.danger .swipe-pill { background: #D9534A; }
-.swipe-btn.muted .swipe-pill { background: #8C948A; }
-.swipe-btn:active .swipe-pill { filter: brightness(0.92); }
+.swipe-pill { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; overflow: hidden; white-space: nowrap; border-radius: calc(var(--radius) - 4px); transition: transform 160ms var(--ease-out); }
+.swipe-btn.danger { color: var(--danger-text); }
+.swipe-btn.danger .swipe-pill { background: var(--danger); }
+.swipe-btn.muted { color: var(--neutral-pill-text); }
+.swipe-btn.muted .swipe-pill { background: var(--neutral-pill); }
+.swipe-btn:active .swipe-pill { transform: scale(0.96); }
 /* Привычка — отдельная карточка: кнопка во всю её высоту и с тем же скруглением. Обрезки нет — карточка уезжает
    за край экрана, а её тень не срезается. */
 .swipe-card { position: relative; }
 .swipe-card > .swipe-body { display: block; min-height: 0; padding-left: 0; }
 .swipe-card .swipe-btn { padding: 0 0 0 8px; }
 .swipe-card .swipe-pill { border-radius: var(--radius); }
-@media (prefers-reduced-motion: reduce) { .swipe-body, .swipe-actions { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .swipe-body, .swipe-actions, .swipe-pill { transition: none; } }
 
 /* «Удалено · Вернуть» — внизу над панелью, 5 секунд. */
-.undo-toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--app-inset-bottom) + 104px); z-index: 40; min-height: 52px; padding: 6px 8px 6px 16px; border-radius: 16px; background: color-mix(in srgb, var(--text) 92%, transparent); color: var(--bg); display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); font-size: 15px; animation: toast-up 200ms var(--ease-out); transition: opacity 200ms, transform 200ms; }
+.undo-toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--app-inset-bottom) + 104px); z-index: 40; min-height: 52px; padding: 6px 8px 6px 16px; border-radius: 16px; background: color-mix(in srgb, var(--text) 92%, transparent); color: var(--bg); display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); font-size: 15px; animation: toast-up 200ms var(--ease-out); transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out); }
 .undo-toast span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .undo-toast button { flex: none; height: 40px; padding: 0 14px; border-radius: 12px; background: color-mix(in srgb, var(--bg) 16%, transparent); color: var(--bg); font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .undo-toast.out { opacity: 0; transform: translateY(8px); }
@@ -670,7 +699,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 @media (prefers-reduced-motion: reduce) { .undo-toast { animation: none; transition: none; } }
 
 .act.soft { background: var(--bg); color: var(--text); }
-.act.danger { background: #D9534A; color: #FFFFFF; }
+.act.danger { background: var(--danger); color: var(--danger-text); }
 .act.soft + .act.danger { margin-top: 8px; }
 
 .profile-head > div:not(.avatar) { flex: 1; min-width: 0; }
@@ -701,7 +730,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .friend-search input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; font-size: 16px; color: var(--text); outline: none; }
 .friend-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .invite-btn { flex: none; width: 48px; height: 48px; border-radius: 16px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; transition: transform 160ms var(--ease-out); }
-.invite-btn:active { transform: scale(0.94); }
+.invite-btn:active { transform: scale(0.96); }
 .friend-list { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
 .requests-row + .friend-list, .friend-tools + .friend-list { margin-top: 12px; }
 .friend-card { margin-top: 0; padding: 12px 14px; display: flex; align-items: center; gap: 12px; text-align: left; color: inherit; }
@@ -731,13 +760,13 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 /* «Что показать друзьям?» — на весь экран, поверх нижней панели; своя прокрутка, «Готово» всегда внизу. */
 .show-screen { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column; padding: calc(var(--app-inset-top) + 24px) max(20px, var(--app-inset-right)) calc(var(--app-inset-bottom) + 16px) max(20px, var(--app-inset-left)); }
 .show-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.show-head h1 { font-size: 26px; line-height: 32px; letter-spacing: -0.02em; }
+.show-head h1 { font-size: 26px; line-height: 30px; letter-spacing: -0.02em; }
 .show-head .link-btn { align-self: center; margin-top: 0; color: var(--accent); font-weight: 600; white-space: nowrap; }
 .show-head .link-btn[aria-pressed='true'] { color: var(--muted); }
 .show-tiles { flex: 1; min-height: 0; overflow-y: auto; margin: 20px -4px 0; padding: 0 4px 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
 .show-tile { position: relative; margin-top: 0; min-height: 112px; padding: 14px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 10px; text-align: left; color: inherit; }
 .show-tile b { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
-.show-tile .tick { position: absolute; right: 12px; top: 12px; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--line-strong, color-mix(in srgb, var(--text) 25%, transparent)); display: grid; place-items: center; color: transparent; transition: background-color 160ms, color 160ms; }
+.show-tile .tick { position: absolute; right: 12px; top: 12px; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--line-strong); display: grid; place-items: center; color: transparent; transition: background-color 200ms var(--ease-out), color 200ms var(--ease-out); }
 .show-tile.on { box-shadow: inset 0 0 0 2px var(--accent), var(--glass-edge); }
 .show-tile.on .tick { background: var(--accent); color: var(--accent-text); box-shadow: none; }
 .show-done { flex: none; margin-top: 12px; }

@@ -199,7 +199,8 @@ export function TaskCard({ task, onLog, onOpen }: Props): ReactNode {
 export function Progress({ task }: { task: TodayTask }): ReactNode {
   return (
     <div className="progress" aria-hidden>
-      <i style={{ width: `${Math.min(100, (task.value / task.target) * 100)}%` }} />
+      {/* Полоса во всю ширину, сдвинутая влево (DESIGN.md: анимируется transform, не width) — правый край остаётся круглым. */}
+      <i style={{ transform: `translateX(${Math.min(100, (task.value / task.target) * 100) - 100}%)` }} />
     </div>
   );
 }

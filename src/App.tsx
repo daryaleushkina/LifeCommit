@@ -4,6 +4,7 @@ import type { TaskKind, TodayResponse, UserSettings } from '../shared/types';
 import { api } from './api';
 import { caches, load as fetchInto, logicalDayOf, warm } from './caches';
 import { RemovalHost } from './removal';
+import { paintTelegram } from './telegram/colors';
 import { Splash } from './components/Logo';
 import { LangContext, dictionaries, useT, type Lang } from './i18n';
 import { Archive } from './screens/Archive';
@@ -46,10 +47,6 @@ type Tab = 'today' | 'calendar' | 'groups' | 'me';
 type Boot = { state: 'loading' } | { state: 'error' } | { state: 'ready'; user: UserSettings; onboarding: boolean };
 const EMPTY_CACHE: Cache = { today: { day: '', tasks: [], archived: [], limits: { max_tasks: null, active: 0 }, todos: [], todos_later: 0, groups: [] }, heat: [], loadedAt: 0 };
 
-/** Фон приложения (стиль A) — им же красим шапку и низ Telegram. */
-const BG = { light: '#F6F4EE', dark: '#0F1511' } as const;
-/** Главная кнопка Telegram — в нашем зелёном, а не в синем цвете темы. */
-const MAIN = { light: { bgColor: '#237A46', textColor: '#FFFFFF' }, dark: { bgColor: '#3FA968', textColor: '#0E1A12' } } as const;
 export type Theme = 'light' | 'dark';
 const THEME_KEY = 'lc-theme';
 /** Тема хранится на устройстве; пока её не выбирали — как в Telegram. */
@@ -77,11 +74,14 @@ export function App(): ReactNode {
   };
   useEffect(() => {
     document.documentElement.dataset.colorScheme = isDark ? 'dark' : 'light';
-    const bg = isDark ? BG.dark : BG.light;
-    miniApp.setHeaderColor.ifAvailable(bg);
-    miniApp.setBgColor.ifAvailable(bg);
-    miniApp.setBottomBarColor.ifAvailable(bg);
-    mainButton.setParams.ifAvailable(isDark ? MAIN.dark : MAIN.light);
+    // Шапка, фон и низ Telegram — в фон приложения, главная кнопка — в наш зелёный: цвета из токенов app.css.
+    const css = getComputedStyle(document.documentElement);
+    paintTelegram((token) => css.getPropertyValue(token), {
+      header: (c) => miniApp.setHeaderColor.ifAvailable(c),
+      bg: (c) => miniApp.setBgColor.ifAvailable(c),
+      bottomBar: (c) => miniApp.setBottomBarColor.ifAvailable(c),
+      mainButton: (p) => mainButton.setParams.ifAvailable(p),
+    });
   }, [isDark]);
 
   const [boot, setBoot] = useState<Boot>({ state: 'loading' });
