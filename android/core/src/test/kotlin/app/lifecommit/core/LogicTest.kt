@@ -63,6 +63,8 @@ class HeatAndTaskTest {
         assertFalse(r.isEmpty)
         assertTrue(TodayResponse("2026-10-05").isEmpty)
         assertFalse(TodayResponse("2026-10-05", todosLater = 1).isEmpty)
+        // Есть группа — уже не пусто: на «Сегодня» её блок, а не «Чего я хочу?» (App.tsx).
+        assertFalse(TodayResponse("2026-10-05", groups = listOf(GroupToday(1, "Семья"))).isEmpty)
         assertFalse(TodayResponse("2026-10-05", limits = TaskLimits(5, 5)).canAddTask)
         assertTrue(TodayResponse("2026-10-05").canAddTask)
     }

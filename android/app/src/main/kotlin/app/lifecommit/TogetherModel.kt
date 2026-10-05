@@ -1,0 +1,291 @@
+// Состояние «Вместе» — как src/screens/Groups.tsx, Group.tsx, Friends.tsx и GroupBlocks.tsx: группы (список, экран,
+// дела с отметками, настройки), друзья (список, заявки, экран друга, «Что показать»). Экран меняется сразу, сервер
+// догоняет; не вышло — как было и ошибка. Ответ, начатый раньше правки, её не затирает.
+package app.lifecommit
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import app.lifecommit.core.ApiClient
+import app.lifecommit.core.ApiError
+import app.lifecommit.core.FriendProfile
+import app.lifecommit.core.FriendsResponse
+import app.lifecommit.core.GroupDayItem
+import app.lifecommit.core.GroupItemInput
+import app.lifecommit.core.GroupToday
+import app.lifecommit.core.Groups
+import app.lifecommit.core.Invitation
+import app.lifecommit.core.Person
+import app.lifecommit.core.addEntry
+import app.lifecommit.core.checkGroupChat
+import app.lifecommit.core.createGroup
+import app.lifecommit.core.createItem
+import app.lifecommit.core.deleteGroup
+import app.lifecommit.core.deleteItem
+import app.lifecommit.core.disconnectGroupChat
+import app.lifecommit.core.friend
+import app.lifecommit.core.friends
+import app.lifecommit.core.group
+import app.lifecommit.core.groups
+import app.lifecommit.core.invitation
+import app.lifecommit.core.invite
+import app.lifecommit.core.join
+import app.lifecommit.core.leaveGroup
+import app.lifecommit.core.markItem
+import app.lifecommit.core.renameGroup
+import app.lifecommit.core.setAdminsOnly
+import app.lifecommit.core.skipItem
+import app.lifecommit.core.updateItem
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import java.util.logging.Logger
+
+private val log = Logger.getLogger("app.lifecommit.together")
+
+class TogetherModel(
+    private val api: ApiClient,
+    private val scope: CoroutineScope,
+    /** Мой id: чьи дела, чья очередь. */
+    private val me: () -> Long,
+    /** Что-то поменялось — «Сегодня» перечитает себя (блоки групп, счётчики). */
+    private val onChanged: suspend () -> Unit,
+    private val onSignedOut: () -> Unit,
+) {
+    /** Список групп; null — ещё не знаем. */
+    var list by mutableStateOf<List<GroupToday>?>(null)
+        private set
+
+    /** Экраны групп, уже открытые (или подтянутые) — открываются сразу. */
+    val details = mutableStateMapOf<Long, GroupToday>()
+
+    /** Группы, которых больше нет (удалили, вышла) — экран это показывает. */
+    val missing = mutableStateMapOf<Long, Boolean>()
+
+    var friendsData by mutableStateOf<FriendsResponse?>(null)
+        private set
+
+    val profiles = mutableStateMapOf<Long, FriendProfile>()
+
+    /** Подсказка после действия на экране группы («Уже кто-то сделал», «Ссылка готова…»). */
+    var note by mutableStateOf<String?>(null)
+
+    /** Номер правки: ответ, начатый раньше, правку не затирает. */
+    private var version = 0
+    private var friendsSeq = 0
+
+    fun reset() {
+        version++
+        friendsSeq++
+        list = null
+        details.clear()
+        missing.clear()
+        friendsData = null
+        profiles.clear()
+        note = null
+    }
+
+    private fun handle(e: ApiError) {
+        if (e.isSignedOut) onSignedOut() else log.info("together: $e")
+    }
+
+    // Группы
+
+    fun loadList() {
+        val seq = version
+        scope.launch {
+            try {
+                val fresh = api.groups()
+                if (seq == version) list = fresh
+            } catch (e: ApiError) {
+                handle(e)
+                if (list == null) list = emptyList()
+            }
+        }
+    }
+
+    suspend fun loadGroup(id: Long) {
+        val seq = version
+        try {
+            val g = api.group(id)
+            if (seq == version) {
+                details[id] = g
+                missing.remove(id)
+            }
+        } catch (e: ApiError) {
+            // «Не найдено» — только когда группы правда нет (404) или показать нечего; моргнула сеть — экран как был.
+            if (e.status == 404 || id !in details) missing[id] = true
+            handle(e)
+        }
+    }
+
+    /** Новая группа: только название (тип не выбирают). Вернёт id или бросит ApiError. */
+    suspend fun create(title: String): Long {
+        val id = api.createGroup(title.trim())
+        loadGroup(id)
+        details[id]?.let { g -> list = (list.orEmpty().filter { it.id != id }) + g }
+        return id
+    }
+
+    /** Отметка группового дела: на экране сразу, потом счётчики и чужие отметки — с сервера. */
+    /** Отметка (day — задним числом в «Календаре»); rollback — вернуть на других экранах, если не вышло. */
+    fun toggle(groupId: Long, it: GroupDayItem, day: String? = null, rollback: () -> Unit = {}) {
+        val done = !it.done
+        version++
+        patchItem(groupId) { x -> if (x.id == it.id) Groups.marked(x, done, me()) else x }
+        scope.launch {
+            try {
+                val res = api.markItem(groupId, it.id, done, day)
+                if (res.taken) note = TAKEN
+            } catch (e: ApiError) {
+                patchItem(groupId) { x -> if (x.id == it.id) it else x }
+                rollback()
+                if (e.isSignedOut) return@launch onSignedOut()
+                note = if (e.code == "not_yours") NOT_YOURS else ERROR
+            }
+            // Счётчики «5 из 8» и чужие отметки — с сервера.
+            onChanged()
+            loadGroup(groupId)
+        }
+    }
+
+    private fun patchItem(groupId: Long, f: (GroupDayItem) -> GroupDayItem) {
+        details[groupId]?.let { g -> details[groupId] = g.copy(items = g.items.map(f)) }
+    }
+
+    suspend fun saveItem(groupId: Long, itemId: Long?, input: GroupItemInput) {
+        if (itemId == null) api.createItem(groupId, input) else api.updateItem(groupId, itemId, input)
+        version++
+        onChanged()
+        loadGroup(groupId)
+    }
+
+    /** Удалить дело совсем (или только в этот день у повторяющегося) — после «Вернуть». */
+    suspend fun removeItem(groupId: Long, itemId: Long, skipDay: String?) {
+        try {
+            if (skipDay != null) api.skipItem(groupId, itemId, skipDay) else api.deleteItem(groupId, itemId)
+        } finally {
+            version++
+            onChanged()
+            loadGroup(groupId)
+        }
+    }
+
+    suspend fun put(groupId: Long, itemId: Long, amount: Double) {
+        api.addEntry(groupId, itemId, amount)
+        version++
+        onChanged()
+        loadGroup(groupId)
+    }
+
+    /** Ссылка-приглашение в группу (для «Позвать в группу» и подключения чата). */
+    suspend fun inviteLink(groupId: Long): String = api.invite(groupId).link
+
+    suspend fun rename(groupId: Long, title: String) {
+        val before = details[groupId]
+        details[groupId]?.let { details[groupId] = it.copy(title = title) }
+        try {
+            api.renameGroup(groupId, title)
+        } catch (e: ApiError) {
+            before?.let { details[groupId] = it }
+            throw e
+        }
+        onChanged()
+    }
+
+    suspend fun setAdminsOnly(groupId: Long, on: Boolean) {
+        fun set(v: Boolean) {
+            details[groupId]?.let { g -> details[groupId] = g.copy(settings = g.settings?.copy(adminsOnlyEdit = v)) }
+        }
+        set(on)
+        try {
+            api.setAdminsOnly(groupId, on)
+        } catch (e: ApiError) {
+            set(!on)
+            throw e
+        }
+    }
+
+    /** Чат ещё жив? Удалённый в Telegram пропадает из настроек сразу. */
+    fun checkChat(groupId: Long) {
+        scope.launch {
+            try {
+                val title = api.checkGroupChat(groupId).tgChatTitle
+                details[groupId]?.let { g -> details[groupId] = g.copy(settings = g.settings?.copy(tgChatTitle = title)) }
+            } catch (e: ApiError) {
+                handle(e)
+            }
+        }
+    }
+
+    suspend fun disconnectChat(groupId: Long) {
+        val before = details[groupId]
+        details[groupId]?.let { g -> details[groupId] = g.copy(settings = g.settings?.copy(tgChatTitle = null)) }
+        try {
+            api.disconnectGroupChat(groupId)
+        } catch (e: ApiError) {
+            before?.let { details[groupId] = it }
+            throw e
+        }
+    }
+
+    /** Выйти или удалить группу; ApiError — остаёмся на экране группы с подсказкой. */
+    suspend fun leave(groupId: Long, remove: Boolean) {
+        if (remove) api.deleteGroup(groupId) else api.leaveGroup(groupId)
+        version++
+        details.remove(groupId)
+        list = list?.filter { it.id != groupId }
+        onChanged()
+    }
+
+    // Приглашение в группу
+
+    suspend fun invitation(code: String): Invitation = api.invitation(code)
+
+    suspend fun join(code: String): Long {
+        val id = api.join(code)
+        version++
+        loadGroup(id)
+        onChanged()
+        loadList()
+        return id
+    }
+
+    // Друзья
+
+    /** Перечитать друзей: всегда новым запросом, ответ старше последнего запроса не применяем. */
+    fun reloadFriends(after: (FriendsResponse) -> Unit = {}) {
+        val seq = ++friendsSeq
+        scope.launch {
+            try {
+                val d = api.friends()
+                if (seq == friendsSeq) {
+                    friendsData = d
+                    after(d)
+                }
+            } catch (e: ApiError) {
+                handle(e)
+                if (friendsData == null) friendsData = FriendsResponse()
+            }
+        }
+    }
+
+    suspend fun loadFriend(id: Long): FriendProfile? = try {
+        api.friend(id).also { profiles[id] = it }
+    } catch (e: ApiError) {
+        handle(e)
+        if (e.status == 404) profiles.remove(id)
+        null
+    }
+
+    companion object {
+        /** Ключи подсказок — текст по языку человека выбирает экран. */
+        const val TAKEN = "taken"
+        const val NOT_YOURS = "not_yours"
+        const val ERROR = "error"
+        const val INVITE_SENT = "invite_sent"
+    }
+}
+
+/** Человек как участник (аватарка): из друга, заявки, найденного. */
+fun Person.asMember() = app.lifecommit.core.GroupMember(id, firstName, photoUrl)

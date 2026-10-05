@@ -156,6 +156,15 @@ fun CalendarScreen(model: AppModel, links: Links) {
                 canAdd = selected >= today,
             )
         }
+        // Дела групп в этот день: отметить можно сегодня и в прошлые дни, будущие — только посмотреть.
+        item {
+            GroupBlocks(
+                model,
+                cal.groupsOfDay(selected).map { b -> app.lifecommit.core.GroupToday(b.group.id, b.group.title, b.group.kind, members = b.group.members, items = b.items) },
+                selected,
+                canMark = selected <= today,
+            )
+        }
     }
     if (cal.sheetOpen) CalendarsSheet(cal, links) {
         cal.sheetOpen = false

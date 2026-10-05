@@ -107,6 +107,8 @@ fun Today(model: AppModel, links: Links) {
                 SwipeRow(swipe(task), card = true, modifier = Modifier.padding(bottom = 10.dp)) { NotDueCard(task) { model.open(Route.Detail(task.id)) } }
             }
         }
+        // Группы — под личным: мои дела каждой группы, «кто-то один», мероприятия и общие цели.
+        item { GroupBlocks(model, data.groups, data.day) }
         item {
             if (data.canAddTask) {
                 LinkButton(t.addTask, plus = true) { model.open(Route.Pick) }

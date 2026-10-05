@@ -103,6 +103,21 @@ sealed interface Route {
     data class EditTask(val id: Long) : Route
 
     data object Archive : Route
+
+    /** Экран группы. */
+    data class Group(val id: Long) : Route
+
+    /** Вступить по приглашению (lifecommit.app/j/<код>, lifecommit://join/<код>). */
+    data class Join(val code: String) : Route
+
+    /** Заявки в друзья. */
+    data object Requests : Route
+
+    /** Экран друга. */
+    data class Friend(val id: Long) : Route
+
+    /** Открыли чужую ссылку «Позвать друга» (lifecommit.app/f/<код>, lifecommit://friend/<код>). */
+    data class FriendLink(val code: String) : Route
 }
 
 enum class Tab { Today, Calendar, Groups, Me }
@@ -167,6 +182,51 @@ class AppModel(
         errorText = { strings.error },
     )
 
+    /** «Вместе»: группы и друзья (TogetherModel). */
+    val together = TogetherModel(
+        api = api,
+        scope = scope,
+        me = { user?.id ?: 0 },
+        onChanged = { refresh() },
+        onSignedOut = ::signOutLocally,
+    )
+
+    /** Раздел «Вместе», открытый в прошлый раз: группы или друзья (как localStorage lc-together). */
+    var togetherFriends by mutableStateOf(prefs.string("lc-together") == "friends")
+        private set
+
+    fun showFriends(on: Boolean) {
+        togetherFriends = on
+        prefs.setString("lc-together", if (on) "friends" else "groups")
+    }
+
+    /** Отметка группового дела (на «Сегодня», в «Календаре», на экране группы): сразу на экране, потом с сервера. */
+    fun toggleGroupItem(groupId: Long, item: app.lifecommit.core.GroupDayItem, day: String) {
+        val done = !item.done
+        val me = user?.id ?: 0
+        change++
+        today = today.copy(groups = today.groups.map { g ->
+            if (g.id != groupId) g else g.copy(items = g.items.map { if (it.id == item.id) app.lifecommit.core.Groups.marked(it, done, me) else it })
+        })
+        calendar.patchGroupItem(groupId, item.id, day) { app.lifecommit.core.Groups.marked(it, done, me) }
+        if (done) haptics(Haptic.Success)
+        together.toggle(groupId, item, if (day == today.day) null else day) {
+            // не вышло — вернуть как было
+            today = today.copy(groups = today.groups.map { g -> if (g.id != groupId) g else g.copy(items = g.items.map { if (it.id == item.id) item else it }) })
+            calendar.patchGroupItem(groupId, item.id, day) { item }
+        }
+        scope.launch { calendar.reloadQuiet() }
+    }
+
+    /** Удалить групповое дело свайпом — с «Вернуть»; skipDay — только в этот день (у повторяющегося). */
+    fun removeGroupItem(groupId: Long, item: app.lifecommit.core.GroupDayItem, skipDay: String?) {
+        val text = if (skipDay != null) strings.swipe.skipped(item.title) else strings.swipe.removed(item.title)
+        removeWithUndo("gi:$groupId:${item.id}", text, failText = { e -> if (e.code == "admins_only") strings.swipe.notAllowed else strings.error }) {
+            together.removeItem(groupId, item.id, skipDay)
+            calendar.reloadQuiet()
+        }
+    }
+
     /** Хаптика — у Activity (системная, View.performHapticFeedback); в тестах — пусто. */
     var haptics: (Haptic) -> Unit = {}
 
@@ -174,6 +234,11 @@ class AppModel(
     private var change = 0
     private var loadedAt = 0L
     private var pendingCommit: (suspend () -> Unit)? = null
+    private var pendingFailText: ((ApiError) -> String)? = null
+
+    /** Текст плашки, когда сервер не удалил: «Что-то пошло не так» или особый («удаляют только админы»). */
+    var removalFailedText by mutableStateOf<String?>(null)
+        private set
     private var removalTimer: Job? = null
 
     /** Ждём возврата из Telegram с кодом: PKCE и id бота этого входа. */
@@ -337,6 +402,7 @@ class AppModel(
         api.credential = null
         // Чужое после выхода не показываем: дела и календари прошлого человека — прочь (/code-review 05.10).
         calendar.reset()
+        together.reset()
         pendingLink = null
         user = null
         today = TodayResponse(day = "")
@@ -582,6 +648,12 @@ class AppModel(
             pendingLink = uri
             return
         }
+        invitePath(uri)?.let { (kind, code) ->
+            backToMain()
+            tab = Tab.Groups
+            open(if (kind == "join") Route.Join(code) else Route.FriendLink(code))
+            return
+        }
         if (calendar.handleGoogleReturn(uri)) {
             backToMain()
             tab = Tab.Calendar
@@ -658,9 +730,10 @@ class AppModel(
      * Строка пропадает сразу, внизу 5 секунд «Вернуть»; на сервер удаление уходит, когда плашка закрылась (или
      * приложение свернули). Не вышло — экран перечитывается (строка вернётся), поверх — «Что-то пошло не так».
      */
-    fun removeWithUndo(key: String, text: String, commit: suspend () -> Unit) {
+    fun removeWithUndo(key: String, text: String, failText: ((ApiError) -> String)? = null, commit: suspend () -> Unit) {
         flushRemoval()
         removalFailed = false
+        pendingFailText = failText
         removed.add(key)
         removal = Removal(key, text)
         pendingCommit = commit
@@ -683,8 +756,10 @@ class AppModel(
     fun flushRemoval() {
         val r = removal ?: return
         val commit = pendingCommit ?: return
+        val failText = pendingFailText
         removalTimer?.cancel()
         pendingCommit = null
+        pendingFailText = null
         removal = null
         scope.launch {
             try {
@@ -694,6 +769,7 @@ class AppModel(
                 if (e.isSignedOut) {
                     signOutLocally()
                 } else {
+                    removalFailedText = failText?.invoke(e)
                     removalFailed = true
                     scope.launch {
                         delay(undoMillis)
@@ -786,6 +862,29 @@ class AppModel(
 
     companion object {
         const val SKIP_KEY = "lc-onboarding-skipped"
+
+        /** Код приглашения в коде ссылки — буквы, цифры, «-» и «_»: в путь API ничего другого не попадёт. */
+        private val CODE = Regex("^[A-Za-z0-9_-]{4,64}$")
+
+        /**
+         * Приглашение из ссылки: https://lifecommit.app/j/<код> и /f/<код> (App Link), lifecommit://join/<код> и
+         * lifecommit://friend/<код> (страница /j, /f с кнопкой «Открыть в приложении»). → ("join"|"friend", код) или null.
+         */
+        fun invitePath(uri: String): Pair<String, String>? {
+            val u = try {
+                java.net.URI(uri)
+            } catch (_: java.net.URISyntaxException) {
+                return null
+            }
+            val path = u.rawPath.orEmpty().trim('/').split('/')
+            val (kind, code) = when {
+                u.scheme == "https" && u.host == "lifecommit.app" && path.size == 2 && path[0] == "j" -> "join" to path[1]
+                u.scheme == "https" && u.host == "lifecommit.app" && path.size == 2 && path[0] == "f" -> "friend" to path[1]
+                u.scheme == "lifecommit" && (u.host == "join" || u.host == "friend") && path.size == 1 -> u.host to path[0]
+                else -> return null
+            }
+            return if (CODE.matches(code)) kind to code else null
+        }
 
         /** PATCH — все поля формы, кроме вида (его в редакторе не меняют), null — очистить. */
         fun patchOf(input: TaskInput): JsonObject = buildJsonObject {

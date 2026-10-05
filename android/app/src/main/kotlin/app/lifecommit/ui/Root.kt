@@ -189,6 +189,11 @@ fun Main(model: AppModel, links: Links) {
             entry<Route.NewTask> { TaskEditor(model, taskId = null, kind = it.kind) }
             entry<Route.EditTask> { TaskEditor(model, taskId = it.id, kind = null) }
             entry<Route.Detail> { TaskDetail(model, it.id) }
+            entry<Route.Group> { GroupScreen(model, it.id, links) }
+            entry<Route.Join> { JoinScreen(model, it.code) }
+            entry<Route.Requests> { RequestsScreen(model) }
+            entry<Route.Friend> { FriendScreen(model, it.id) }
+            entry<Route.FriendLink> { FriendLinkScreen(model, it.code) }
             entry<Route.Archive> { Archive(model) }
         },
     )
@@ -222,7 +227,7 @@ private fun Tabs(model: AppModel, links: Links) {
                 Today(model, links)
             }
             Tab.Calendar -> CalendarScreen(model, links)
-            Tab.Groups -> PendingSection(LocalStrings.current.groups, links)
+            Tab.Groups -> Together(model, links)
             Tab.Me -> Me(model, links)
         }
         TabBar(model.tab, onTab = { model.tab = it }, onMic = { voice = true }, modifier = Modifier.align(Alignment.BottomCenter))
@@ -345,7 +350,7 @@ fun UndoToast(model: AppModel) {
     val p = LocalPalette.current
     val t = LocalStrings.current
     val removal = model.removal
-    val text = removal?.text ?: if (model.removalFailed) t.error else return
+    val text = removal?.text ?: if (model.removalFailed) model.removalFailedText ?: t.error else return
     Box(Modifier.fillMaxSize().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 104.dp), contentAlignment = Alignment.BottomCenter) {
         Row(
             Modifier

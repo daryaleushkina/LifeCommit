@@ -8,3 +8,6 @@ captures/
 
 # Эталоны снимков экранов — в git (корневой .gitignore прячет папки screenshots/).
 !/app/src/test/screenshots/
+# Аварийные файлы JVM (падение компилятора в тестах): в них пути и окружение машины — в git не кладём.
+hs_err_pid*.log
+replay_pid*.log

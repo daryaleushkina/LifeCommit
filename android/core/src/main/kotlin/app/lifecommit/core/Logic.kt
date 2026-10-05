@@ -79,8 +79,8 @@ val TodayResponse.dueOrdered: List<TodayTask>
 
 val TodayResponse.notDue: List<TodayTask> get() = tasks.filter { !it.due }
 
-/** Пусто совсем — первый экран «Чего я хочу?». */
-val TodayResponse.isEmpty: Boolean get() = tasks.isEmpty() && archived.isEmpty() && todos.isEmpty() && todosLater == 0
+/** Пусто совсем (и групп нет — App.tsx) — первый экран «Чего я хочу?». */
+val TodayResponse.isEmpty: Boolean get() = tasks.isEmpty() && archived.isEmpty() && todos.isEmpty() && todosLater == 0 && groups.isEmpty()
 
 val TodayResponse.canAddTask: Boolean get() = limits.maxTasks?.let { limits.active < it } ?: true
 
