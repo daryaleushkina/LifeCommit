@@ -185,12 +185,27 @@ Telegram принимает своё имя схемы в `redirect_uri` (SDK т
 | GET `/todos/later` | → `Todo[]` | |
 | GET `/calendar?from&to` | до 62 дней → `{today, todos, groups: GroupDayBlock[]}`; повторы раскрыты сервером, **не отсортировано** (`sortTodos`) | 400 `bad_range` |
 | GET `/calendars` | → `CalendarAccount[]` | |
-| GET `/calendars/google/url` | → `{url}` | 503 `calendar_unavailable` |
+| GET `/calendars/google/url?client=app` | → `{url}` — адрес входа Google; `client=app` метит state «вход из приложения» | 400 `bad_client` (любое другое значение `client`), 503 `calendar_unavailable` |
 | POST `/calendars/apple` | `{login, password}` → 201 | 400 `apple_bad_input`, 401 `apple_auth` (не выход!), 502, 503 |
 | POST `/calendars/:id/confirm`; PATCH `/calendars/:id/collections` `{url, enabled}`; PATCH `/calendars/:id/default` `{url}`; DELETE `/calendars/:provider`; POST `/calendars/sync` | | 404, 400 `unknown_calendar`, `bad_provider` |
 
-Возврат после подключения Google (`/google/callback`) сейчас ведёт в Telegram (`t.me/…?startapp=calendars`).
-Нативным нужен свой возврат — сделать на этапе «Календарь».
+**Возврат после входа Google.** Приложение берёт адрес с `?client=app` и открывает его во внешнем окне входа
+(iOS/Mac — `ASWebAuthenticationSession` со схемой `lifecommit`, Android — Custom Tab). Google возвращает браузер на
+`/google/callback`; для state с меткой app сервер отвечает **302 на `lifecommit://calendars?status=<итог>`** (без
+страницы и без токенов в адресе):
+
+| `status` | Что случилось | Что показать |
+| --- | --- | --- |
+| `ok` | Google подключён впервые | шторку «Календари» с его календарями — выбрать, какие забирать (`POST /calendars/:id/confirm`) |
+| `again` | был подключён — подключён снова | шторку «Календари» |
+| `denied` | отказ на экране Google или сняли галочку доступа к событиям | «Доступ не дали» (тексты всех итогов — как на странице возврата, `TEXT` в `worker/google.ts`) |
+| `expired` | ссылке больше 15 минут или аккаунта уже нет | «Ссылка устарела — нажмите «Подключить» ещё раз» |
+| `failed` | Google или база не ответили | «Не получилось подключить, попробуйте позже» |
+
+Метка app подписана вместе с id и сроком (`worker/secret.ts`): приписать её чужому state нельзя — такой state
+получает страницу 400 в браузере, а не переход в приложение. Без `client` всё как раньше: страница с кнопкой
+«Вернуться в LifeCommit» → `t.me/…?startapp=calendars`. Тесты — `worker/google.int.test.ts`,
+`worker/calsync.google.int.test.ts`, `worker/gcal.test.ts`.
 
 ### Группы
 `GET /groups` → `GroupToday[]`; `POST /groups {title, kind?}`; `GET|PATCH|DELETE /groups/:id`; `POST /groups/:id/chat/check`;

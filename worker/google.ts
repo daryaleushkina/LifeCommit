@@ -1,11 +1,12 @@
 // Возврат из входа Google. Человек ушёл из Telegram в браузер (внутри Telegram вход Google не работает),
 // дал доступ к календарю и попал сюда: меняем код на токены, сохраняем подключение и отправляем обратно
-// в мини-апп — там шторка «Календари» покажет его календари с галочками.
+// в мини-апп — там шторка «Календари» покажет его календари с галочками. Вход, начатый в приложении для iPhone,
+// Android или Mac (state с меткой app), возвращается туда ссылкой lifecommit://calendars?status=… (docs/mobile.md).
 import { Hono } from 'hono';
 import { connectGoogle } from './calsync';
 import { db, type Env } from './env';
 import { GoogleError } from './gcal';
-import { readState } from './secret';
+import { verifyState } from './secret';
 
 export const google = new Hono<{ Bindings: Env }>();
 
@@ -28,7 +29,9 @@ const TEXT = {
   },
 };
 
-function page(env: Env, lang: 'ru' | 'en', kind: 'ok' | 'again' | 'denied' | 'expired' | 'failed', status = 200): Response {
+type Outcome = 'ok' | 'again' | 'denied' | 'expired' | 'failed';
+
+function page(env: Env, lang: 'ru' | 'en', kind: Outcome, status = 200): Response {
   const t = TEXT[lang];
   const [title, body] = t[kind];
   const good = kind === 'ok' || kind === 'again';
@@ -47,21 +50,32 @@ a{display:block;padding:15px;border-radius:14px;background:var(--accent);color:#
   return new Response(html, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
 }
 
+/** Вход начали в приложении — возвращаем туда. Адрес постоянный: из запроса в него попадает только итог из списка. */
+const toApp = (outcome: Outcome): Response =>
+  new Response(null, { status: 302, headers: { location: `lifecommit://calendars?status=${outcome}`, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
+
 google.get('/callback', async (c) => {
   const q = new URL(c.req.url).searchParams;
-  const userId = c.env.CALENDAR_KEY ? await readState(c.env.CALENDAR_KEY, q.get('state') ?? '') : null;
+  const state = c.env.CALENDAR_KEY ? await verifyState(c.env.CALENDAR_KEY, q.get('state') ?? '') : null;
+  if (!state) return page(c.env, 'ru', 'expired', 400);
   const sb = db(c.env);
-  const user = userId ? ((await sb.from('users').select('id, timezone, day_start_hour, language_code').eq('id', userId).maybeSingle()).data as { id: number; timezone: string; day_start_hour: number; language_code: string } | null) : null;
+  const found = await sb.from('users').select('id, timezone, day_start_hour, language_code').eq('id', state.userId).maybeSingle();
+  const user = found.data as { id: number; timezone: string; day_start_hour: number; language_code: string } | null;
   const lang = user?.language_code === 'en' ? 'en' : 'ru';
-  if (!user) return page(c.env, lang, 'expired', 400);
+  const reply = (outcome: Outcome, status = 200) => (state.app ? toApp(outcome) : page(c.env, lang, outcome, status));
+  if (found.error) {
+    console.error('google callback: user lookup failed', found.error.message);
+    return reply('failed', 502);
+  }
+  if (state.expired || !user) return reply('expired', 400);
   const code = q.get('code');
-  if (!code) return page(c.env, lang, 'denied');
+  if (!code) return reply('denied');
   try {
     const { fresh } = await connectGoogle(c.env, sb, user, code, `${new URL(c.req.url).origin}/google/callback`);
-    return page(c.env, lang, fresh ? 'ok' : 'again');
+    return reply(fresh ? 'ok' : 'again');
   } catch (e) {
     console.error('google connect failed', e);
-    if (e instanceof GoogleError && e.message === 'scope_denied') return page(c.env, lang, 'denied');
-    return page(c.env, lang, 'failed', 502);
+    if (e instanceof GoogleError && e.message === 'scope_denied') return reply('denied');
+    return reply('failed', 502);
   }
 });

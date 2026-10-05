@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from './env';
 import { accessToken, calendarUrl, deleteGoogleEvent, GoogleError, isGoogleAuthError, isGoogleHref, listEvents, loginOf, originalDay, putOwnEvent, toCalEvent, type GoogleCalendar } from './gcal';
-import { readState, signState } from './secret';
+import { readState, signState, verifyState } from './secret';
 
 describe('события Google → дела', () => {
   it('событие со временем переводится в пояс человека, длительность — из конца', () => {
@@ -59,6 +59,23 @@ describe('state входа Google', () => {
     expect(await readState(key, state.replace(/^42\./, '43.'))).toBeNull();
     expect(await readState(key, await signState(key, 42, -1000))).toBeNull();
     expect(await readState(key, 'мусор')).toBeNull();
+  });
+
+  it('метка «из приложения» подписана вместе с id и сроком: ни приписать, ни снять; просроченный подписанный — видно, откуда он', async () => {
+    const app = await signState(key, 42, undefined, 'app');
+    expect(await verifyState(key, app)).toEqual({ userId: 42, app: true, expired: false });
+    expect(await readState(key, app)).toBe(42);
+    const web = await signState(key, 42);
+    expect(await verifyState(key, web)).toEqual({ userId: 42, app: false, expired: false });
+    const [id, exp, sig] = web.split('.');
+    expect(await verifyState(key, `${id}.${exp}.app.${sig}`)).toBeNull();
+    const parts = app.split('.');
+    expect(await verifyState(key, `${parts[0]}.${parts[1]}.${parts[3]}`)).toBeNull();
+    expect(await verifyState(key, await signState(key, 42, -1000, 'app'))).toEqual({ userId: 42, app: true, expired: true });
+    expect(await readState(key, await signState(key, 42, -1000, 'app'))).toBeNull();
+    expect(await verifyState(key, `${id}.${exp}.web.${sig}`)).toBeNull();
+    expect(await verifyState(key, 'мусор')).toBeNull();
+    expect(await verifyState(key, '')).toBeNull();
   });
 });
 

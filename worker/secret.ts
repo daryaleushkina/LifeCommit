@@ -25,19 +25,34 @@ async function hmac(raw: string, text: string): Promise<string> {
 }
 
 /**
- * Подписанный state для входа Google: «id.срок.подпись». Google вернёт его в адрес возврата —
- * по нему узнаём, чей это календарь (cookie из Telegram в браузер не переходят).
+ * Подписанный state для входа Google: «id.срок.подпись», у входа из приложения — «id.срок.app.подпись» (метка
+ * подписана вместе с id и сроком). Google вернёт его в адрес возврата — по нему узнаём, чей это календарь (cookie из
+ * Telegram в браузер не переходят) и куда вернуть человека: в мини-апп или в приложение.
  */
-export async function signState(raw: string, userId: number, ttlMs = 15 * 60_000): Promise<string> {
-  const body = `${userId}.${Date.now() + ttlMs}`;
+export async function signState(raw: string, userId: number, ttlMs = 15 * 60_000, client?: 'app'): Promise<string> {
+  const body = `${userId}.${Date.now() + ttlMs}${client ? `.${client}` : ''}`;
   return `${body}.${await hmac(raw, body)}`;
+}
+
+/**
+ * Проверить подпись state. null — подделан или не state; expired — подпись верна, но срок вышел (тогда уже известно,
+ * откуда начали вход: приложение получит «ссылка устарела» у себя, а не страницу в браузере).
+ */
+export async function verifyState(raw: string, state: string): Promise<{ userId: number; app: boolean; expired: boolean } | null> {
+  const parts = state.split('.');
+  if (parts.length !== 3 && !(parts.length === 4 && parts[2] === 'app')) return null;
+  const sig = parts.pop()!;
+  const [id = '', exp = ''] = parts;
+  if (!id || !exp || !sig || (await hmac(raw, parts.join('.'))) !== sig) return null;
+  const userId = Number(id);
+  if (!Number.isSafeInteger(userId) || userId <= 0) return null;
+  return { userId, app: parts.length === 3, expired: !(Number(exp) >= Date.now()) };
 }
 
 /** Проверить state: подпись и срок. Вернёт id пользователя или null. */
 export async function readState(raw: string, state: string): Promise<number | null> {
-  const [id, exp, sig] = state.split('.');
-  if (!id || !exp || !sig || Number(exp) < Date.now()) return null;
-  return (await hmac(raw, `${id}.${exp}`)) === sig ? Number(id) : null;
+  const v = await verifyState(raw, state);
+  return v && !v.expired ? v.userId : null;
 }
 
 export async function open(raw: string, sealed: string): Promise<string> {
