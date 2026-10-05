@@ -32,6 +32,30 @@ test('«Все · Осталось» прячет сделанное и помн
   await expect(row(page, 'Оплатить свет')).toHaveCount(1);
 });
 
+// 05.10.2026: прошедший созвон из календаря висел в «Осталось» весь день — у событий нет галочки, отметить его нельзя.
+// События приходят из Google и Apple — здесь они дописаны в настоящий ответ /api/today; часы телефона — полдень.
+test('«Осталось»: прошедшее событие из календаря уходит, будущее и своё несделанное остаются', async ({ app: page, me }) => {
+  await me.api('POST', '/todos', { title: 'Позвонить маме' });
+  const { day } = await me.api<{ day: string }>('GET', '/today');
+  const event = (id: number, title: string, time: string, duration_min: number) => ({ id, title, day, done: false, time, duration_min, recurring: false, source: 'google', details: null });
+  await page.route('**/api/today', async (route) => {
+    const res = await route.fetch();
+    const body = (await res.json()) as { todos: object[] };
+    body.todos.push(event(900_001, 'Дейлик', '10:00', 45), event(900_002, 'Психолог', '16:00', 90));
+    await route.fulfill({ response: res, json: body });
+  });
+  // Полдень по часам телефона: браузер в e2e живёт по Москве (playwright.config, timezoneId), а не по поясу машины.
+  await page.clock.install({ time: new Date(`${day}T12:00:00+03:00`) });
+  await page.reload();
+  await expect(row(page, 'Дейлик')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Осталось' }).click();
+  await expect(row(page, 'Дейлик')).toHaveCount(0);
+  await expect(row(page, 'Психолог')).toHaveCount(1);
+  await expect(row(page, 'Позвонить маме')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Все', exact: true }).click();
+  await expect(row(page, 'Дейлик')).toHaveCount(1);
+});
+
 test('шторка: на завтра и обратно на сегодня', async ({ app: page, me }) => {
   await me.api('POST', '/todos', { title: 'Записаться к врачу' });
   await page.reload();

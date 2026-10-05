@@ -3,7 +3,7 @@ import type { Todo } from '../../shared/types';
 import { caches, load as fetchInto } from '../caches';
 import { LangContext, useT } from '../i18n';
 import type { TodoEdit } from '../useTodos';
-import { todoWhen } from '../todoDates';
+import { eventOver, todoWhen } from '../todoDates';
 import { removeWithUndo, useRemoved } from '../removal';
 import { Sheet } from './Picker';
 import { SwipeRow, type SwipeAction } from './SwipeRow';
@@ -88,15 +88,29 @@ export function endTime(start: string, minutes: number): string | null {
   return total < 24 * 60 ? `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}` : null;
 }
 
+/** Часы раз в минуту, пока включены: закончившееся событие уходит из «Осталось», даже если экран не трогают. */
+function useMinuteClock(on: boolean): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!on) return;
+    setNow(new Date());
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, [on]);
+  return now;
+}
+
 /** Блок «Дела» на «Сегодня»: свои дела с кружком-галочкой, события из календаря без него, строка для нового дела, «Потом · N». */
 export function TodoList({ todos: all, later = 0, today, heading, addLabel, showCarry = true, canAdd = true, onToggle, onAdd, onUpdate, onRemove, onHide, filterable = false }: Props): ReactNode {
   const t = useT();
   const swipe = useTodoSwipe(onRemove, onHide);
   const listed = all.filter(swipe.visible);
   const [onlyLeft, setOnlyLeft] = useOnlyLeft();
-  // Прятать есть что, только когда есть свои дела: у событий из календаря галочки нет.
-  const canFilter = filterable && listed.some((d) => !d.source);
-  const todos = canFilter && onlyLeft ? listed.filter((d) => !d.done) : listed;
+  // «Осталось» прячет сделанные свои дела и прошедшие события из календаря (у событий галочки нет — 05.10.2026
+  // прошедший созвон висел в «Осталось» весь день). Прятать нечего, если есть только события на весь день.
+  const canFilter = filterable && listed.some((d) => !d.source || !!d.time);
+  const now = useMinuteClock(canFilter && onlyLeft && listed.some((d) => d.source && d.time));
+  const todos = canFilter && onlyLeft ? listed.filter((d) => !d.done && !eventOver(d, now)) : listed;
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   const [adding, setAdding] = useState(false);

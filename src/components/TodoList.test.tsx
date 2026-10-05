@@ -166,6 +166,43 @@ describe('«Все · Осталось»', () => {
     expect(localStorage.getItem('lc-todos-left')).toBeNull();
   });
 
+  // 05.10.2026: прошедший созвон из календаря висел в «Осталось» — отметить событие нельзя, оно не уходило никогда.
+  it('прошедшие события из календаря уходят; идущие, «на весь день» и свои несделанные — остаются', async () => {
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00`));
+    try {
+      const list = [
+        todo({ id: 1, title: 'Дейлик', time: '10:00', duration_min: 45, source: 'google' }),
+        todo({ id: 2, title: 'Идёт сейчас', time: '11:30', duration_min: 60, source: 'google' }),
+        todo({ id: 3, title: 'Утро без конца', time: '10:00', source: 'apple' }),
+        todo({ id: 4, title: 'Только что без конца', time: '11:30', source: 'apple' }),
+        todo({ id: 5, title: 'Конференция', source: 'google' }),
+        todo({ id: 6, title: 'Созвон с мамой', time: '09:00' }),
+        todo({ id: 7, title: 'Сделанное', done: true }),
+      ];
+      await setup(list, { filterable: true }).r;
+      await page.getByRole('button', { name: 'Осталось' }).click();
+      for (const gone of ['Дейлик', 'Утро без конца', 'Сделанное']) await expect.element(main(gone)).not.toBeInTheDocument();
+      for (const left of ['Идёт сейчас', 'Только что без конца', 'Конференция', 'Созвон с мамой']) await expect.element(main(left)).toBeVisible();
+      await page.getByRole('button', { name: 'Все' }).click();
+      await expect.element(main('Дейлик')).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('только события со временем — переключатель есть; экран открыт — закончившееся уходит само', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: new Date(`${TODAY}T12:20:00`) });
+    try {
+      await setup([todo({ id: 1, title: 'Встреча', time: '11:30', duration_min: 60, source: 'google' })], { filterable: true }).r;
+      await page.getByRole('button', { name: 'Осталось' }).click();
+      await expect.element(main('Встреча')).toBeVisible();
+      vi.advanceTimersByTime(11 * 60_000); // 12:31 — встреча кончилась в 12:30
+      await expect.element(main('Встреча')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('только события — переключателя нет; без хранилища переключатель всё равно работает', async () => {
     const { r } = setup([todo({ source: 'google' })], { filterable: true });
     const { unmount } = await r;
