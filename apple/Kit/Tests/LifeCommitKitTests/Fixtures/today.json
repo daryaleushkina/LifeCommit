@@ -1,0 +1,102 @@
+{
+  "day": "2026-10-05",
+  "tasks": [
+    {
+      "id": 23807,
+      "title": "Сходить в спортзал",
+      "emoji": null,
+      "kind": "check",
+      "unit": null,
+      "step": 1,
+      "schedule": "daily",
+      "weekdays": 127,
+      "per_week": null,
+      "visibility": "private",
+      "challenge_id": null,
+      "target": 1,
+      "value": 0,
+      "logged": false,
+      "status": null,
+      "week_done": 0,
+      "due": true,
+      "subtasks": [],
+      "clean_before": 0,
+      "last_slip_on": null
+    },
+    {
+      "id": 23808,
+      "title": "Пить воду",
+      "emoji": null,
+      "kind": "count",
+      "unit": "стаканов",
+      "step": 1,
+      "schedule": "daily",
+      "weekdays": 127,
+      "per_week": null,
+      "visibility": "private",
+      "challenge_id": null,
+      "target": 8,
+      "value": 3,
+      "logged": true,
+      "status": null,
+      "week_done": 0,
+      "due": true,
+      "subtasks": [],
+      "clean_before": 0,
+      "last_slip_on": null
+    },
+    {
+      "id": 23809,
+      "title": "Не курить",
+      "emoji": null,
+      "kind": "abstain",
+      "unit": null,
+      "step": 1,
+      "schedule": "daily",
+      "weekdays": 127,
+      "per_week": null,
+      "visibility": "private",
+      "challenge_id": null,
+      "target": 1,
+      "value": 1,
+      "logged": true,
+      "status": "clean",
+      "week_done": 0,
+      "due": true,
+      "subtasks": [],
+      "clean_before": 14,
+      "last_slip_on": "2026-09-20"
+    }
+  ],
+  "archived": [],
+  "limits": {
+    "max_tasks": null,
+    "active": 3
+  },
+  "todos": [
+    {
+      "id": 84079,
+      "title": "Купить корм Тесле",
+      "day": "2026-10-05",
+      "done": false,
+      "time": "15:00",
+      "duration_min": null,
+      "recurring": false,
+      "source": null,
+      "details": null
+    },
+    {
+      "id": 84078,
+      "title": "Позвонить в банк",
+      "day": "2026-10-05",
+      "done": false,
+      "time": null,
+      "duration_min": null,
+      "recurring": false,
+      "source": null,
+      "details": null
+    }
+  ],
+  "todos_later": 0,
+  "groups": []
+}

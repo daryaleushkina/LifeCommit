@@ -1,0 +1,136 @@
+# Проект Xcode для LifeCommit на iPhone и Mac — описан текстом; LifeCommit.xcodeproj генерирует `xcodegen` (в git не
+# кладётся). Открыть в Xcode: `pnpm apple:open`. Устройство — docs/mobile.md.
+name: LifeCommit
+options:
+  bundleIdPrefix: app.lifecommit
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: ru
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    # Свой Team ID владелица ставит в Xcode (Signing & Capabilities); без него — симулятор и подпись «для этого Mac».
+    DEVELOPMENT_TEAM: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+
+packages:
+  LifeCommitKit:
+    path: Kit
+  SnapshotTesting:
+    url: https://github.com/pointfreeco/swift-snapshot-testing
+    exactVersion: 1.19.6
+
+targets:
+  LifeCommit:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: App
+        excludes:
+          - "**/*.md"
+    dependencies:
+      - package: LifeCommitKit
+    entitlements:
+      path: App/LifeCommit.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: LifeCommit
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: ru
+        CFBundleLocalizations: [ru, en]
+        # Адрес API; для разработки и тестов перебивается аргументом запуска -LCAPIBase (Config.swift).
+        LCAPIBase: https://lifecommit.app/api
+        CFBundleURLTypes:
+          - CFBundleURLName: app.lifecommit.tglogin
+            CFBundleURLSchemes: [lifecommit]
+        # Есть ли приложение Telegram — вход тогда идёт через него.
+        LSApplicationQueriesSchemes: [tg]
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIRequiresFullScreen: true
+        ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.productivity
+        NSAppTransportSecurity:
+          # Локальный стенд (http://localhost) — только разработка и тесты; в проде — https.
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lifecommit
+        PRODUCT_NAME: LifeCommit
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+
+  LifeCommitTests:
+    type: bundle.unit-test
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: AppTests
+        # Эталоны снимков читает сама библиотека по пути на диске — в тестовый пакет их не кладём.
+        excludes:
+          - "__Snapshots__/**"
+    dependencies:
+      - target: LifeCommit
+      - package: SnapshotTesting
+      - package: LifeCommitKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        # У приложения для Mac исполняемый файл лежит внутри Contents/MacOS.
+        "TEST_HOST[sdk=macosx*]": $(BUILT_PRODUCTS_DIR)/LifeCommit.app/Contents/MacOS/LifeCommit
+
+  LifeCommitUITests:
+    type: bundle.ui-testing
+    supportedDestinations: [iOS]
+    sources: [AppUITests]
+    dependencies:
+      - target: LifeCommit
+      - package: LifeCommitKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_TARGET_NAME: LifeCommit
+
+schemes:
+  LifeCommit:
+    build:
+      targets:
+        LifeCommit: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - LifeCommitTests
+        - LifeCommitUITests
+  # Только логика и снимки экранов — для Mac (UI-сценарии XCUITest — на iPhone) и для быстрого прогона.
+  LifeCommitSnapshots:
+    build:
+      targets:
+        LifeCommit: all
+    test:
+      config: Debug
+      targets:
+        - LifeCommitTests
