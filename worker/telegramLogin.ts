@@ -81,7 +81,12 @@ async function download(): Promise<Jwk[]> {
     throw unreachable();
   }
   const valid = list.filter((k): k is Jwk => typeof k === 'object' && k !== null && typeof (k as Jwk).kid === 'string');
-  if (!valid.length) console.error('telegram jwks: no usable keys', list.length);
+  // Пустой список — сбой Telegram, а не «ключей больше нет»: старые рабочие ключи не затираем.
+  if (!valid.length) {
+    lastFail = Date.now();
+    console.error('telegram jwks: no usable keys', list.length);
+    throw unreachable();
+  }
   keys = { list: valid, at: Date.now() };
   imported = new Map();
   return valid;
@@ -150,9 +155,15 @@ function importKey(kid: string, alg: Alg, jwk: Jwk): Promise<CryptoKey> {
   });
 }
 
+/**
+ * base64url → байты, только в каноничной записи. atob молча отбрасывает лишние младшие биты последнего знака, и у
+ * одной подписи было бы до 16 записей (ревью 05.10.2026) — перекодируем обратно и сравниваем.
+ */
 function fromB64url(part: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]*$/.test(part)) throw badToken();
+  if (!/^[A-Za-z0-9_-]*$/.test(part) || part.length % 4 === 1) throw badToken();
   const bin = atob(part.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (part.length % 4)) % 4));
+  const canonical = btoa(bin).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  if (canonical !== part) throw badToken();
   return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
 }
 
@@ -168,6 +179,9 @@ function jsonPart(part: string): Record<string, unknown> {
 }
 
 interface TelegramProfile {
+  /** Подписанная часть токена (заголовок.данные): по ней узнаём повтор — у одной и той же подписи бывает несколько
+   *  записей (ES256: (r, s) и (r, n − s) обе верны), а у содержания — одна. */
+  signed: string;
   id: number;
   firstName: string;
   lastName: string | null;
@@ -211,6 +225,7 @@ async function verify(env: Env, token: string): Promise<TelegramProfile> {
   const text = (v: unknown, max: number) => (typeof v === 'string' ? cleanText(v, max) : '');
   const username = typeof claims.preferred_username === 'string' && /^[A-Za-z0-9_]{1,64}$/.test(claims.preferred_username) ? claims.preferred_username : null;
   return {
+    signed: `${h}.${p}`,
     id,
     // Имя в Telegram есть всегда; на всякий случай — полное имя, ник, и уж совсем без ничего — «Telegram», не пусто.
     firstName: text(claims.given_name, 64) || text(claims.name, 64) || username || 'Telegram',
@@ -261,7 +276,7 @@ telegramLogin.post('/telegram', async (c) => {
   const who = await verify(c.env, token);
   const sb = db(c.env);
   // Один id_token — один вход: тот же токен второй раз — 409, второго ключа нет.
-  const used = await sb.from('auth_token_uses').insert({ token_hash: await tokenHash(token) });
+  const used = await sb.from('auth_token_uses').insert({ token_hash: await tokenHash(who.signed) });
   if (used.error?.code === '23505') throw new HTTPException(409, { message: 'token_used' });
   must(used);
   // Уборка старых отпечатков необязательна: не вышла — в лог, вход не страдает.

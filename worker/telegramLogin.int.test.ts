@@ -2,6 +2,7 @@
 // приложение получает от oauth.telegram.org подписанный id_token, сервер проверяет подпись ключами Telegram и выдаёт
 // тот же ключ сессии, что у компьютера (`Authorization: Bearer <ключ>`). Ключи Telegram здесь — свои, тестовые:
 // адрес JWKS подменён.
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetTelegramKeys } from './telegramLogin';
 import { dbReady, env, net, request, sb, tg, user, type Res } from './test/harness';
@@ -190,6 +191,51 @@ describe.skipIf(!ready)('вход через Telegram', () => {
     expect((await sb.from('desktop_sessions').select('device').eq('user_id', id)).data).toEqual([{ device: 'ios' }]);
   });
 
+  it('утёкший токен не превратить в ключи подменой записи подписи: другой последний знак base64 — отказ, ES256 (r, n−s) — 409', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    const token = await idToken({ id });
+    expect((await signIn({ id_token: token, device: 'ios' })).status).toBe(200);
+    // У RS256 в последнем знаке подписи 4 лишних бита: варианты с теми же старшими битами дают те же байты.
+    const [h, p, sig] = token.split('.') as [string, string, string];
+    const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const last = ABC.indexOf(sig.at(-1)!);
+    const twins = [...ABC].filter((_, i) => i !== last && i >> 4 === last >> 4);
+    expect(twins.length).toBe(15);
+    for (const ch of twins) {
+      const res = await signIn({ id_token: `${h}.${p}.${sig.slice(0, -1)}${ch}`, device: 'ios' });
+      expect({ ch, res }).toEqual({ ch, res: { status: 401, body: { error: 'bad_token' } } });
+    }
+    // ES256: вторая подпись того же содержания (r, n − s) — тоже верна для WebCrypto; отпечаток — по содержанию.
+    const id2 = freshId();
+    madeHere.push(id2);
+    const e = await idToken({ id: id2 }, ec);
+    expect((await signIn({ id_token: e, device: 'ios' })).status).toBe(200);
+    const [eh, ep, es] = e.split('.') as [string, string, string];
+    const raw = Buffer.from(es, 'base64url');
+    const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+    const sVal = BigInt('0x' + raw.subarray(32).toString('hex'));
+    const flipped = Buffer.concat([raw.subarray(0, 32), Buffer.from((n - sVal).toString(16).padStart(64, '0'), 'hex')]);
+    expect(await signIn({ id_token: `${eh}.${ep}.${b64u(flipped)}`, device: 'ios' })).toEqual({ status: 409, body: { error: 'token_used' } });
+    expect((await sb.from('desktop_sessions').select('id').in('user_id', [id, id2])).data).toHaveLength(2);
+  });
+
+  it('отпечаток живёт дольше токена: 9 минут спустя повтор — 409; старше 20 минут уборка удаляет', async () => {
+    const a = freshId();
+    const b = freshId();
+    madeHere.push(a, b);
+    const tokenA = await idToken({ id: a });
+    expect((await signIn({ id_token: tokenA, device: 'ios' })).status).toBe(200);
+    const [h, p] = tokenA.split('.') as [string, string];
+    const hashA = createHash('sha256').update(`${h}.${p}`).digest('hex');
+    const stale = `stale-${freshId()}`;
+    await sb.from('auth_token_uses').update({ used_at: new Date(Date.now() - 9 * 60_000).toISOString() }).eq('token_hash', hashA);
+    await sb.from('auth_token_uses').insert({ token_hash: stale, used_at: new Date(Date.now() - 25 * 60_000).toISOString() });
+    expect((await signIn({ id_token: await idToken({ id: b }), device: 'ios' })).status).toBe(200);
+    expect((await signIn({ id_token: tokenA, device: 'ios' })).body).toEqual({ error: 'token_used' });
+    expect((await sb.from('auth_token_uses').select('token_hash').in('token_hash', [hashA, stale])).data).toEqual([{ token_hash: hashA }]);
+  });
+
   it('двойное нажатие: два первых входа нового человека сразу — оба входят, пользователь один', async () => {
     const id = freshId();
     madeHere.push(id);
@@ -259,15 +305,29 @@ describe.skipIf(!ready)('вход через Telegram', () => {
     net.routes = [];
     net.on(JWKS_URL, () => new Response('down', { status: 503 }));
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errors = console.error as unknown as ReturnType<typeof vi.fn>;
     expect(await signIn({ id_token: await idToken({ id }), device: 'ios' })).toEqual({ status: 502, body: { error: 'telegram_unreachable' } });
+    expect(keyFetches()).toBe(1);
+    // Каждый случай — с чистой памятью: иначе его оборвёт пауза после сбоя, и до Telegram он не дойдёт.
+    forgetTelegramKeys();
     net.routes = [];
     net.on(JWKS_URL, () => {
       throw new TypeError('network down');
     });
     expect((await signIn({ id_token: await idToken({ id }), device: 'ios' })).status).toBe(502);
+    expect(keyFetches()).toBe(2);
+    forgetTelegramKeys();
     net.routes = [];
     net.on(JWKS_URL, () => Response.json({ keys: 'не список' }));
     expect((await signIn({ id_token: await idToken({ id }), device: 'ios' })).status).toBe(502);
+    expect(keyFetches()).toBe(3);
+    expect(errors).toHaveBeenCalledWith('telegram jwks: no keys list');
+    // Пустой список и ключи без kid — тоже сбой Telegram, а не «неверный токен».
+    forgetTelegramKeys();
+    net.routes = [];
+    net.on(JWKS_URL, () => Response.json({ keys: [{ kty: 'RSA' }] }));
+    expect((await signIn({ id_token: await idToken({ id }), device: 'ios' })).status).toBe(502);
+    expect(errors).toHaveBeenCalledWith('telegram jwks: no usable keys', 1);
     expect((await sb.from('users').select('id').eq('id', id)).data).toEqual([]);
   });
 
@@ -281,6 +341,8 @@ describe.skipIf(!ready)('вход через Telegram', () => {
       ['данные подменены', `${h}.${b64u(JSON.stringify({ ...JSON.parse(Buffer.from(p, 'base64url').toString()), id: id + 1 }))}.${s}`],
       ['без подписи (alg none)', `${b64u(JSON.stringify({ alg: 'none', kid: 'oidc-1' }))}.${p}.`],
       ['HS256', await idToken({ id }, rsa, { alg: 'HS256' })],
+      ['ES256 в заголовке, ключ RSA', await idToken({ id }, rsa, { alg: 'ES256' })],
+      ['RS256 в заголовке, ключ EC', await idToken({ id }, ec, { alg: 'RS256' })],
       ['чужой издатель', await idToken({ id, iss: 'https://evil.example' })],
       ['другой бот', await idToken({ id, aud: '123' })],
       ['нет id', await idToken({ id: undefined })],
@@ -394,6 +456,20 @@ describe.skipIf(!ready)('вход через Telegram: ключи Telegram со 
     expect(keyFetches()).toBe(2);
   });
 
+  it('ключи устарели, а Telegram прислал пустой список — проверяем старыми, рабочие ключи не затираются', async () => {
+    const a = freshId();
+    const b = freshId();
+    madeHere.push(a, b);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.now();
+    expect((await signIn({ id_token: await idToken({ id: a }), device: 'ios' })).status).toBe(200);
+    net.routes = [];
+    net.on(JWKS_URL, () => Response.json({ keys: [] }));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.setSystemTime(start + 61 * 60_000);
+    expect((await signIn({ id_token: await idToken({ id: b }), device: 'ios' })).status).toBe(200);
+  });
+
   it('Telegram завис — через 4 секунды 502, а не вечное ожидание', async () => {
     net.routes = [];
     net.on(JWKS_URL, (req) => new Promise<Response>((_, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason))));
@@ -420,6 +496,37 @@ afterEach(() => {
 });
 
 describe.skipIf(!ready)('вход через Telegram: база отвечает ошибкой', () => {
+  it('отпечаток токена не записался — 500 и никакого ключа', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      if (req.url.startsWith(`${env.SUPABASE_URL}/rest/v1/auth_token_uses`) && req.method === 'POST') {
+        return Response.json({ code: 'XX000', message: 'база недоступна' }, { status: 500 });
+      }
+      return harnessFetch(req);
+    }) as typeof fetch;
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await signIn({ id_token: await idToken({ id }), device: 'ios' })).toEqual({ status: 500, body: { error: 'internal' } });
+    globalThis.fetch = harnessFetch;
+    expect((await sb.from('desktop_sessions').select('id').eq('user_id', id)).data).toEqual([]);
+  });
+
+  it('уборка старых отпечатков не вышла — вход всё равно состоялся, ошибка в логе', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      if (req.url.startsWith(`${env.SUPABASE_URL}/rest/v1/auth_token_uses`) && req.method === 'DELETE') {
+        return Response.json({ code: 'XX000', message: 'база недоступна' }, { status: 500 });
+      }
+      return harnessFetch(req);
+    }) as typeof fetch;
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await signIn({ id_token: await idToken({ id }), device: 'ios' })).status).toBe(200);
+    expect(errors).toHaveBeenCalledWith('auth_token_uses cleanup failed', 'база недоступна');
+  });
+
   it('ключ не записался — 500, а не ключ, который не работает', async () => {
     const id = freshId();
     madeHere.push(id);
