@@ -18,6 +18,7 @@
   --btn-text: #FFFFFF;
   --btn-edge: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   --halo: rgba(63, 169, 104, 0.32);
+  --soon-op: 0.4;
   --font: 'Onest Variable', 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --gut: clamp(16px, 4vw, 56px);
@@ -29,7 +30,7 @@
     --bg: #0A0F0C; --bg-2: #0F1511; --fg: #E8EEE6; --mut: #A3AD9F; --dim: #7E887B; --acc: #3FA968; --acc-hi: #7CCB96; --acc-text: #0E1A12;
     --line: rgba(255, 255, 255, 0.08); --card: rgba(255, 255, 255, 0.04); --card-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     --btn: rgba(255, 255, 255, 0.08); --btn-text: #FFFFFF; --btn-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    --halo: rgba(63, 169, 104, 0.5);
+    --halo: rgba(63, 169, 104, 0.5); --soon-op: 0.55;
     color-scheme: dark;
   }
 }
@@ -37,7 +38,7 @@
   --bg: #0A0F0C; --bg-2: #0F1511; --fg: #E8EEE6; --mut: #A3AD9F; --dim: #7E887B; --acc: #3FA968; --acc-hi: #7CCB96; --acc-text: #0E1A12;
   --line: rgba(255, 255, 255, 0.08); --card: rgba(255, 255, 255, 0.04); --card-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   --btn: rgba(255, 255, 255, 0.08); --btn-text: #FFFFFF; --btn-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  --halo: rgba(63, 169, 104, 0.5);
+  --halo: rgba(63, 169, 104, 0.5); --soon-op: 0.55;
   color-scheme: dark;
 }
 
@@ -98,6 +99,9 @@ a { color: inherit; }
 .store small { font-size: 11px; font-weight: 500; letter-spacing: 0.02em; opacity: 0.72; }
 .store b { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
 .store.tg svg { color: #2AABEE; }
+/* Пока приложений нет, кнопки сторов неактивны (решение владелицы 05.10.2026): серые, приглушённые, без отклика. */
+.store[aria-disabled='true'] { opacity: var(--soon-op); filter: grayscale(1); cursor: default; box-shadow: none; }
+.store[aria-disabled='true']:hover, .store[aria-disabled='true']:active { translate: none; scale: none; }
 /* на iPhone — App Store и Telegram, на Android — Google Play и Telegram, на компьютере — все три */
 :root[data-os='ios'] .store.play, :root[data-os='android'] .store.apple { display: none; }
 
