@@ -8,8 +8,9 @@
 # Пропустить хук и отдать деплой в Actions: git push --no-verify
 
 sha=""
+remote_sha=""
 while read -r _local_ref local_sha remote_ref _remote_sha; do
-  [ "$remote_ref" = "refs/heads/main" ] && sha="$local_sha"
+  [ "$remote_ref" = "refs/heads/main" ] && sha="$local_sha" && remote_sha="$_remote_sha"
 done
 [ -z "$sha" ] && exit 0
 # Удаление ветки — деплоить нечего.
@@ -47,10 +48,26 @@ if ! pnpm exec supabase status >/dev/null 2>&1; then
   fi
 fi
 
+# Приложение для iPhone и Mac (apple/, docs/mobile.md): проверяем, если в пуше есть оно само или сервер, с которым оно
+# говорит (решение владелицы 05.10.2026; ~4 минуты: swift test, снимки экранов iPhone и Mac, сценарии XCUITest против
+# своего стенда на порту 5183). Новая ветка без истории на сервере — проверяем всегда. Нет Xcode — пуш останавливается:
+# непроверенное не уходит.
+apple_check() {
+  if ! sh scripts/apple-changed.sh "$remote_sha" "$sha"; then
+    echo "pre-push: apple/ и сервер не менялись — проверка iOS/Mac пропущена" >&2
+    return 0
+  fi
+  if ! command -v xcodebuild >/dev/null 2>&1 || ! command -v xcodegen >/dev/null 2>&1; then
+    echo "pre-push: нужна проверка iOS/Mac, а Xcode или xcodegen не найдены (brew install xcodegen xcbeautify) — пуш отменён." >&2
+    return 1
+  fi
+  pnpm apple:test
+}
+
 echo "pre-push: проверка и деплой $sha с этой машины…" >&2
 # pnpm lint — правила хуков React и потерянные промисы (.oxlintrc.json): то, чего не ловит typecheck.
 # pnpm coverage — те же тесты vitest, что pnpm test, плюс порог покрытия (vitest.config.ts → thresholds).
-{ pnpm typecheck && pnpm lint && pnpm coverage && pnpm e2e && pnpm build && pnpm exec wrangler deploy; } >&2 || {
+{ pnpm typecheck && pnpm lint && pnpm coverage && pnpm e2e && apple_check && pnpm build && pnpm exec wrangler deploy; } >&2 || {
   echo "pre-push: проверка или деплой не прошли — пуш отменён (отчёт сквозных тестов: test-results/)" >&2
   exit 1
 }
