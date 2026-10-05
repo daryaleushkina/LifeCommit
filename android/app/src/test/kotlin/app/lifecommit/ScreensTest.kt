@@ -250,11 +250,30 @@ class ScreensTest(private val theme: String) : AppTest() {
         shot("archive")
     }
 
-    @Test fun pendingAndMe() {
+    private fun seedMe() {
         seed()
+        server.user = server.user.copy(username = "dasha", remindEvening = "21:00")
+        server.heat = (1..5).map { app.lifecommit.core.HeatDay("2026-10-0$it", (it % 4).toDouble()) }
+        server.blocked = listOf(app.lifecommit.core.Person(3, "Петя", "petya"))
+        server.devices = listOf(app.lifecommit.core.DeviceSession(1, "android", "2026-10-05T10:00:00Z", "2026-10-05T10:00:00Z", true))
+    }
+
+    @Test fun me() {
+        seedMe()
         start()
         compose.waitText(t.me).performClick()
-        compose.waitText(t.logoutDevice)
+        compose.waitFor { model.me.devices.isNotEmpty() && model.me.blocked.isNotEmpty() && model.heat.isNotEmpty() }
         shot("me")
+    }
+
+    @Test fun meBlocked() {
+        seedMe()
+        start()
+        compose.waitText(t.me).performClick()
+        // Строки «Заблокированные» и «Устройства» приходят с ответами сервера — от них зависит, где список под шторкой.
+        compose.waitFor { model.me.devices.isNotEmpty() && model.me.blocked.isNotEmpty() && model.heat.isNotEmpty() }
+        compose.scrollToText("me", t.fr.blocked).performClick()
+        compose.waitText("@petya")
+        shot("me-blocked")
     }
 }

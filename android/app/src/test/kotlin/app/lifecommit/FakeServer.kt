@@ -65,6 +65,12 @@ class FakeServer {
     /** Задержать POST /session (мс): приложение ещё загружается. */
     @Volatile var sessionDelayMs = 0L
 
+    /** Задержать PUT /groups/:id/items/:id/mark (мс) до того, как сервер его применит: отметка «ещё идёт на сервер». */
+    @Volatile var markDelayMs = 0L
+
+    /** Дела групп по дням для GET /calendar (в промежутке from..to). */
+    @Volatile var calendarGroups: List<app.lifecommit.core.GroupDayBlock> = emptyList()
+
     /** Группы человека (экран группы целиком): GET /groups и /groups/:id; «Сегодня» отдаёт их в today.groups. */
     @Volatile var groups: List<app.lifecommit.core.GroupToday> = emptyList()
 
@@ -76,6 +82,13 @@ class FakeServer {
 
     /** Экраны друзей — GET /friends/:id. */
     val profiles = mutableMapOf<Long, app.lifecommit.core.FriendProfile>()
+
+    /** Карта дней (GET /heatmap). */
+    @Volatile var heat: List<app.lifecommit.core.HeatDay> = emptyList()
+
+    /** Заблокированные (GET /blocks) и устройства, где вошли (GET /desktop/sessions). */
+    @Volatile var blocked: List<app.lifecommit.core.Person> = emptyList()
+    @Volatile var devices: List<app.lifecommit.core.DeviceSession> = emptyList()
 
     /** Поиск по @username и чужие ссылки: ключ → человек и статус. */
     val people = mutableMapOf<String, app.lifecommit.core.FoundPerson>()
@@ -98,6 +111,7 @@ class FakeServer {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 // Медленная отметка: сервер применяет её не сразу (как настоящий, пока идёт запись в базу).
                 if (request.method == "PUT" && request.url.encodedPath == "/api/logs" && logDelayMs > 0) Thread.sleep(logDelayMs)
+                if (request.method == "PUT" && request.url.encodedPath.endsWith("/mark") && markDelayMs > 0) Thread.sleep(markDelayMs)
                 if (request.method == "POST" && request.url.encodedPath == "/api/calendars/sync" && syncDelayMs > 0) Thread.sleep(syncDelayMs)
                 if (request.method == "POST" && request.url.encodedPath == "/api/session" && sessionDelayMs > 0) Thread.sleep(sessionDelayMs)
                 return synchronized(this@FakeServer) { handle(request) }
@@ -133,7 +147,7 @@ class FakeServer {
             call.method == "GET" && api == "today" -> ok(enc(today.copy(groups = groups.map { it.copy(settings = null, upcoming = emptyList()) }))).let { r ->
                 if (todayDelayMs > 0) r.newBuilder().headersDelay(todayDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS).build() else r
             }
-            call.method == "GET" && api == "heatmap" -> ok(enc(HeatmapResponse(today.day, emptyList())))
+            call.method == "GET" && api == "heatmap" -> ok(enc(HeatmapResponse(today.day, heat)))
             call.method == "GET" && api == "todos/later" -> ok(enc(later))
             call.method == "GET" && api.matches(Regex("tasks/\\d+/history")) -> {
                 val id = api.split('/')[1].toLong()
@@ -179,7 +193,7 @@ class FakeServer {
                 val from = r.url.queryParameter("from")!!
                 val to = r.url.queryParameter("to")!!
                 val all = (today.todos + calendarTodos).filter { it.day in from..to }
-                ok(enc(app.lifecommit.core.CalendarRange(today.day, all))).let { resp ->
+                ok(enc(app.lifecommit.core.CalendarRange(today.day, all, calendarGroups.filter { it.day in from..to }))).let { resp ->
                     if (calendarDelayMs > 0) resp.newBuilder().headersDelay(calendarDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS).build() else resp
                 }
             }
@@ -384,6 +398,25 @@ class FakeServer {
                 ok()
             }
             call.method == "DELETE" && api == "desktop/session" -> ok()
+            call.method == "PATCH" && api == "settings" -> {
+                val b = call.json
+                b["remind_evening"]?.let { user = user.copy(remindEvening = it.jsonPrimitive.contentOrNull) }
+                b["day_start_hour"]?.let { user = user.copy(dayStartHour = it.jsonPrimitive.content.toInt()) }
+                b["language_code"]?.let { user = user.copy(languageCode = it.jsonPrimitive.content) }
+                ok(enc(user))
+            }
+            call.method == "GET" && api == "blocks" -> ok(enc(blocked))
+            call.method == "DELETE" && api.matches(Regex("blocks/\\d+")) -> {
+                val id = api.removePrefix("blocks/").toLong()
+                blocked = blocked.filter { it.id != id }
+                ok()
+            }
+            call.method == "GET" && api == "desktop/sessions" -> ok(enc(devices))
+            call.method == "DELETE" && api == "desktop/sessions" -> {
+                devices = emptyList()
+                ok()
+            }
+            call.method == "DELETE" && api == "account" -> ok()
             else -> error(404, "not_found")
         }
     }

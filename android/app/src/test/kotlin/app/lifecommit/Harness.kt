@@ -4,6 +4,8 @@ package app.lifecommit
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
@@ -47,6 +49,8 @@ abstract class AppTest {
 
     @Before fun startServer() {
         server.start()
+        // Фото людей в тестах не грузятся из сети: буква (тест аватарок подменяет на свой).
+        app.lifecommit.ui.Photos.loader = app.lifecommit.ui.PhotoLoader { null }
     }
 
     @After fun stop() {
@@ -103,6 +107,22 @@ abstract class AppTest {
     fun ComposeContentTestRule.waitText(text: String, timeout: Long = 5_000, substring: Boolean = false): SemanticsNodeInteraction {
         waitFor(timeout) { onAllNodes(hasText(text, substring = substring)).fetchSemanticsNodes().isNotEmpty() }
         return onNode(hasText(text, substring = substring))
+    }
+
+    /** Долистать список экрана (tag) до строки с текстом, как человек, — и вернуть её. */
+    fun ComposeContentTestRule.scrollToText(tag: String, text: String): SemanticsNodeInteraction {
+        waitFor { onAllNodes(androidx.compose.ui.test.hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty() }
+        val list = onNode(androidx.compose.ui.test.hasTestTag(tag))
+        // Строка может прийти с ответом сервера позже — листать, пока не найдётся.
+        waitFor { runCatching { list.performScrollToNode(hasText(text)) }.isSuccess }
+        // Строка показалась у нижнего края — долистать, чтобы она встала над нижней панелью (как долистал бы человек).
+        val bars = onAllNodes(androidx.compose.ui.test.hasTestTag("tabbar")).fetchSemanticsNodes()
+        if (bars.isNotEmpty()) {
+            val top = bars.first().boundsInRoot.top
+            val bottom = onNode(hasText(text)).fetchSemanticsNode().boundsInRoot.bottom
+            if (bottom > top - 16) list.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) { it(0f, bottom - top + 48) }
+        }
+        return waitText(text)
     }
 
     fun ComposeContentTestRule.waitLabel(label: String, timeout: Long = 5_000): SemanticsNodeInteraction {

@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
                 Lifecycle.Event.ON_RESUME -> {
                     model.refreshIfStale()
                     model.returnedWithoutCallback()
+                    model.checkBot()
                 }
                 else -> Unit
             }
@@ -74,8 +75,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val haptics = rememberHaptics()
             LaunchedEffect(haptics) { model.haptics = haptics }
-            val choice = model.prefs.string(THEME_KEY)
-            val dark = when (choice) {
+            val dark = when (model.theme) {
                 "dark" -> true
                 "light" -> false
                 else -> isSystemInDarkTheme()
@@ -111,10 +111,6 @@ class MainActivity : ComponentActivity() {
             log.warning("no app for $url: $e")
             false
         }
-    }
-
-    companion object {
-        const val THEME_KEY = "lc-theme"
     }
 }
 

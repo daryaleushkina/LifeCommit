@@ -130,7 +130,7 @@ class SignInTest : AppTest() {
         launch()
         compose.waitText(t.today)
         compose.waitText(t.me).performClick()
-        compose.waitText(t.logoutDevice).performClick()
+        compose.scrollToText("me", t.logoutDevice).performClick()
         compose.waitText(t.logoutOk).performClick()
         compose.waitText(t.signIn)
         assertEquals(1, server.calls("DELETE", "/api/desktop/session").size)
@@ -141,7 +141,7 @@ class SignInTest : AppTest() {
         server.failures["DELETE /api/desktop/session"] = 500 to "internal"
         launch()
         compose.waitText(t.me).performClick()
-        compose.waitText(t.logoutDevice).performClick()
+        compose.scrollToText("me", t.logoutDevice).performClick()
         compose.waitText(t.logoutOk).performClick()
         compose.waitText(t.signIn)
         assertNull(runBlocking { tokens.load() })

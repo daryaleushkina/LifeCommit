@@ -76,6 +76,8 @@ class CalendarModel(
 
     /** Отметка группового дела на экране сразу. */
     fun patchGroupItem(groupId: Long, itemId: Long, day: String, f: (app.lifecommit.core.GroupDayItem) -> app.lifecommit.core.GroupDayItem) {
+        // Ответ, начатый до отметки, её не затирает.
+        version++
         val k = key
         groupRanges[k]?.let { list ->
             groupRanges[k] = list.map { b -> if (b.group.id != groupId || b.day != day) b else b.copy(items = b.items.map { if (it.id == itemId) f(it) else it }) }
@@ -86,6 +88,9 @@ class CalendarModel(
     suspend fun reloadQuiet() {
         if (selected.isEmpty()) return
         version++
+        // Соседние промежутки (месяц, прошлый день) тоже устарели — перечитаются, когда до них дойдут.
+        ranges.keys.filter { it != key }.forEach { ranges.remove(it) }
+        groupRanges.keys.filter { it != key }.forEach { groupRanges.remove(it) }
         val seq = version
         val k = key
         try {
@@ -486,28 +491,47 @@ class CalendarModel(
             status == "denied" || status == "expired" -> status
             else -> "failed"
         }
-        if (googleReturn == null && pending != null) {
-            scope.launch {
-                try {
-                    val res = api.finishGoogle(pending)
-                    // Новый — выбор календарей в шторке (статус setup); подключён заново — перечитать календари и дела.
-                    if (res.fresh) loadAccounts() else changedNow()
-                } catch (e: ApiError) {
-                    if (e.isSignedOut) return@launch onSignedOut()
-                    googleReturn = if (e.code == "pending_not_found" || e.code == "pending_expired") "link" else "failed"
-                }
-            }
-        } else {
-            loadAccounts()
-        }
+        if (googleReturn == null && pending != null) finish(pending) else loadAccounts()
         loadGoogleUrl()
         return true
     }
 
     private suspend fun changedNow() = changed()
 
+    /** Код возврата, который сервер не принял из-за сети или своей ошибки (код он вернул себе) — «Ещё раз». */
+    private var retryPending: String? = null
+
+    private fun finish(pending: String) {
+        retryPending = null
+        googleReturn = null
+        scope.launch {
+            try {
+                val res = api.finishGoogle(pending)
+                // Новый — выбор календарей в шторке (статус setup); подключён заново — перечитать календари и дела.
+                if (res.fresh) loadAccounts() else changedNow()
+            } catch (e: ApiError) {
+                if (e.isSignedOut) return@launch onSignedOut()
+                log.info("google finish failed: $e")
+                googleReturn = when {
+                    e.code == "pending_not_found" || e.code == "pending_expired" -> "link"
+                    // Нет связи или 5xx — код ещё действует (сервер вернул его себе): отправить его же ещё раз.
+                    e.kind == ApiError.Kind.Network || (e.status ?: 0) >= 500 -> RETRY.also { retryPending = pending }
+                    else -> "failed"
+                }
+            }
+        }
+    }
+
+    /** «Ещё раз» после сбоя связи: тот же код. */
+    fun retryGoogle() {
+        retryPending?.let(::finish)
+    }
+
     companion object {
         private const val WAIT_KEY = "lc-gcal-wait"
+
+        /** googleReturn: сбой связи — показать «Ещё раз». */
+        const val RETRY = "retry"
 
         /** Одноразовый код возврата Google: 43 знака base64url. */
         private val PENDING = Regex("^[A-Za-z0-9_-]{43}$")

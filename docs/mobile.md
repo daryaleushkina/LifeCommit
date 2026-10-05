@@ -79,6 +79,9 @@
   — подменённый вход на локальном стенде, только сборка Debug (http разрешён только для 10.0.2.2/localhost в Debug).
 - **Команды**: `pnpm android:test` (тесты `core` и `app`, сверка снимков), `pnpm android:record` (переснять снимки —
   только при намеренной правке вида), `pnpm android:build` (APK Debug), `pnpm android:icons`.
+- **Тесты идут на Java 21**, код собирается под 17 (`app/build.gradle.kts`, `javaLauncher`): Java 17.0.9 на Apple
+  Silicon падала посреди прогона («Field too big for insn» в C1 на большом методе Compose) — без половины тестов и с
+  `hs_err_pid*.log`. Нужна установленная Java 21 (на Маке — Corretto 21; в CI её ставит `setup-java`).
 
 ## Вход
 

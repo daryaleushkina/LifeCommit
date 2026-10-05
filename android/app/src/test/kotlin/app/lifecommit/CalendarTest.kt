@@ -258,6 +258,21 @@ class CalendarTest : AppTest() {
         compose.waitFor { server.calls("POST", "/api/calendars/7/confirm").size == 1 }
     }
 
+    @Test fun `возврат из Google - сервер не ответил - тот же код можно отправить ещё раз`() {
+        seed()
+        server.failures["POST /api/calendars/google/finish"] = 500 to "server_error"
+        launch()
+        startGoogle()
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=ok&pending=$code") }
+        compose.waitText(t.retry)
+        server.failures.remove("POST /api/calendars/google/finish")
+        compose.onNodeWithTag("googleRetry").performClick()
+        compose.waitText(t.cal.googleChoose)
+        val calls = server.calls("POST", "/api/calendars/google/finish")
+        assertEquals(2, calls.size)
+        assertTrue(calls.all { it.json["pending"].toString() == "\"$code\"" })
+    }
+
     @Test fun `ссылка возврата без начатого входа - не принимается`() {
         seed()
         launch()

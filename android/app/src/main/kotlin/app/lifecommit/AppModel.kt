@@ -191,6 +191,44 @@ class AppModel(
         onSignedOut = ::signOutLocally,
     )
 
+    /** «Я»: настройки, заблокированные, устройства, удаление аккаунта (MeModel). */
+    val me = MeModel(
+        api = api,
+        scope = scope,
+        user = { user },
+        setUser = { user = it },
+        onSignedOut = ::signOutLocally,
+    )
+
+    /** Тема, выбранная в «Я» (light / dark); null — как в системе. Как localStorage lc-theme в мини-аппе. */
+    var theme by mutableStateOf(prefs.string(THEME_KEY))
+        private set
+
+    fun chooseTheme(next: String) {
+        theme = next
+        prefs.setString(THEME_KEY, next)
+    }
+
+    /** Ушли в чат с ботом нажать «Старт» («Разрешить боту напоминать») — вернулись: перечитать, разрешил ли. */
+    private var botAsked = false
+
+    fun askBot() {
+        botAsked = true
+    }
+
+    /** Вернулись в приложение после чата с ботом: bot_chat_ok — с сервера. */
+    fun checkBot() {
+        if (!botAsked || phase != Phase.Ready) return
+        botAsked = false
+        scope.launch {
+            try {
+                user = api.session(TimeZone.getDefault().id).user
+            } catch (e: ApiError) {
+                if (e.isSignedOut) signOutLocally() else log.info("bot check failed: $e")
+            }
+        }
+    }
+
     /** Раздел «Вместе», открытый в прошлый раз: группы или друзья (как localStorage lc-together). */
     var togetherFriends by mutableStateOf(prefs.string("lc-together") == "friends")
         private set
@@ -200,28 +238,42 @@ class AppModel(
         prefs.setString("lc-together", if (on) "friends" else "groups")
     }
 
-    /** Отметка группового дела (на «Сегодня», в «Календаре», на экране группы): сразу на экране, потом с сервера. */
-    fun toggleGroupItem(groupId: Long, item: app.lifecommit.core.GroupDayItem, day: String) {
+    /**
+     * Отметка группового дела (на «Сегодня», в «Календаре», на экране группы): сразу на экране, потом с сервера.
+     * Копия на «Сегодня» — только у сегодняшнего дня; перечитывание ждёт, пока отметка дойдёт до сервера.
+     * Подсказку («Уже кто-то сделал») показывает только экран группы — как в мини-аппе.
+     */
+    fun toggleGroupItem(groupId: Long, item: app.lifecommit.core.GroupDayItem, day: String, onGroupScreen: Boolean = false) {
         val done = !item.done
         val me = user?.id ?: 0
+        val isToday = day == today.day
+        fun patchToday(f: (app.lifecommit.core.GroupDayItem) -> app.lifecommit.core.GroupDayItem) {
+            today = today.copy(groups = today.groups.map { g -> if (g.id != groupId) g else g.copy(items = g.items.map { if (it.id == item.id) f(it) else it }) })
+        }
         change++
-        today = today.copy(groups = today.groups.map { g ->
-            if (g.id != groupId) g else g.copy(items = g.items.map { if (it.id == item.id) app.lifecommit.core.Groups.marked(it, done, me) else it })
-        })
+        if (isToday) patchToday { app.lifecommit.core.Groups.marked(it, done, me) }
         calendar.patchGroupItem(groupId, item.id, day) { app.lifecommit.core.Groups.marked(it, done, me) }
         if (done) haptics(Haptic.Success)
-        together.toggle(groupId, item, if (day == today.day) null else day) {
-            // не вышло — вернуть как было
-            today = today.copy(groups = today.groups.map { g -> if (g.id != groupId) g else g.copy(items = g.items.map { if (it.id == item.id) item else it }) })
-            calendar.patchGroupItem(groupId, item.id, day) { item }
+        scope.launch {
+            val r = write { together.mark(groupId, item, if (isToday) null else day) }
+            if (r.signedOut) return@launch
+            if (!r.ok) {
+                // не вышло — вернуть как было
+                if (isToday) patchToday { item }
+                calendar.patchGroupItem(groupId, item.id, day) { item }
+            }
+            if (onGroupScreen) r.note?.let { together.note = GroupNote(groupId, it) }
+            // Счётчики «5 из 8» и чужие отметки — с сервера, когда отметка уже там.
+            refresh()
+            calendar.reloadQuiet()
+            together.loadGroup(groupId)
         }
-        scope.launch { calendar.reloadQuiet() }
     }
 
     /** Удалить групповое дело свайпом — с «Вернуть»; skipDay — только в этот день (у повторяющегося). */
     fun removeGroupItem(groupId: Long, item: app.lifecommit.core.GroupDayItem, skipDay: String?) {
         val text = if (skipDay != null) strings.swipe.skipped(item.title) else strings.swipe.removed(item.title)
-        removeWithUndo("gi:$groupId:${item.id}", text, failText = { e -> if (e.code == "admins_only") strings.swipe.notAllowed else strings.error }) {
+        removeWithUndo(groupItemKey(groupId, item.id, skipDay), text, failText = { e -> if (e.code == "admins_only") strings.swipe.notAllowed else strings.error }) {
             together.removeItem(groupId, item.id, skipDay)
             calendar.reloadQuiet()
         }
@@ -403,6 +455,8 @@ class AppModel(
         // Чужое после выхода не показываем: дела и календари прошлого человека — прочь (/code-review 05.10).
         calendar.reset()
         together.reset()
+        me.reset()
+        botAsked = false
         pendingLink = null
         user = null
         today = TodayResponse(day = "")
@@ -726,6 +780,13 @@ class AppModel(
 
     fun isRemoved(key: String): Boolean = key in removed
 
+    /** Ключ удаления группового дела: совсем — без дня, «только в этот день» — с днём (в другие дни оно остаётся). */
+    private fun groupItemKey(groupId: Long, itemId: Long, day: String?) = "gi:$groupId:$itemId" + (day?.let { ":$it" } ?: "")
+
+    /** Групповое дело в этот день ждёт удаления (совсем или только в этот день). */
+    fun isGroupItemRemoved(groupId: Long, itemId: Long, day: String): Boolean =
+        isRemoved(groupItemKey(groupId, itemId, null)) || isRemoved(groupItemKey(groupId, itemId, day))
+
     /**
      * Строка пропадает сразу, внизу 5 секунд «Вернуть»; на сервер удаление уходит, когда плашка закрылась (или
      * приложение свернули). Не вышло — экран перечитывается (строка вернётся), поверх — «Что-то пошло не так».
@@ -862,6 +923,7 @@ class AppModel(
 
     companion object {
         const val SKIP_KEY = "lc-onboarding-skipped"
+        const val THEME_KEY = "lc-theme"
 
         /** Код приглашения в коде ссылки — буквы, цифры, «-» и «_»: в путь API ничего другого не попадёт. */
         private val CODE = Regex("^[A-Za-z0-9_-]{4,64}$")

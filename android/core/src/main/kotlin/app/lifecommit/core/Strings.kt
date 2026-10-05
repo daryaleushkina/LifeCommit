@@ -132,6 +132,21 @@ class Strings private constructor(
     val fr: FriendStrings,
     val year: String,
     val activeDays: (Int) -> String,
+    // «Я»
+    val reminders: String,
+    val off: String,
+    val turnOff: String,
+    val dayEnds: String,
+    val theme: String,
+    val themeLight: String,
+    val themeDark: String,
+    val language: String,
+    val allowBot: String,
+    val deleteAccount: String,
+    val deleteConfirm: String,
+    val devices: String,
+    val logoutAll: String,
+    val logoutAllConfirm: String,
 ) {
     enum class Lang { Ru, En }
 
@@ -759,6 +774,20 @@ class Strings private constructor(
                 ),
                 year = "Год",
                 activeDays = { "${num(it)} ${Plural.ru(it, "активный день", "активных дня", "активных дней")}" },
+                reminders = "Напоминание",
+                off = "Выкл",
+                turnOff = "Выключить",
+                dayEnds = "День заканчивается",
+                theme = "Тема",
+                themeLight = "Светлая",
+                themeDark = "Тёмная",
+                language = "Язык",
+                allowBot = "Разрешить боту напоминать",
+                deleteAccount = "Удалить аккаунт",
+                deleteConfirm = "Удалить аккаунт и все данные без возможности восстановления?",
+                devices = "Устройства",
+                logoutAll = "Выйти везде",
+                logoutAllConfirm = "Выйти из LifeCommit на всех устройствах?",
             )
         }
 
@@ -1090,6 +1119,20 @@ class Strings private constructor(
                 ),
                 year = "Year",
                 activeDays = { "${num(it)} active ${if (it == 1) "day" else "days"}" },
+                reminders = "Reminder",
+                off = "Off",
+                turnOff = "Turn off",
+                dayEnds = "Day ends at",
+                theme = "Theme",
+                themeLight = "Light",
+                themeDark = "Dark",
+                language = "Language",
+                allowBot = "Let the bot remind me",
+                deleteAccount = "Delete account",
+                deleteConfirm = "Delete your account and all data permanently?",
+                devices = "Devices",
+                logoutAll = "Sign out everywhere",
+                logoutAllConfirm = "Sign out of LifeCommit on all devices?",
             )
         }
     }

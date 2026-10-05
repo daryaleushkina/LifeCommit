@@ -88,7 +88,10 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          # 17 — сборка, 21 — тесты (android/app/build.gradle.kts: Java 17.0.x падает посреди прогона).
+          java-version: |
+            21
+            17
           cache: gradle
       - if: steps.changed.outputs.run == 'yes'
         run: pnpm install --frozen-lockfile
