@@ -100,7 +100,7 @@ describe('JSON-запросы', () => {
     ['addEntry', () => api.addEntry(2, 7, 500), 'POST', '/groups/2/items/7/entries', { amount: 500 }],
     ['desktopLogin', () => api.desktopLogin('mac'), 'POST', '/desktop/login', { device: 'mac' }],
     ['desktopPoll', () => api.desktopPoll('s'.repeat(43)), 'POST', '/desktop/login/poll', { secret: 's'.repeat(43) }],
-    ['desktopApprove', () => api.desktopApprove('c'.repeat(22), 'web'), 'POST', '/desktop/approve', { code: 'c'.repeat(22), device: 'web' }],
+    ['desktopApprove', () => api.desktopApprove('t'.repeat(51), 'web'), 'POST', '/desktop/approve', { ticket: 't'.repeat(51), device: 'web' }],
     ['desktopSessions', () => api.desktopSessions(), 'GET', '/desktop/sessions', undefined],
     ['logoutEverywhere', () => api.logoutEverywhere(), 'DELETE', '/desktop/sessions', undefined],
     ['logout', () => api.logout(), 'DELETE', '/desktop/session', undefined],
@@ -137,7 +137,7 @@ describe('JSON-запросы', () => {
   });
 
   it('401 на компьютере с ключом — ключ забыт, обратно на вход; в Telegram и без ключа — просто ошибка', async () => {
-    fetchMock.mockResolvedValue(json({ error: 'bad_session' }, 401));
+    fetchMock.mockImplementation(async () => json({ error: 'bad_session' }, 401));
     await expect(api.today()).rejects.toMatchObject({ status: 401, code: 'bad_session' });
     desk.desktop = true;
     await expect(api.today()).rejects.toMatchObject({ status: 401 });
@@ -145,6 +145,28 @@ describe('JSON-запросы', () => {
     desk.token = 'k'.repeat(43);
     await expect(api.today()).rejects.toMatchObject({ status: 401 });
     expect(desk.lost).toBe(1);
+    fetchMock.mockImplementation(async () => json({ error: 'session_expired' }, 401));
+    await expect(api.today()).rejects.toMatchObject({ status: 401 });
+    fetchMock.mockImplementation(async () => json({ error: 'no_session' }, 401));
+    await expect(api.today()).rejects.toMatchObject({ status: 401 });
+    expect(desk.lost).toBe(3);
+  });
+
+  it('погасить ключ, пришедший после «Отмена», — его же ключом', async () => {
+    await expect(api.dropDesktopKey('k'.repeat(43))).resolves.toEqual({ ok: true });
+    const [url, init] = fetchMock.mock.lastCall!;
+    expect(url).toBe('/api/desktop/session');
+    expect(init).toMatchObject({ method: 'DELETE', headers: { Authorization: `Bearer ${'k'.repeat(43)}` } });
+  });
+
+  it('401 по делу (неверный пароль календаря Apple) — не выход: ошибка доходит до экрана', async () => {
+    desk.desktop = true;
+    desk.token = 'k'.repeat(43);
+    fetchMock.mockImplementation(async () => json({ error: 'apple_auth' }, 401));
+    await expect(api.connectApple('a@icloud.com', 'pw')).rejects.toMatchObject({ status: 401, code: 'apple_auth' });
+    fetchMock.mockImplementation(async () => new Response('gateway', { status: 401 }));
+    await expect(api.today()).rejects.toMatchObject({ status: 401, code: 'network' });
+    expect(desk.lost).toBe(0);
   });
 
   it('ответ сервера отдаётся как есть', async () => {

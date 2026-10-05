@@ -83,6 +83,14 @@ describe('«назад»', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(onBack).toHaveBeenCalledTimes(2);
 
+    // Человек печатает в поле — Escape не уводит с экрана (и не во время набора через IME).
+    const input = document.createElement('input');
+    document.body.append(input);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    input.remove();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, isComposing: true }));
+    expect(onBack).toHaveBeenCalledTimes(2);
+
     // Открыта шторка — Escape закрывает её, а не уводит назад.
     const sheet = document.createElement('div');
     sheet.className = 'sheet-backdrop';
@@ -114,19 +122,39 @@ describe('«назад»', () => {
 describe('подтверждения', () => {
   it('шторка с текстом и кнопками: удалить — красная, отмена — мягкая; ответ — id нажатой', async () => {
     const answer = popup.show({ message: 'Удалить привычку?', buttons: [{ id: 'delete', type: 'destructive', text: 'Удалить' }, { type: 'cancel' }] });
-    const dialog = page.getByRole('alertdialog');
-    await expect.element(dialog).toHaveAccessibleDescription('Удалить привычку?');
+    const dialog = page.getByRole('alertdialog', { name: 'Удалить привычку?' });
     await expect.element(dialog.getByRole('button', { name: 'Удалить' })).toHaveClass(/danger/);
     await expect.element(dialog.getByRole('button', { name: 'Отмена' })).toHaveClass(/soft/);
-    await expect.element(dialog.getByRole('button', { name: 'Удалить' })).toHaveFocus();
+    // фокус — на безопасной «Отмена»: привычный Return ничего не удалит
+    await expect.element(dialog.getByRole('button', { name: 'Отмена' })).toHaveFocus();
+    // страница под шторкой с клавиатуры недоступна, пока спрашиваем
+    expect(bar().inert).toBe(true);
+    expect(top().inert).toBe(true);
     await dialog.getByRole('button', { name: 'Удалить' }).click();
     expect(await answer).toBe('delete');
     await expect.element(dialog).not.toBeInTheDocument();
+    expect(bar().inert).toBe(false);
+    expect(top().inert).toBe(false);
+  });
+
+  it('«назад» при открытом подтверждении (⌘[ в заголовке окна) закрывает подтверждение, а не экран под ним', async () => {
+    const onBack = vi.fn();
+    const off = backButton.onClick(onBack);
+    backButton.show();
+    const answer = popup.show({ message: 'Удалить?', buttons: [{ id: 'delete', type: 'destructive', text: 'Удалить' }, { type: 'cancel' }] });
+    await expect.element(page.getByRole('alertdialog')).toBeVisible();
+    window.lifecommitHost!.back();
+    expect(await answer).toBeUndefined();
+    expect(onBack).not.toHaveBeenCalled();
+    window.lifecommitHost!.back();
+    expect(onBack).toHaveBeenCalledOnce();
+    backButton.hide();
+    off();
   });
 
   it('«Отмена» — не «удалить»; заголовок; без кнопок — одна «Закрыть»; «ОК» — главной кнопкой', async () => {
     const cancelled = popup.show({ title: 'Точно?', message: 'Совсем?', buttons: [{ id: 'yes', type: 'destructive', text: 'Да' }, { type: 'cancel' }] });
-    await expect.element(page.getByRole('heading', { name: 'Точно?' })).toBeVisible();
+    await expect.element(page.getByRole('alertdialog', { name: 'Точно?' })).toHaveAccessibleDescription('Совсем?');
     await page.getByRole('button', { name: 'Отмена' }).click();
     expect(await cancelled).not.toBe('yes');
 

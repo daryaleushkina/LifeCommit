@@ -91,10 +91,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
       updateBack()
     case .colors(let rgb):
       window?.backgroundColor = NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
-    case .open(let url):
-      NSWorkspace.shared.open(url)
+    case .open(let url, let fallback):
+      // tg:// без Telegram на Маке открыть нечем — тогда та же ссылка t.me в браузере (там предложат Telegram Web).
+      if NSWorkspace.shared.open(url) { return }
+      NSLog("LifeCommit: nothing opens \(url.scheme ?? "")")
+      if let fallback { NSWorkspace.shared.open(fallback) }
     case .download(let url, let name):
-      guard Links.isApp(url, app: appURL) else { return }
+      guard Links.isApp(url, app: appURL) else {
+        NSLog("LifeCommit: download refused, not our address: \(url.host ?? "")")
+        failed(strings.saveFailed, detail: nil)
+        return
+      }
       Task { await save(url, name: name) }
     }
   }
@@ -125,12 +132,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
       NSWorkspace.shared.activateFileViewerSelecting([target])
     } catch {
       NSLog("LifeCommit: download failed: \(error)")
-      guard let window else { return }
-      let alert = NSAlert()
-      alert.messageText = strings.saveFailed
-      alert.informativeText = error.localizedDescription
-      alert.beginSheetModal(for: window) { _ in }
+      failed(strings.saveFailed, detail: error.localizedDescription)
     }
+  }
+
+  /// Сказать, что не вышло, окном поверх приложения.
+  private func failed(_ message: String, detail: String?) {
+    guard let window, window.attachedSheet == nil else { return }
+    let alert = NSAlert()
+    alert.messageText = message
+    if let detail { alert.informativeText = detail }
+    alert.beginSheetModal(for: window) { _ in }
   }
 
   // MARK: Ссылки и разрешения
@@ -160,6 +172,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
   func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
     offline(error)
+  }
+
+  // Процесс страницы упал (например, не хватило памяти) — не оставлять белое окно, а загрузить заново.
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    NSLog("LifeCommit: web content process terminated, reloading")
+    reload(nil)
   }
 
   /// Не загрузилось (нет интернета) — сказать и предложить ещё раз, а не оставлять пустое окно.

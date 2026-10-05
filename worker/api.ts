@@ -106,7 +106,10 @@ api.post('/session', async (c) => {
   const tz = body.timezone && isValidTimeZone(body.timezone) ? body.timezone : undefined;
   // Вошли со связанного аккаунта (другой Telegram того же человека) или на компьютере (профиля Telegram там нет):
   // профиль остаётся как есть.
-  if (existing && (existing.id !== tgUser.id || c.get('desktop') !== undefined)) {
+  // Ключ компьютера выдан конкретному пользователю: связь аккаунтов поменялась — не пускаем и никого не заводим.
+  const desktop = c.get('desktop');
+  if (desktop && existing?.id !== desktop.userId) throw new HTTPException(401, { message: 'no_session' });
+  if (existing && (existing.id !== tgUser.id || desktop)) {
     const user = must(await sb.from('users').update({ last_seen_at: new Date().toISOString(), ...(tz && { timezone: tz }) }).eq('id', existing.id).select(USER_COLS).single<UserRow>());
     if (tz && tz !== existing.timezone) await retimeCalendars(sb, user.id);
     return c.json({ user: toSettings(user), start_param: c.get('startParam') ?? null, is_new: false });
@@ -134,6 +137,9 @@ api.use('*', async (c, next) => {
     await c.get('sb').from('users').select(USER_COLS).or(byTelegram(c.get('tgUser').id)).limit(1).maybeSingle<UserRow>(),
   );
   if (!user) throw new HTTPException(401, { message: 'no_session' });
+  // Ключ компьютера выдан этому пользователю: связь аккаунтов Telegram с тех пор поменялась — ключ больше не пускает.
+  const desktop = c.get('desktop');
+  if (desktop && desktop.userId !== user.id) throw new HTTPException(401, { message: 'no_session' });
   c.set('user', user);
   await next();
 });
@@ -845,6 +851,8 @@ api.post('/write-access', async (c) => {
 api.delete('/account', async (c) => {
   // Со связанного аккаунта удалить общего пользователя нельзя — только с основного.
   if (c.get('user').id !== c.get('tgUser').id) throw new HTTPException(403, { message: 'linked_account' });
+  // И только из Telegram: ключ компьютера живёт долго, необратимое ему не доверяем.
+  if (c.get('desktop')) throw new HTTPException(403, { message: 'telegram_only' });
   // Свои группы — дальше участникам (или в архив), иначе они остаются без владельца и ломаются.
   const sb = c.get('sb');
   // Скриншоты жалоб: строки уйдут каскадом вместе с человеком, файлы в хранилище — нет. Первым шагом: если хранилище

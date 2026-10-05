@@ -15,11 +15,18 @@ backButton.mount();
 mainButton.mount();
 await viewport.mount();
 
+// Сразу после установки моста — «назад» в заголовке окна выключен: страница могла перезагрузиться с открытого экрана.
+const first = [...sent];
+
 beforeEach(() => {
   sent.length = 0;
 });
 
 describe('оболочка Mac', () => {
+  it('при загрузке страницы «назад» в заголовке окна выключается', () => {
+    expect(first[0]).toEqual({ type: 'back', visible: false });
+  });
+
   it('«назад» — в заголовке окна, не на странице; кнопка в заголовке зовёт обработчик приложения', async () => {
     const onBack = vi.fn();
     const off = backButton.onClick(onBack);
@@ -44,10 +51,14 @@ describe('оболочка Mac', () => {
     openLink('https://lifecommit.app/privacy/');
     openTelegramLink('https://t.me/LifeCommit_bot?startapp=mac_abc');
     expect(await requestWriteAccess()).toBe('cancelled');
+    openTelegramLink('https://t.me/');
     expect(sent).toEqual([
       { type: 'open', url: 'https://lifecommit.app/privacy/' },
-      { type: 'open', url: 'tg://resolve?domain=LifeCommit_bot&startapp=mac_abc' },
-      { type: 'open', url: 'tg://resolve?domain=LifeCommit_bot' },
+      // Telegram на Маке может не быть — тогда оболочка откроет t.me в браузере
+      { type: 'open', url: 'tg://resolve?domain=LifeCommit_bot&startapp=mac_abc', fallback: 'https://t.me/LifeCommit_bot?startapp=mac_abc' },
+      { type: 'open', url: 'tg://resolve?domain=LifeCommit_bot', fallback: 'https://t.me/LifeCommit_bot' },
+      // не переводится в tg:// — без запасного
+      { type: 'open', url: 'https://t.me/' },
     ]);
   });
 

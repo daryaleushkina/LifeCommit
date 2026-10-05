@@ -389,6 +389,16 @@ describe('компьютеры (вход на Mac и в браузере)', () =
     expect(m.api.logoutEverywhere).toHaveBeenCalledTimes(2);
   });
 
+  it('список компьютеров не загрузился — строки нет, сбой виден в консоли', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    m.api.desktopSessions.mockRejectedValue(new Error('offline'));
+    await setup();
+    await expect.poll(() => warn.mock.calls.length).toBe(1);
+    expect(warn).toHaveBeenCalledWith('desktop sessions failed', expect.any(Error));
+    await expect.element(page.getByRole('button', { name: /Компьютеры/ })).not.toBeInTheDocument();
+    warn.mockRestore();
+  });
+
   it('без подтверждений Telegram «Компьютеры» ничего не делает', async () => {
     m.api.desktopSessions.mockResolvedValue([mac]);
     await setup();
@@ -402,6 +412,8 @@ describe('компьютеры (вход на Mac и в браузере)', () =
     m.tg.answer = null;
     await setup();
     const out = page.getByRole('button', { name: 'Выйти на этом компьютере' });
+    // удалить аккаунт — только из Telegram
+    await expect.element(page.getByRole('button', { name: 'Удалить аккаунт' })).not.toBeInTheDocument();
     await out.click();
     await expect.poll(() => m.tg.popups.length).toBe(1);
     expect(m.tg.popups[0]).toMatchObject({ message: 'Выйти из LifeCommit на этом компьютере?' });

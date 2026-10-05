@@ -10,8 +10,8 @@ public enum ShellMessage: Equatable, Sendable {
   case back(visible: Bool)
   /// Цвет шапки — им красится заголовок окна.
   case colors(header: Rgb)
-  /// Открыть адрес снаружи: браузер, Telegram (tg://), почта.
-  case open(URL)
+  /// Открыть адрес снаружи: браузер, Telegram (tg://), почта. fallback — если открыть нечем (tg:// без Telegram).
+  case open(URL, fallback: URL?)
   /// Сохранить файл со своего сервера в «Загрузки».
   case download(URL, name: String)
 
@@ -28,7 +28,9 @@ public enum ShellMessage: Equatable, Sendable {
       self = .colors(header: rgb)
     case "open":
       guard let raw = dict["url"] as? String, let url = URL(string: raw), Links.canOpenOutside(url) else { return nil }
-      self = .open(url)
+      // Запасной адрес — только веб: открыть его должно быть чем.
+      let fallback = (dict["fallback"] as? String).flatMap(URL.init(string:)).flatMap { ["https", "http"].contains($0.scheme?.lowercased() ?? "") ? $0 : nil }
+      self = .open(url, fallback: fallback)
     case "download":
       guard let raw = dict["url"] as? String, let url = URL(string: raw), let name = dict["name"] as? String else { return nil }
       self = .download(url, name: Files.safeName(name))

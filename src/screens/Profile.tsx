@@ -61,7 +61,8 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   const desktop = isDesktop();
   const [computers, setComputers] = useState<DesktopSession[]>([]);
   useEffect(() => {
-    if (!desktop) api.desktopSessions().then(setComputers, () => {});
+    // Не загрузилось — строки нет, как и без компьютеров; в консоль — чтобы сбой был виден.
+    if (!desktop) api.desktopSessions().then(setComputers, (e: unknown) => console.warn('desktop sessions failed', e));
   }, [desktop]);
   useEffect(() => {
     api.blocks().then(setBlocked, () => {});
@@ -318,9 +319,12 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
           {t.desktop.logout}
         </button>
       )}
-      <button className="quiet-link" onClick={() => void deleteAccount()}>
-        {t.deleteAccount}
-      </button>
+      {/* Удалить аккаунт можно только из Telegram (ключ компьютера живёт долго — необратимое ему не доверяем). */}
+      {!desktop && (
+        <button className="quiet-link" onClick={() => void deleteAccount()}>
+          {t.deleteAccount}
+        </button>
+      )}
     </>
   );
 }

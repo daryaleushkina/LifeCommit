@@ -19,6 +19,9 @@ const test = base.extend<{ desk: Page }>({
       if (r.url().includes('/api/') && r.status() >= 500) problems.push(`сервер ${r.status()}: ${r.request().method()} ${new URL(r.url()).pathname}`);
     });
     await page.emulateMedia({ colorScheme: tgTheme });
+    // Картинка «Поделиться» уходит в Telegram через бота — в тестах подменяем, сама картинка — со «своего» адреса.
+    await page.route('**/api/share', (r) => r.fulfill({ json: { url: '/share/e2e-desktop.jpg', file_id: 'e2e'.repeat(10) } }));
+    await page.route('**/share/e2e-desktop.jpg', (r) => r.fulfill({ body: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]), contentType: 'image/jpeg' }));
     await page.addInitScript(() => {
       const w = window as unknown as { opened: string[] };
       w.opened = [];
@@ -36,13 +39,14 @@ const test = base.extend<{ desk: Page }>({
 const opened = (page: Page) => page.evaluate(() => (window as unknown as { opened: string[] }).opened);
 
 /** Войти: «Войти через Telegram» → ссылка на мини-апп → человек подтвердил в Telegram → «Сегодня». */
-async function signIn(page: Page, me: Me) {
+async function signIn(page: Page, me: Me, onWaiting?: () => Promise<void>) {
   const started = page.waitForResponse((r) => r.url().endsWith('/api/desktop/login'));
   await signInButton(page).click();
-  const { code } = (await (await started).json()) as { code: string };
+  const { ticket } = (await (await started).json()) as { ticket: string };
   await expect(page.getByRole('heading', { name: 'Подтверди вход в Telegram' })).toBeVisible();
-  expect(await opened(page)).toEqual([`https://t.me/LifeCommit_bot?startapp=web_${code}`]);
-  await me.api('POST', '/desktop/approve', { code, device: 'web' });
+  await onWaiting?.();
+  expect(await opened(page)).toEqual([`https://t.me/LifeCommit_bot?startapp=web_${ticket}`]);
+  await me.api('POST', '/desktop/approve', { ticket, device: 'web' });
   // Новичок без привычек видит «Чего я хочу?» — пропускаем, как в Telegram.
   const skip = page.getByRole('button', { name: 'Пропустить' });
   await heading(page).or(skip).first().waitFor({ timeout: 15_000 });
@@ -54,7 +58,7 @@ test('вход через Telegram: экран входа, подтвержде�
   await seed(me);
   await expect(signInButton(page)).toBeVisible();
   await checkScreen(page, 'desktop-login');
-  await signIn(page, me);
+  await signIn(page, me, () => checkScreen(page, 'desktop-waiting'));
   await expect(page.locator('.task')).toHaveCount(3);
   await checkScreen(page, 'desktop-today');
   await page.reload();
@@ -91,12 +95,76 @@ test('главная кнопка, «назад» и подтверждение 
   await page.getByRole('button', { name: 'Удалить', exact: true }).click();
   const confirm = page.getByRole('alertdialog');
   await expect(confirm).toContainText('Удалить привычку вместе с историей?');
+  await checkScreen(page, 'desktop-confirm');
   await confirm.getByRole('button', { name: 'Отмена' }).click();
   await expect(confirm).toBeHidden();
   await page.getByRole('button', { name: 'Удалить', exact: true }).click();
   await confirm.getByRole('button', { name: 'Удалить' }).click();
   await expect(heading(page)).toHaveText(/Сегодня|Чего я хочу\?/);
   expect((await me.api<{ tasks: unknown[] }>('GET', '/today')).tasks).toEqual([]);
+});
+
+test('после перезагрузки страницы «Назад» и «Сохранить» на месте (SDK помнит кнопки, мост — нет)', async ({ desk: page, me }) => {
+  await me.api('POST', '/tasks', { title: 'Читать', kind: 'check', target: 1 });
+  await signIn(page, me);
+  const back = page.getByRole('button', { name: 'Назад' });
+  const save = page.locator('.host-bar').getByRole('button', { name: 'Сохранить' });
+  await page.locator('.task', { hasText: 'Читать' }).locator('.task-main h2').click();
+  await page.getByRole('button', { name: 'Привычка' }).click();
+  await expect(save).toBeVisible();
+  await page.reload();
+  await expect(heading(page)).toHaveText('Сегодня');
+  await expect(back).toBeHidden();
+  await expect(page.locator('.host-bar')).toBeHidden();
+  await page.locator('.task', { hasText: 'Читать' }).locator('.task-main h2').click();
+  await expect(back).toBeVisible();
+  await page.getByRole('button', { name: 'Привычка' }).click();
+  await expect(save).toBeVisible();
+});
+
+test('«Что показать друзьям?» на весь экран — «Назад» сверху видна и закрывает его', async ({ desk: page, me, people }) => {
+  const masha = await people('Маша');
+  const { link } = await me.api<{ link: string }>('GET', '/friends');
+  await masha.api('POST', '/friends/requests', { code: link.split('startapp=f_')[1] });
+  await me.api('POST', `/friends/requests/${masha.id}/accept`);
+  await signIn(page, me);
+  await goTab(page, 'Вместе');
+  await page.getByRole('radio', { name: 'Друзья' }).click();
+  const show = page.getByRole('dialog', { name: 'Что показать друзьям?' });
+  await expect(show).toBeVisible();
+  const back = page.getByRole('button', { name: 'Назад' });
+  await expect(back).toBeVisible();
+  // «Назад» — самый верхний слой там, где нарисована: её не закрывает полноэкранный экран.
+  const box = (await back.boundingBox())!;
+  expect(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('.host-back') !== null, [box.x + box.width / 2, box.y + box.height / 2])).toBe(true);
+  await back.click();
+  await expect(show).toBeHidden();
+});
+
+test('тема системы сменилась (macOS «Авто» вечером) — приложение и экран входа меняют тему сразу', async ({ desk: page, me, tgTheme }) => {
+  const other = tgTheme === 'light' ? 'dark' : 'light';
+  const scheme = () => page.evaluate(() => document.documentElement.dataset.colorScheme);
+  await expect.poll(scheme).toBe(tgTheme);
+  await page.emulateMedia({ colorScheme: other });
+  await expect.poll(scheme).toBe(other);
+  await page.emulateMedia({ colorScheme: tgTheme });
+  await signIn(page, me);
+  await expect.poll(scheme).toBe(tgTheme);
+  await page.emulateMedia({ colorScheme: other });
+  await expect.poll(scheme).toBe(other);
+});
+
+test('«Поделиться» на компьютере: сторис и чата нет, «Сохранить» скачивает картинку', async ({ desk: page, me }) => {
+  await me.api('POST', '/tasks', { title: 'Читать', kind: 'check', target: 1 });
+  await signIn(page, me);
+  await goTab(page, 'Я');
+  await page.getByRole('button', { name: 'Поделиться' }).click();
+  await expect(page.locator('canvas.share-card').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'В сторис Telegram' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Отправить в чат' })).toHaveCount(0);
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Сохранить' }).click();
+  expect((await download).suggestedFilename()).toBe('lifecommit.jpg');
 });
 
 test('ссылки Telegram — наружу: «Поддержать проект» открывает t.me', async ({ desk: page, me }) => {

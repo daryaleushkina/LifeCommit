@@ -5,12 +5,23 @@ import { renderApp } from '../test/render';
 import { DesktopLogin } from './Login';
 
 const m = vi.hoisted(() => ({
-  api: { desktopLogin: vi.fn(), desktopPoll: vi.fn() },
+  api: { desktopLogin: vi.fn(), desktopPoll: vi.fn(), dropDesktopKey: vi.fn() },
   links: [] as string[],
   saved: [] as string[],
   saveFails: false,
 }));
-vi.mock('../api', () => ({ api: m.api }));
+vi.mock('../api', () => {
+  class ApiError extends Error {
+    constructor(
+      readonly status: number,
+      readonly code: string,
+    ) {
+      super(code);
+    }
+  }
+  return { api: m.api, ApiError };
+});
+import { ApiError } from '../api';
 vi.mock('@tma.js/sdk-react', () => ({ openTelegramLink: (url: string) => void m.links.push(url) }));
 vi.mock('./session', () => ({
   desktopDevice: () => 'mac',
@@ -27,6 +38,8 @@ const signIn = page.getByRole('button', { name: 'Войти через Telegram'
 beforeEach(() => {
   m.api.desktopLogin.mockReset().mockResolvedValue({ secret: SECRET, code: 'c'.repeat(22), link: LINK });
   m.api.desktopPoll.mockReset().mockResolvedValue({ status: 'pending' });
+  m.api.dropDesktopKey.mockReset().mockResolvedValue({ ok: true });
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
   Object.assign(m, { links: [], saved: [], saveFails: false });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -55,15 +68,20 @@ describe('вход на компьютере', () => {
   });
 
   it('«Открыть Telegram ещё раз» — та же ссылка; «Отмена» — обратно, опрос прекращается', async () => {
-    await renderApp(<DesktopLogin onDone={() => {}} pollMs={10} />);
+    // Опрос ждёт ответа, который даёт сам тест: после «Отмена» отвечаем «ждём» — следующего опроса быть не должно.
+    let answer!: (v: unknown) => void;
+    m.api.desktopPoll.mockImplementation(() => new Promise((r) => (answer = r)));
+    await renderApp(<DesktopLogin onDone={() => {}} pollMs={0} />);
     await signIn.click();
     await page.getByRole('button', { name: 'Открыть Telegram ещё раз' }).click();
     expect(m.links).toEqual([LINK, LINK]);
+    await expect.poll(() => m.api.desktopPoll.mock.calls.length).toBe(1);
     await page.getByRole('button', { name: 'Отмена' }).click();
     await expect.element(signIn).toBeVisible();
-    const calls = m.api.desktopPoll.mock.calls.length;
-    await new Promise((r) => setTimeout(r, 50));
-    expect(m.api.desktopPoll.mock.calls.length).toBe(calls);
+    answer({ status: 'pending' });
+    // Опрос раз в 0 мс: живой цикл успел бы спросить ещё раз за две смены задач — проверяем, что не спросил.
+    for (let i = 0; i < 2; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(m.api.desktopPoll).toHaveBeenCalledTimes(1);
   });
 
   it('нажали «Отмена», пока сервер отвечал, — вход не продолжается, даже если ответ «подтвердили»', async () => {
@@ -75,9 +93,23 @@ describe('вход на компьютере', () => {
     await expect.poll(() => m.api.desktopPoll.mock.calls.length).toBe(1);
     await page.getByRole('button', { name: 'Отмена' }).click();
     answer({ status: 'ok', token: 'k'.repeat(43) });
-    await new Promise((r) => setTimeout(r, 30));
+    // ключ не сохранён и сразу погашен — не висит в «Компьютерах»
+    await expect.poll(() => m.api.dropDesktopKey.mock.calls).toEqual([['k'.repeat(43)]]);
     expect(onDone).not.toHaveBeenCalled();
     expect(m.saved).toEqual([]);
+  });
+
+  it('сервер отвечает ошибкой три раза подряд — «Не получилось», а не 10 минут «ждём»; одна ошибка — ждём дальше', async () => {
+    m.api.desktopPoll
+      .mockRejectedValueOnce(new ApiError(500, 'internal'))
+      .mockResolvedValueOnce({ status: 'pending' })
+      .mockRejectedValueOnce(new ApiError(500, 'internal'))
+      .mockRejectedValueOnce(new ApiError(502, 'network'))
+      .mockRejectedValueOnce(new ApiError(500, 'internal'));
+    await renderApp(<DesktopLogin onDone={() => {}} pollMs={10} />);
+    await signIn.click();
+    await expect.element(page.getByText('Не получилось\u00a0— проверь интернет и попробуй ещё раз.')).toBeVisible();
+    expect(m.api.desktopPoll).toHaveBeenCalledTimes(5);
   });
 
   it('не начался вход (нет связи) — ошибка и можно снова', async () => {

@@ -1,4 +1,4 @@
-import { StrictMode, useState, type ReactNode } from 'react';
+import { StrictMode, useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   backButton,
@@ -71,11 +71,20 @@ async function bootstrap(): Promise<void> {
 /** На компьютере без ключа — экран входа; вошли — приложение целиком, как в Telegram. */
 function DesktopGate(): ReactNode {
   const [signedIn, setSignedIn] = useState(() => desktopToken() !== null);
+  const lang = navigator.language.startsWith('ru') ? 'ru' : 'en';
+  // Тема и язык до входа — системные и меняются вместе с системой (выбранную в профиле тему App поставит сам).
+  useEffect(() => {
+    if (signedIn) return;
+    document.documentElement.lang = lang;
+    const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const paint = () => (document.documentElement.dataset.colorScheme = scheme.matches ? 'dark' : 'light');
+    paint();
+    scheme.addEventListener('change', paint);
+    return () => scheme.removeEventListener('change', paint);
+  }, [signedIn, lang]);
   if (signedIn) return <App />;
-  // Тема и язык до входа — системные (выбранную в профиле тему App поставит сам).
-  document.documentElement.dataset.colorScheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   return (
-    <LangContext.Provider value={navigator.language.startsWith('ru') ? 'ru' : 'en'}>
+    <LangContext.Provider value={lang}>
       <DesktopLogin onDone={() => setSignedIn(true)} />
     </LangContext.Provider>
   );

@@ -60,7 +60,8 @@ export function installDesktopHost(): void {
 
   const main: MainButton = { visible: false, active: true, progress: false, text: '' };
   let backVisible = false;
-  let popupOpen = false;
+  /** Открытое подтверждение: закрыть его как «отмену» (Escape, «назад» из заголовка окна). */
+  let cancelPopup: (() => void) | null = null;
 
   // ── Нарисованное здесь: нижняя полоса с главной кнопкой и (в браузере) полоса «назад» сверху ──
   const bar = el('div', 'host-bar');
@@ -76,15 +77,23 @@ export function installDesktopHost(): void {
   document.body.append(top, bar);
 
   const back = () => {
-    if (backVisible) emitEvent('back_button_pressed');
+    // «Назад» при открытом подтверждении (⌘[ в заголовке окна) — сначала закрыть подтверждение, как «Отмена».
+    if (cancelPopup) cancelPopup();
+    else if (backVisible) emitEvent('back_button_pressed');
   };
   mainBtn.addEventListener('click', () => emitEvent('main_button_pressed'));
   backBtn.addEventListener('click', back);
   window.lifecommitHost = { back };
-  // Escape — «назад», если не открыта шторка: её Escape закрывает сам.
+  // Escape — «назад», если не открыта шторка (её Escape закрывает сама) и человек не печатает: в поле Escape
+  // не должен уводить с экрана и терять написанное (и в наборе через IME он значит своё).
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !popupOpen && !document.querySelector('.sheet-backdrop')) back();
+    if (e.key !== 'Escape' || e.isComposing || cancelPopup || document.querySelector('.sheet-backdrop')) return;
+    const t = e.target;
+    if (t instanceof HTMLElement && (t.matches('input, textarea, select') || t.isContentEditable)) return;
+    back();
   });
+  // Страница перезагрузилась — «назад» в заголовке окна от прошлой страницы не должен остаться.
+  native?.postMessage({ type: 'back', visible: false });
 
   const emitTheme = () => emitEvent('theme_changed', { theme_params: theme() });
   const topInset = () => (!native && backVisible ? top.offsetHeight : 0);
@@ -125,7 +134,12 @@ export function installDesktopHost(): void {
     if (native) native.postMessage({ type: 'open', url });
     else window.open(url, '_blank', 'noopener');
   };
-  const openTelegram = (url: string) => openExternal(native ? telegramAppUrl(url) : url);
+  // В оболочке — сразу в приложение Telegram (tg://); нет его на Маке — та же ссылка t.me в браузере.
+  const openTelegram = (url: string) => {
+    if (!native) return openExternal(url);
+    const app = telegramAppUrl(url);
+    native.postMessage(app === url ? { type: 'open', url } : { type: 'open', url: app, fallback: url });
+  };
 
   const download = async (url: string, name: string) => {
     const href = new URL(url, window.location.href).toString();
@@ -140,7 +154,8 @@ export function installDesktopHost(): void {
     a.href = blobUrl;
     a.download = name;
     a.click();
-    URL.revokeObjectURL(blobUrl);
+    // Не сразу: Safari и Firefox отменяют скачивание, если ссылку на файл отозвать, пока оно начинается.
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
   };
 
   // ── Подтверждение: шторка снизу, как остальные шторки приложения ──
@@ -155,22 +170,29 @@ export function installDesktopHost(): void {
     sheet.setAttribute('role', 'alertdialog');
     sheet.setAttribute('aria-modal', 'true');
     const title = str(params, 'title');
-    if (title) {
-      const h = el('h2', '');
-      h.textContent = title;
-      sheet.append(h);
-    }
     const message = el('p', 'host-popup-message');
     message.id = 'host-popup-message';
     message.textContent = str(params, 'message') ?? '';
-    sheet.setAttribute('aria-describedby', message.id);
+    // Имя для читалок экрана — заголовок, а без него (так зовёт приложение) — сам вопрос.
+    if (title) {
+      const h = el('h2', '');
+      h.id = 'host-popup-title';
+      h.textContent = title;
+      sheet.append(h);
+      sheet.setAttribute('aria-labelledby', h.id);
+      sheet.setAttribute('aria-describedby', message.id);
+    } else sheet.setAttribute('aria-labelledby', message.id);
     sheet.append(message);
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // Пока спрашиваем, страница под шторкой недоступна с клавиатуры (Tab не уходит на «Сохранить» под ней).
+    const behind = [document.getElementById('root'), bar, top].filter((x): x is HTMLElement => x !== null);
+    behind.forEach((x) => (x.inert = true));
 
     const close = (buttonId: string | undefined) => {
       window.removeEventListener('keydown', onKey, true);
       backdrop.remove();
-      popupOpen = false;
+      behind.forEach((x) => (x.inert = false));
+      cancelPopup = null;
       before?.focus();
       emitEvent('popup_closed', buttonId === undefined ? {} : { button_id: buttonId });
     };
@@ -190,9 +212,11 @@ export function installDesktopHost(): void {
     backdrop.addEventListener('click', (e) => e.target === backdrop && close(undefined));
     backdrop.append(sheet);
     document.body.append(backdrop);
-    popupOpen = true;
+    cancelPopup = () => close(undefined);
     window.addEventListener('keydown', onKey, true);
-    sheet.querySelector('button')?.focus();
+    // Фокус — на безопасное: «Отмена», если она есть (привычный Return не должен удалить), иначе первая кнопка.
+    const safe = buttons.findIndex((b) => b.type === 'cancel' || b.type === 'close');
+    sheet.querySelectorAll('button')[safe === -1 ? 0 : safe]?.focus();
   };
 
   mockTelegramEnv({

@@ -8,7 +8,7 @@ import { expect, goTab, test } from './fixtures';
 async function startOnComputer(request: APIRequestContext, device: 'mac' | 'web' = 'mac') {
   const res = await request.post('/api/desktop/login', { data: { device } });
   expect(res.ok()).toBe(true);
-  return (await res.json()) as { secret: string; code: string; link: string };
+  return (await res.json()) as { secret: string; code: string; ticket: string; link: string };
 }
 
 /** Компьютер спрашивает, подтвердили ли вход. */
@@ -25,7 +25,7 @@ async function openLink(page: Page, link: string) {
 
 test('«Войти на Mac?» — «Войти»: компьютер получает ключ и входит этим человеком', async ({ app: page, me, request }) => {
   const login = await startOnComputer(request);
-  expect(login.link).toBe(`https://t.me/LifeCommit_bot?startapp=mac_${login.code}`);
+  expect(login.link).toBe(`https://t.me/LifeCommit_bot?startapp=mac_${login.ticket}`);
   await openLink(page, login.link);
   await expect(page.getByRole('heading', { name: 'Войти на Mac?' })).toBeVisible();
   expect(await poll(request, login.secret)).toEqual({ status: 'pending' });
@@ -51,7 +51,7 @@ test('«Не входить» — ничего не подтверждено; т
 
   // кто-то другой успел подтвердить этот код — второй раз нельзя
   const other = await people('Другой');
-  await other.api('POST', '/desktop/approve', { code: login.code, device: 'web' });
+  await other.api('POST', '/desktop/approve', { ticket: login.ticket, device: 'web' });
   await openLink(page, login.link);
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await expect(page.getByText('Этот вход уже подтверждён.')).toBeVisible();
@@ -62,7 +62,7 @@ test('«Я» → «Компьютеры»: видно, где вошли; «Вы
   await expect(page.getByRole('button', { name: /Компьютеры/ })).toHaveCount(0);
 
   const login = await startOnComputer(request);
-  await me.api('POST', '/desktop/approve', { code: login.code, device: 'mac' });
+  await me.api('POST', '/desktop/approve', { ticket: login.ticket, device: 'mac' });
   const { token } = await poll(request, login.secret);
   await page.reload();
   await goTab(page, 'Я');
