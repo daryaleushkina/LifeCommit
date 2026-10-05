@@ -1,0 +1,7 @@
+# Проект Xcode генерируется из project.yml (`xcodegen` в apple/) — в git не кладём.
+LifeCommit.xcodeproj/
+build/
+DerivedData/
+Kit/.build/
+Kit/.swiftpm/
+*.xcresult

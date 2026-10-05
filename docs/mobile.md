@@ -14,7 +14,7 @@
 | Поведение | **Родное для платформы**: свайп от края — назад, шторку тянут вниз, системная хаптика, размер текста из настроек (Dynamic Type / font scale), VoiceOver и TalkBack, на Mac — меню и ⌘-сочетания, на Android — системный «назад» и edge-to-edge |
 | Вход | **Официальный вход Telegram (OpenID Connect)** — сервер выдаёт тот же ключ сессии, что компьютеру. **Sign in with Apple** и аккаунты без Telegram — отдельный этап до App Store: правило 4.8 требует второй способ входа, 4.2.3 запрещает требовать установленный Telegram |
 | Аккаунт Apple Developer | Пока нет. Работаем на симуляторе, на свой iPhone — через бесплатный Personal Team (подпись на 7 дней). Покупаем перед TestFlight |
-| Порядок | Ядро → «Вместе» (группы и друзья) → «Я» → «Календарь» → «Голос» → «Поделиться» и жалобы |
+| Порядок | Ядро → «Календарь» (весь раздел: День/Месяц, дела со временем, шторка дела, Apple и Google) → «Вместе» (группы и друзья целиком) → «Я» → «Голос» → «Поделиться» и жалобы (уточнено владелицей 05.10.2026 через Android-сессию). Пушим по разделу — сразу iOS/Mac и Android, с ревью. Пока раздела нет, вкладка ведёт в мини-апп |
 | Напоминания | Пока шлёт бот. Уведомления телефона — вместе со входом через Apple: тогда появятся люди без Telegram |
 | «Поддержать проект» (Tribute) | **В нативных приложениях не показываем**: App Store (3.1.1) отклоняет ссылки на донаты мимо своей оплаты, у Google Play похожее правило. Tribute остаётся в мини-аппе, боте и на сайте |
 | Сторис и «Отправить в чат» | Только Telegram. В нативных — «Сохранить» и системное «Поделиться» |
@@ -33,11 +33,52 @@
 - **Приложение** `LifeCommit` — одна мультиплатформенная цель (iOS + macOS): SwiftUI, `@Observable`, Swift 6 со
   строгой проверкой потоков. Без сторонних зависимостей в приложении; в тестах — `swift-snapshot-testing`.
 - **Bundle ID** — `app.lifecommit`. После публикации в App Store не меняется.
+- **Команды** (из корня): `pnpm apple:open` — сгенерировать проект и открыть в Xcode; `pnpm apple:test` — вся проверка
+  (`apple/scripts/test.sh`: `swift test` пакета, значки не разошлись с мини-аппом, снимки и сценарии XCUITest на
+  симуляторе iPhone 17 Pro / iOS 26.5 против стенда на порту 5183, снимки Mac); `pnpm apple:icons` — пересобрать
+  значки привычек из `src/components/KindIcon.tsx` (генератор `apple/scripts/icons.mjs`).
+- **Запуск против стенда:** в Xcode → Edit Scheme → Arguments: `-LCAPIBase http://localhost:5173/api -LCDevUser <id>`
+  (подменённый Telegram, только Debug). Без `-LCDevUser` — экран входа через Telegram (нужна настройка @BotFather,
+  см. «Вход»).
+- **Снимки экранов** (`apple/AppTests/ScreenSnapshotTests.swift`, эталоны — `apple/AppTests/__Snapshots__`): iPhone
+  402×874 и окно Mac 420×860, светлая и тёмная. Сравнение попиксельное с допуском 0,1% площади. Переснять — только
+  при намеренной правке вида: `LC_RECORD=1 pnpm apple:test`, и написать в коммите.
+- **Сценарии** (`apple/AppUITests`): у каждого свой человек на стенде (`Stand.swift`, как фикстура `me`), проверка —
+  на экране и в базе, без пауз (`eventually`). Правила вёрстки — `testLayoutRules`. Новый сценарий до коммита —
+  `-test-iterations 3`.
+- **Грабли.** Сборка для симулятора без подписи не пускает в Keychain (ошибка -34018): ключ входа в симуляторе
+  сохраняется только в подписанной сборке (Xcode, Personal Team). `UserDefaults.integer` обрезает большие числа из
+  аргументов запуска до 2 147 483 647 — id берём строкой. Подпись `accessibilityIdentifier` у составного вида
+  достаётся всем детям — у карточек `.accessibilityElement(children: .contain)`.
 
 ### Android (`android/`)
 
-Решает Android-сессия. Выбор (DI, навигация, хранение ключа, minSdk) записать сюда. Навыки уже лежат в
-`.claude/skills/` (список — в `.claude/skills/README.md`).
+Решения Android-сессии (05.10.2026):
+
+- **Gradle**, Kotlin 2.4, AGP 9 (Kotlin встроен), compileSdk/targetSdk 37, **minSdk 29** (Android 10: у кого старее —
+  мини-апп). Две части: **`core`** — чистый Kotlin без Android (модели `kotlinx.serialization` поле в поле как
+  `shared/types.ts`, клиент API на OkHttp, вход Telegram, логика и тексты ru/en), тесты — JUnit на JVM с
+  MockWebServer; **`app`** — Jetpack Compose.
+- **Без DI-библиотеки**: зависимости собираются вручную (`MainViewModel`), модель экрана — `AppModel` (как
+  `AppModel.swift`): состояние Compose, корутины `viewModelScope`.
+- **Навигация** — Navigation 3 (`NavDisplay`, стек — список `Route`): системный «назад» и предиктивный жест; сверху —
+  стеклянная плашка «‹ Назад», как кнопка Telegram над мини-аппом.
+- **Ключ сессии** — Tink AEAD (AES-256-GCM), ключ шифрования в Android Keystore, шифротекст в DataStore.
+  `allowBackup=false` и правила `data_extraction_rules.xml`: ключ не уезжает в копию и на другое устройство.
+- **Вход**: есть Telegram (`org.telegram.messenger`) — `/crossapp`, иначе Custom Tab на `oauth.telegram.org/auth`.
+  Возврат `lifecommit://tglogin` принимается, только пока ждём вход (`AppModel.handleCallback`), — ссылку извне без
+  начатого входа приложение игнорирует.
+- **Вид**: токены `src/styles/app.css` в `ui/Theme.kt`, шрифт Onest (переменный TTF, оси wght) в `sp` — растёт с
+  размером шрифта системы. Размытия подложки (backdrop-filter) в Compose нет: стекло — заливка, кромка, тень;
+  нижняя панель почти плотная, чтобы список под ней не читался. Значки привычек — `android/scripts/icons.mjs` из
+  `src/components/KindIcon.tsx` (как `apple/scripts/icons.mjs`).
+- **Подпись**: постоянный ключ `~/.android/lifecommit-upload.jks` (вне git), пароль — в Связке ключей macOS
+  (служба `app.lifecommit.android.keystore`); SHA-256 `65:DA:AF:71:58:E8:3C:6C:99:43:EB:85:8C:00:AD:B8:C8:88:09:DC:95:55:76:78:68:37:43:14:CE:A2:FB:5B`
+  — в `assetlinks.json` сайта и (позже) в @BotFather. Без ключа (облако) сборка подписывается отладочным.
+- **Разработка**: `adb shell am start -n app.lifecommit/.MainActivity -e LCAPIBase http://10.0.2.2:5173/api --el LCDevUser <id>`
+  — подменённый вход на локальном стенде, только сборка Debug (http разрешён только для 10.0.2.2/localhost в Debug).
+- **Команды**: `pnpm android:test` (тесты `core` и `app`, сверка снимков), `pnpm android:record` (переснять снимки —
+  только при намеренной правке вида), `pnpm android:build` (APK Debug), `pnpm android:icons`.
 
 ## Вход
 
@@ -212,7 +253,7 @@ Telegram принимает своё имя схемы в `redirect_uri` (SDK т
 | --- | --- | --- |
 | Логика | Swift Testing в `LifeCommitKit` (`swift test`) | JUnit на JVM |
 | Экраны | снимки `swift-snapshot-testing`: iPhone и Mac, светлая и тёмная; эталоны в git, переснимать только при намеренной правке вида | Roborazzi на JVM (Robolectric) |
-| Сценарии | XCUITest против локального стенда, подменённый Telegram (см. «Вход») | Compose UI-тесты, по желанию эмулятор |
+| Сценарии | XCUITest против локального стенда, подменённый Telegram (см. «Вход») | Compose UI-тесты на Robolectric: всё приложение (`Root`) против подменённого сервера (`app/src/test/.../FakeServer.kt`), каждый тест — свой пользователь; эмулятор — ручная проверка |
 | Отказы API | клиент на 400/401/403/404/409/410/429/5xx не молчит: экран возвращается как был и показывает ошибку | так же |
 
 Правила вёрстки из `CLAUDE.md` действуют и здесь: ничего поверх нижней панели при любой прокрутке, ничего шире экрана,

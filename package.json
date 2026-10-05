@@ -24,7 +24,14 @@
     "hooks:install": "git config core.hooksPath scripts/hooks",
     "mac:test": "swift test --package-path macos",
     "mac:build": "bash macos/build.sh",
-    "mac:install": "bash macos/build.sh --install"
+    "mac:install": "bash macos/build.sh --install",
+    "apple:test": "bash apple/scripts/test.sh",
+    "apple:open": "cd apple && xcodegen generate && open LifeCommit.xcodeproj",
+    "apple:icons": "node apple/scripts/icons.mjs",
+    "android:test": "cd android && ./gradlew :core:test :app:verifyRoborazziDebug --console=plain",
+    "android:record": "cd android && ./gradlew :app:recordRoborazziDebug --console=plain",
+    "android:build": "cd android && ./gradlew :app:assembleDebug --console=plain",
+    "android:icons": "node android/scripts/icons.mjs"
   },
   "dependencies": {
     "@fontsource-variable/onest": "^5.3.1",
