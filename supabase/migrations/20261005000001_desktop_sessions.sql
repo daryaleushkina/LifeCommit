@@ -35,10 +35,11 @@ alter table public.desktop_sessions enable row level security;
 
 -- Забрать подтверждение и выдать ключ — одним оператором: упала выдача — подтверждение остаётся, и следующий опрос
 -- компьютера получит ключ (двумя запросами подтверждение пропадало, а ключа не было). Два опроса сразу не получат
--- два ключа: незабранное подтверждение отмечает только один. Отпечаток ключа считает Worker; ответ — кому выдан ключ
--- (пусто — подтверждения нет).
+-- два ключа: незабранное подтверждение отмечает только один. Отпечаток ключа считает Worker. Ответ: кому выдан ключ;
+-- claimed = true — ключ по этому коду уже выдан раньше (ответ с ним мог потеряться — компьютер скажет «не получилось»,
+-- а не будет ждать); пусто — подтверждения нет.
 create or replace function public.desktop_claim(p_code text, p_token_hash text, p_since timestamptz)
-returns table (user_id bigint, telegram_id bigint, device text)
+returns table (user_id bigint, telegram_id bigint, device text, claimed boolean)
 language sql
 set search_path = ''
 as $$
@@ -51,6 +52,9 @@ as $$
     select login.user_id, login.telegram_id, login.device, p_token_hash from login
     returning desktop_sessions.user_id, desktop_sessions.telegram_id, desktop_sessions.device
   )
-  select session.user_id, session.telegram_id, session.device from session;
+  select session.user_id, session.telegram_id, session.device, false from session
+  union all
+  select null, null, null, true from public.desktop_logins l
+  where l.code = p_code and l.claimed_at is not null and not exists (select 1 from session);
 $$;
 revoke execute on function public.desktop_claim(text, text, timestamptz) from public, anon, authenticated;

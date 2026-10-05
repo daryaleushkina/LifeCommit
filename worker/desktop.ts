@@ -133,10 +133,14 @@ desktopLogin.post('/login/poll', async (c) => {
       p_token_hash: await tokenHash(token),
       p_since: new Date(Date.now() - LOGIN_TTL_MS).toISOString(),
     }),
-  ) as { user_id: number; telegram_id: number; device: Device }[];
-  const claimed = rows[0];
-  if (!claimed) return c.json({ status: 'pending' });
-  c.executionCtx.waitUntil(signInNotice(c.env, sb, claimed).catch((e: unknown) => console.error('desktop sign-in notice failed', e)));
+  ) as ({ claimed: false; user_id: number; telegram_id: number; device: Device } | { claimed: true })[];
+  const row = rows[0];
+  if (!row) return c.json({ status: 'pending' });
+  // Ключ по этому коду уже выдан (ответ с ним, видимо, потерялся) — второй не выдаём, компьютер начнёт вход заново.
+  if (row.claimed) return c.json({ status: 'claimed' });
+  c.executionCtx.waitUntil(
+    signInNotice(c.env, sb, row).catch((e: unknown) => console.error('desktop sign-in notice failed', row.user_id, row.telegram_id, e)),
+  );
   return c.json({ status: 'ok', token });
 });
 

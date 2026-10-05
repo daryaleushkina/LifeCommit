@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState, type ReactNode } from 'react';
+import { StrictMode, useLayoutEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   backButton,
@@ -73,7 +73,8 @@ function DesktopGate(): ReactNode {
   const [signedIn, setSignedIn] = useState(() => desktopToken() !== null);
   const lang = navigator.language.startsWith('ru') ? 'ru' : 'en';
   // Тема и язык до входа — системные и меняются вместе с системой (выбранную в профиле тему App поставит сам).
-  useEffect(() => {
+  // До первого кадра — иначе в тёмной теме мелькнул бы светлый.
+  useLayoutEffect(() => {
     if (signedIn) return;
     document.documentElement.lang = lang;
     const scheme = window.matchMedia('(prefers-color-scheme: dark)');

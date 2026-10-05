@@ -1,6 +1,6 @@
 // Вход на компьютере (приложение для Mac и браузер): «Войти через Telegram» открывает мини-апп в Telegram с вопросом
 // «Войти на Mac?», а этот экран ждёт подтверждения и сам забирает ключ (worker/desktop.ts).
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { openTelegramLink } from '@tma.js/sdk-react';
 import { api, ApiError } from '../api';
 import { Logo } from '../components/Logo';
@@ -25,6 +25,12 @@ export function DesktopLogin({ onDone, pollMs = 2000 }: { onDone: () => void; po
   const d = useT().desktop;
   const [state, setState] = useState<State>({ step: 'idle' });
   const [busy, setBusy] = useState(false);
+  // onDone — в ref: новая функция от родителя не должна перезапускать опрос (ответ «ok» посреди перезапуска
+  // приняли бы за «Отмена» и ключ погасили бы).
+  const done = useRef(onDone);
+  useLayoutEffect(() => {
+    done.current = onDone;
+  });
 
   const start = async () => {
     setBusy(true);
@@ -66,15 +72,17 @@ export function DesktopLogin({ onDone, pollMs = 2000 }: { onDone: () => void; po
         if (res?.status === 'ok') api.dropDesktopKey(res.token).catch((e: unknown) => console.warn('desktop key drop failed', e));
         return;
       }
-      if (serverErrors >= MAX_SERVER_ERRORS) return setState({ step: 'idle', note: 'failed' });
+      // Ключ по этому входу уже выдан, а до нас не дошёл (сеть оборвалась на ответе) — честно «не получилось».
+      if (serverErrors >= MAX_SERVER_ERRORS || res?.status === 'claimed') return setState({ step: 'idle', note: 'failed' });
       if (res?.status === 'ok') {
         try {
           saveDesktopToken(res.token);
         } catch {
-          // хранилище недоступно (приватный режим браузера) — войти не выйдет
+          // хранилище недоступно (приватный режим браузера) — войти не выйдет; ключ гасим, чтобы не висел в «Компьютерах»
+          api.dropDesktopKey(res.token).catch((e: unknown) => console.warn('desktop key drop failed', e));
           return setState({ step: 'idle', note: 'failed' });
         }
-        return onDone();
+        return done.current();
       }
       timer = setTimeout(() => void tick(), pollMs);
     };
@@ -83,7 +91,7 @@ export function DesktopLogin({ onDone, pollMs = 2000 }: { onDone: () => void; po
       alive = false;
       clearTimeout(timer);
     };
-  }, [secret, until, pollMs, onDone]);
+  }, [secret, until, pollMs]);
 
   if (state.step === 'waiting') {
     return (

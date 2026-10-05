@@ -140,6 +140,18 @@ describe('вход на компьютере', () => {
     await signIn.click();
     await expect.element(page.getByText('Не получилось — проверь интернет и попробуй ещё раз.')).toBeVisible();
     expect(onDone).not.toHaveBeenCalled();
+    // ключ не сохранили — гасим, чтобы не висел в «Компьютерах»
+    await expect.poll(() => m.api.dropDesktopKey.mock.calls).toEqual([['k'.repeat(43)]]);
+  });
+
+  it('ключ по этому входу уже выдан, а ответ с ним потерялся — сразу «Не получилось», а не 10 минут «ждём»', async () => {
+    m.api.desktopPoll.mockResolvedValue({ status: 'claimed' });
+    const onDone = vi.fn();
+    await renderApp(<DesktopLogin onDone={onDone} pollMs={10} />);
+    await signIn.click();
+    await expect.element(page.getByText('Не получилось — проверь интернет и попробуй ещё раз.')).toBeVisible();
+    expect(m.api.desktopPoll).toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
   });
 
   it('по-английски', async () => {

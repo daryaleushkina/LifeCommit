@@ -76,9 +76,10 @@ describe.skipIf(!ready)('вход на компьютере', () => {
     const today = await u.call('GET', '/today');
     expect(today.body.tasks.map((t: { title: string }) => t.title)).toEqual(['Читать']);
 
-    // Ключ выдаётся один раз: второй опрос — снова «ждём»; подтверждение отмечено забранным и остаётся до конца срока
-    // ссылки, чтобы её нельзя было подтвердить ещё раз.
-    expect((await poll(s.secret)).body).toEqual({ status: 'pending' });
+    // Ключ выдаётся один раз: второй опрос — «уже забрано» (ответ с ключом мог потеряться — компьютер скажет «не
+    // получилось», а не будет ждать 10 минут); подтверждение остаётся до конца срока ссылки, чтобы её нельзя было
+    // подтвердить ещё раз.
+    expect((await poll(s.secret)).body).toEqual({ status: 'claimed' });
     expect((await sb.from('desktop_logins').select('claimed_at').eq('code', s.code)).data).toEqual([{ claimed_at: expect.any(String) }]);
     // В базе — только отпечаток ключа.
     const { data } = await sb.from('desktop_sessions').select('token_hash, device').eq('user_id', u.id);
@@ -150,7 +151,7 @@ describe.skipIf(!ready)('вход на компьютере', () => {
     expect((await owner.call('POST', '/desktop/approve', { ticket: s.ticket, device: 'mac' })).status).toBe(200);
     expect((await poll(s.secret)).body).toMatchObject({ status: 'ok' });
     expect(await victim.call('POST', '/desktop/approve', { ticket: s.ticket, device: 'mac' })).toEqual({ status: 409, body: { error: 'login_used' } });
-    expect((await poll(s.secret)).body).toEqual({ status: 'pending' });
+    expect((await poll(s.secret)).body).toEqual({ status: 'claimed' });
     expect((await sb.from('desktop_sessions').select('id').eq('user_id', victim.id)).data).toEqual([]);
   });
 
@@ -170,7 +171,7 @@ describe.skipIf(!ready)('вход на компьютере', () => {
     const token = await login(u, 'web');
     expect((await asDesktop(token, 'GET', '/today')).status).toBe(200);
     expect(String(tg.sent('sendMessage')[0]!.body.text)).toContain('Sign-in to LifeCommit in a browser');
-    expect(errors).toHaveBeenCalledWith('desktop sign-in notice failed', expect.anything());
+    expect(errors).toHaveBeenCalledWith('desktop sign-in notice failed', u.id, u.id, expect.anything());
   });
 
   it('подтверждение живёт 10 минут: компьютер не забрал ключ вовремя — снова «ждём», старое подтверждение убирается', async () => {

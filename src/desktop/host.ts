@@ -54,6 +54,14 @@ const BACK_ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" s
  * когда нажали «назад» в заголовке окна или ⌘[.
  */
 export function installDesktopHost(): void {
+  // После перезагрузки (⌘R, F5, повтор после падения, выход по 401) @tma.js поднимает состояние кнопок и окна из
+  // sessionStorage и не шлёт событие, если новое совпало со старым, — а мост начинает с нуля: «Назад» и «Сохранить»
+  // не появлялись. Мост — это «клиент Telegram», и он только что запустился: прошлое состояние SDK сбрасываем.
+  try {
+    for (const key of Object.keys(sessionStorage)) if (key.startsWith('tapps/')) sessionStorage.removeItem(key);
+  } catch {
+    // хранилище недоступно — SDK тогда и не помнит ничего
+  }
   const native: Shell | null = shell();
   const scheme = window.matchMedia('(prefers-color-scheme: dark)');
   const theme = () => (scheme.matches ? DARK : LIGHT);
@@ -130,7 +138,10 @@ export function installDesktopHost(): void {
   };
 
   // ── Наружу: ссылки и файлы ──
+  // Только веб, Telegram и почта — как в оболочке Mac (ShellCore): ссылка из чужого события календаря может быть
+  // javascript: или схемой чужого приложения, а рядом в хранилище лежит ключ входа.
   const openExternal = (url: string) => {
+    if (!/^(https?|tg|mailto):/i.test(url)) return console.warn('link refused', url.slice(0, 40));
     if (native) native.postMessage({ type: 'open', url });
     else window.open(url, '_blank', 'noopener');
   };
@@ -184,8 +195,9 @@ export function installDesktopHost(): void {
     } else sheet.setAttribute('aria-labelledby', message.id);
     sheet.append(message);
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    // Пока спрашиваем, страница под шторкой недоступна с клавиатуры (Tab не уходит на «Сохранить» под ней).
-    const behind = [document.getElementById('root'), bar, top].filter((x): x is HTMLElement => x !== null);
+    // Пока спрашиваем, всё под шторкой недоступно с клавиатуры — и приложение, и шторки, вынесенные порталом в body
+    // (Tab не уходит на «Сохранить» или в шторку календарей под вопросом). Что было недоступно и так — не трогаем.
+    const behind = [...document.body.children].filter((x): x is HTMLElement => x instanceof HTMLElement && !x.inert);
     behind.forEach((x) => (x.inert = true));
 
     const close = (buttonId: string | undefined) => {
