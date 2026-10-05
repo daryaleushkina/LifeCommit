@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>app.lifecommit.mac</string>
+  <key>CFBundleName</key>
+  <string>LifeCommit</string>
+  <key>CFBundleDisplayName</key>
+  <string>LifeCommit</string>
+  <key>CFBundleExecutable</key>
+  <string>LifeCommit</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>__BUILD__</string>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>ru</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>ru</string>
+    <string>en</string>
+  </array>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.productivity</string>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Микрофон нужен, чтобы надиктовать привычки и дела голосом.</string>
+  <!-- Стенд разработки по http://localhost — `defaults write app.lifecommit.mac url http://localhost:5181/app/?desktop=mac`. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+</dict>
+</plist>

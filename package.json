@@ -21,7 +21,10 @@
     "eval:voice": "vitest run --config vitest.eval.config.ts",
     "check:tma": "bash .claude/skills/telegram-mini-app/scripts/check.sh src",
     "bot:setup": "node scripts/setup-bot.mjs",
-    "hooks:install": "git config core.hooksPath scripts/hooks"
+    "hooks:install": "git config core.hooksPath scripts/hooks",
+    "mac:test": "swift test --package-path macos",
+    "mac:build": "bash macos/build.sh",
+    "mac:install": "bash macos/build.sh --install"
   },
   "dependencies": {
     "@fontsource-variable/onest": "^5.3.1",
