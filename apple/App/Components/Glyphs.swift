@@ -11,6 +11,8 @@ enum Glyph {
     static let pencil = "M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3zM13.5 6.5l3 3"
     static let plus = "M12 5v14M5 12h14"
     static let chevron = "M9 6l6 6-6 6"
+    /// Перечёркнутый глаз — «Скрыть» (SwipeRow.tsx).
+    static let hide = "M3 3l18 18M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 9 6 9 6a17 17 0 0 1-2.6 3.2M6.6 6.6C4.3 8.2 3 12 3 12s4 6 9 6a9 9 0 0 0 4.2-1M9.9 10a3 3 0 0 0 4.1 4.1"
     static let trash = "M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"
     static let undo = "M9 14L4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"
     static let calendarTab = "M3.5 8.5a3.5 3.5 0 0 1 3.5-3.5h10a3.5 3.5 0 0 1 3.5 3.5v8.5a3.5 3.5 0 0 1-3.5 3.5h-10a3.5 3.5 0 0 1-3.5-3.5zM3.5 10h17M8 3v4M16 3v4"

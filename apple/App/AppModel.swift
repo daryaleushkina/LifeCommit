@@ -32,7 +32,6 @@ final class AppModel {
     private(set) var phase: Phase = .loading
     private(set) var user: UserSettings?
     private(set) var today = TodayResponse(day: "")
-    private(set) var heat: [HeatDay] = []
     /// Ошибка действия на экране — тап убирает (как .error в мини-аппе).
     var banner: String?
     /// Первый экран «Чего я хочу?»: ничего нет и «Пропустить» ещё не нажимали.
@@ -50,8 +49,11 @@ final class AppModel {
 
     let api: APIClient
     private let tokens: TokenStore
-    /// Номер последнего изменения привычек и дел: фоновое обновление, начатое раньше, свой ответ выбрасывает.
+    /// Номер последнего изменения привычек и дел: перечитка «Сегодня», за время которой он сменился, устарела.
     private var change = 0
+    /// Правки, которые ещё идут на сервер (как trackEdit в src/caches.ts), и перечитки, которые их ждут.
+    private var editsInFlight = 0
+    private var editsSettled: [CheckedContinuation<Void, Never>] = []
     private var loadedAt: Date?
     private var pendingCommit: (() async throws -> Void)?
     private var removalTimer: Task<Void, Never>?
@@ -90,19 +92,17 @@ final class AppModel {
         await load()
     }
 
-    /// Сессия, «Сегодня» и карта — пока видна заставка: после неё ждать уже нечего.
+    /// Сессия и «Сегодня» — пока видна заставка: после неё ждать уже нечего. Карту (GET /heatmap) не грузим: её
+    /// показывает «Я», придёт вместе с ним (docs/parity.md).
     func load() async {
         phase = .loading
         do {
             let session = try await api.session(timezone: TimeZone.current.identifier)
             user = session.user
             let seq = change
-            async let todayCall = api.today()
-            async let heatCall = api.heatmap(days: 371)
-            let (fresh, heatmap) = try await (todayCall, heatCall)
+            let fresh = try await api.today()
             if seq == change {
                 today = fresh
-                heat = heatmap.days
                 loadedAt = Date()
             }
             onboarding = fresh.isEmpty && !onboardingSkipped
@@ -137,6 +137,27 @@ final class AppModel {
         signInError = nil
     }
 
+    /// Ждём возврата из приложения Telegram с кодом.
+    struct TelegramPending {
+        let pkce: TelegramOAuth.PKCE
+        let clientId: String
+    }
+
+    private var telegramPending: TelegramPending?
+
+    /// Ушли в приложение Telegram: кнопка снова нажимается — вдруг вернутся без кода; код придёт ссылкой
+    /// lifecommit://tglogin, и вход продолжится по ожиданию.
+    func handOffToTelegram(_ pending: TelegramPending) {
+        telegramPending = pending
+        signingIn = false
+    }
+
+    /// Код пришёл — ожидание забирается один раз.
+    func takeTelegramPending() -> TelegramPending? {
+        defer { telegramPending = nil }
+        return telegramPending
+    }
+
     func signInFailed(_ message: String?) {
         signingIn = false
         signInError = message
@@ -152,27 +173,20 @@ final class AppModel {
         api.setCredential(nil)
         user = nil
         today = TodayResponse(day: "")
-        heat = []
         path = []
         tab = .today
         phase = .signedOut
     }
 
-    /// Перечитать «Сегодня» (после правки, удаления, возврата на экран); deleted — удаление стирает и прошлые дни карты.
-    func refresh(deleted: Bool = false) async {
+    /// Перечитать «Сегодня» (после правки, удаления, отметки задним числом).
+    func refresh() async {
+        // Привычки только что изменили — ответы, запрошенные раньше, уже устарели.
         change += 1
-        if deleted {
-            Task {
-                do {
-                    heat = try await api.heatmap(days: 371).days
-                } catch {
-                    modelLog.notice("heatmap refresh failed: \(String(describing: error), privacy: .public)")
-                }
-            }
-        }
         do {
-            today = try await api.today()
-            loadedAt = Date()
+            if let fresh = try await freshToday() {
+                today = fresh
+                loadedAt = Date()
+            }
         } catch let error as APIError where error.isSignedOut {
             signOutLocally()
         } catch {
@@ -180,19 +194,62 @@ final class AppModel {
         }
     }
 
-    /// Вернулись на «Сегодня»: данным больше минуты — тихо обновить в фоне. Пока шёл запрос, что-то отметили — ответ
-    /// устарел и выбрасывается.
+    /// Вернулись на «Сегодня»: данным больше минуты — тихо обновить в фоне.
     func refreshIfStale() async {
         guard phase == .ready, let loadedAt, Date().timeIntervalSince(loadedAt) > 60 else { return }
-        let seq = change
         do {
-            let fresh = try await api.today()
-            if seq == change {
+            if let fresh = try await freshToday() {
                 today = fresh
                 self.loadedAt = Date()
             }
         } catch {
             modelLog.notice("background refresh failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// «Сегодня», за время ответа на которое ничего не менялось (как load.range в src/caches.ts): пока шёл запрос,
+    /// что-то отметили, добавили или удалили — ответ без этой правки лёг бы поверх неё, спрашиваем ещё раз. Правка ещё
+    /// у сервера — сначала дождаться её. Четыре раза подряд устарело — nil: на экране остаётся то, что есть.
+    private func freshToday() async throws -> TodayResponse? {
+        for _ in 0..<4 {
+            let seq = change
+            let fresh = try await api.today()
+            await settleEdits()
+            if seq == change { return fresh }
+        }
+        modelLog.notice("today kept changing while reading — keeping the screen as is")
+        return nil
+    }
+
+    /// Правка уходит на сервер: перечитки «Сегодня», начатые раньше или во время неё, её дождутся и спросят заново.
+    private func track<T>(_ edit: () async throws -> T) async throws -> T {
+        change += 1
+        editsInFlight += 1
+        defer {
+            editsInFlight -= 1
+            change += 1
+            if editsInFlight == 0 {
+                let waiting = editsSettled
+                editsSettled = []
+                waiting.forEach { $0.resume() }
+            }
+        }
+        return try await edit()
+    }
+
+    private func settleEdits() async {
+        guard editsInFlight > 0 else { return }
+        await withCheckedContinuation { editsSettled.append($0) }
+    }
+
+    /// Приложение свернули или вернули. Свернули — отложенное удаление уходит на сервер сейчас, а не теряется (как
+    /// visibilitychange в removal.tsx). Только неактивно (шторка уведомлений, переключатель приложений) — «Вернуть»
+    /// ещё можно.
+    func scenePhaseChanged(_ phase: ScenePhase) {
+        switch phase {
+        case .background: flushRemoval()
+        case .active: Task { await refreshIfStale() }
+        default: break
         }
     }
 
@@ -217,11 +274,10 @@ final class AppModel {
         next.value = value ?? (status == .clean ? 1 : 0)
         next.status = status
         next.logged = !cleared
-        change += 1
         patchTask(next)
         if !task.isDone && next.isDone { Haptics.success() }
         do {
-            try await api.log(taskId: task.id, value: value, status: status)
+            try await track { try await api.log(taskId: task.id, value: value, status: status) }
         } catch {
             patchTask(task)
             fail(error)
@@ -233,21 +289,17 @@ final class AppModel {
         today.tasks[i] = task
     }
 
-    /// Карта с сегодняшней клеткой из отметок на экране.
-    var heatWithToday: [HeatDay] { today.day.isEmpty ? heat : Heat.withToday(heat, today: today) }
-
     // MARK: Дела
 
     func toggle(_ todo: Todo) async {
         let done = !todo.done
         patchTodos { list in list.map { $0.isSame(as: todo) ? Self.with($0, done: done) : $0 } }
         if done { Haptics.success() }
-        change += 1
         do {
             var patch: [String: JSONValue] = ["done": .bool(done)]
             // У повторяющегося дела «сделано» — на этот его день.
             if todo.recurring { patch["on"] = .string(todo.day) }
-            try await api.updateTodo(id: todo.id, patch)
+            try await track { try await api.updateTodo(id: todo.id, patch) }
         } catch {
             patchTodos { list in list.map { $0.isSame(as: todo) ? todo : $0 } }
             fail(error)
@@ -260,10 +312,9 @@ final class AppModel {
         guard !trimmed.isEmpty else { return }
         let temp = Todo(id: -Int(Date().timeIntervalSince1970 * 1000), title: trimmed, day: today.day)
         patchTodos { $0 + [temp] }
-        change += 1
+        let day = today.day
         do {
-            let id = try await api.createTodo(title: trimmed, day: today.day)
-            change += 1
+            let id = try await track { try await api.createTodo(title: trimmed, day: day) }
             patchTodos { list in list.map { $0.id == temp.id ? Self.with($0, id: id) : $0 } }
         } catch {
             patchTodos { list in list.filter { $0.id != temp.id } }
@@ -317,13 +368,14 @@ final class AppModel {
         self.removal = nil
     }
 
-    /// Отправить отложенное удаление сейчас (плашка закрылась, приложение уходит в фон).
-    func flushRemoval() {
-        guard let removal, let commit = pendingCommit else { return }
+    /// Отправить отложенное удаление сейчас (плашка закрылась, приложение уходит в фон). Задача — для тестов.
+    @discardableResult
+    func flushRemoval() -> Task<Void, Never>? {
+        guard let removal, let commit = pendingCommit else { return nil }
         removalTimer?.cancel()
         pendingCommit = nil
         self.removal = nil
-        Task {
+        return Task {
             do {
                 try await commit()
             } catch {
@@ -340,23 +392,38 @@ final class AppModel {
 
     func dismissRemovalError() { removalFailed = false }
 
-    func removeTask(_ task: TodayTask) {
-        removeWithUndo(key: "task:\(task.id)", text: strings.swipe.removed(task.title)) { [api] in
+    /// Удаление уходит на сервер, потом «Сегодня» перечитывается — строка остаётся скрытой, пока не придёт список
+    /// без неё (иначе она мигнула бы). Не вышло — перечитываем (строка вернётся) и отдаём ошибку плашке.
+    private func commitThenRefresh(_ commit: @escaping () async throws -> Void) -> () async throws -> Void {
+        { [weak self] in
             do {
-                try await api.deleteTask(id: task.id)
+                try await self?.track(commit)
             } catch {
-                await self.refresh(deleted: true)
+                await self?.refresh()
                 throw error
             }
-            await self.refresh(deleted: true)
+            await self?.refresh()
         }
     }
 
+    func removeTask(_ task: TodayTask) {
+        removeWithUndo(key: "task:\(task.id)", text: strings.swipe.removed(task.title), commit: commitThenRefresh { [api] in
+            try await api.deleteTask(id: task.id)
+        })
+    }
+
     func removeTodo(_ todo: Todo) {
-        removeWithUndo(key: "todo:\(todo.id)", text: strings.swipe.removed(todo.title)) { [api] in
-            defer { Task { await self.refresh() } }
+        // Повторяющееся удаляется целиком — со всеми днями.
+        removeWithUndo(key: "todo:\(todo.id)", text: strings.swipe.removed(todo.title), commit: commitThenRefresh { [api] in
             try await api.deleteTodo(id: todo.id)
-        }
+        })
+    }
+
+    /// «Скрыть» событие календаря (свайп): у нас пропадает, в календаре остаётся.
+    func hideTodo(_ todo: Todo) {
+        removeWithUndo(key: "todo:\(todo.id)", text: strings.swipe.hidden(todo.title), commit: commitThenRefresh { [api] in
+            try await api.updateTodo(id: todo.id, ["hidden": .bool(true)])
+        })
     }
 
     // MARK: Экран привычки
@@ -394,17 +461,14 @@ final class AppModel {
         if keep { history.logs = (history.logs + [HistoryLog(day: day, value: value ?? 0, status: status)]).sorted { $0.day < $1.day } }
         histories[task.id] = history
         do {
-            try await api.log(taskId: task.id, value: task.kind == .abstain ? nil : (yes == true ? task.target : nil), status: status, day: day)
+            try await track { try await api.log(taskId: task.id, value: task.kind == .abstain ? nil : (yes == true ? task.target : nil), status: status, day: day) }
         } catch {
             await loadHistory(task.id)
             fail(error)
             return
         }
-        change += 1
-        async let freshToday = try? api.today()
-        async let freshHeat = try? api.heatmap(days: 371)
-        if let t = await freshToday { today = t }
-        if let h = await freshHeat { heat = h.days }
+        // Прошлый день меняет счёт и «N дней без этого» на «Сегодня».
+        await refresh()
     }
 
     // MARK: Редактор и «Отложенные»
@@ -443,7 +507,7 @@ final class AppModel {
     /// Удалить насовсем (с историей) — после подтверждения на экране.
     func deleteTaskNow(id: Int) async throws {
         try await api.deleteTask(id: id)
-        await refresh(deleted: true)
+        await refresh()
     }
 
     func restoreTask(id: Int) async throws {
@@ -459,10 +523,9 @@ final class AppModel {
 
     #if DEBUG
     /// Готовое состояние без сети — для снимков экранов и превью.
-    func showForTests(user: UserSettings, today: TodayResponse, heat: [HeatDay] = [], onboarding: Bool = false, phase: Phase = .ready) {
+    func showForTests(user: UserSettings, today: TodayResponse, onboarding: Bool = false, phase: Phase = .ready) {
         self.user = user
         self.today = today
-        self.heat = heat
         self.onboarding = onboarding
         self.phase = phase
     }

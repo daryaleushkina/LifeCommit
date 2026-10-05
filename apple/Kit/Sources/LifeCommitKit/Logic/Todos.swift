@@ -2,7 +2,19 @@
 // src/components/TodoList.tsx мини-аппа.
 import Foundation
 
+/// Что под строкой дела при свайпе влево (слева направо; крайнее справа срабатывает свайпом до конца).
+public enum TodoSwipe: Sendable, Equatable {
+    case remove
+    case hide
+}
+
 public enum Todos {
+    /// Кнопки под строкой — как useTodoSwipe в TodoList.tsx: у события календаря крайняя — «Скрыть» (у нас пропадает,
+    /// в календаре остаётся), «Удалить» — отдельно: удаляет и из календаря.
+    public static func swipe(_ d: Todo) -> [TodoSwipe] {
+        d.source == nil ? [.remove] : [.remove, .hide]
+    }
+
     /// Несделанные со временем — по часам, потом без времени, сделанные — вниз; внутри — как пришли.
     public static func sorted(_ list: [Todo]) -> [Todo] {
         func rank(_ d: Todo) -> Int { d.done ? 2 : d.time != nil ? 0 : 1 }

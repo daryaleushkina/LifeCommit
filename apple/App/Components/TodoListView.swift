@@ -34,7 +34,7 @@ struct TodoListView: View {
             VStack(spacing: 0) {
                 ForEach(Array(shown.enumerated()), id: \.element.listKey) { index, todo in
                     if index > 0 { Divider().overlay(palette.line) }
-                    SwipeRow(action: todo.id < 0 ? nil : SwipeAction(label: t.swipe.remove) { model.removeTodo(todo) }) {
+                    SwipeRow(actions: todo.id < 0 ? [] : swipeActions(todo)) {
                         row(todo)
                     }
                 }
@@ -49,6 +49,16 @@ struct TodoListView: View {
                     .foregroundStyle(palette.muted)
                     .frame(minHeight: 48)
                     .padding(.horizontal, 8)
+            }
+        }
+    }
+
+    /// «Удалить»; у события календаря крайняя — «Скрыть» (Todos.swipe).
+    private func swipeActions(_ todo: Todo) -> [SwipeAction] {
+        Todos.swipe(todo).map { action in
+            switch action {
+            case .remove: SwipeAction(label: t.swipe.remove) { model.removeTodo(todo) }
+            case .hide: SwipeAction(label: t.swipe.hide, tone: .muted, icon: Glyph.hide, id: "swipe-hide") { model.hideTodo(todo) }
             }
         }
     }

@@ -95,6 +95,13 @@ struct TodosTests {
         #expect(Todos.when("2026-10-09", today: "2026-10-05", strings: en) == "Fri, October 9")
     }
 
+    @Test("свайп: своё дело — «Удалить»; событие календаря — ещё и «Скрыть», крайним (у нас пропадает, в календаре остаётся)")
+    func swipe() {
+        #expect(Todos.swipe(Todo(id: 1, title: "Купить хлеб", day: "2026-10-05")) == [.remove])
+        #expect(Todos.swipe(Todo(id: 2, title: "Созвон", day: "2026-10-05", time: "10:00", source: .google)) == [.remove, .hide])
+        #expect(Todos.swipe(Todo(id: 3, title: "Врач", day: "2026-10-05", source: .apple)) == [.remove, .hide])
+    }
+
     @Test("конец события: в пределах суток, иначе нет")
     func endTime() {
         #expect(Todos.endTime("10:00", minutes: 60) == "11:00")
