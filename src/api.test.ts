@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sdk = vi.hoisted(() => ({ raw: 'query_id=1&user=%7B%7D&hash=abc' as string | undefined }));
 vi.mock('@tma.js/sdk-react', () => ({ retrieveRawInitData: () => sdk.raw }));
+// Вход на компьютере: открыто ли на компьютере, какой ключ, сколько раз ключ «потерялся».
+const desk = vi.hoisted(() => ({ desktop: false, token: null as string | null, lost: 0 }));
+vi.mock('./desktop/session', () => ({ isDesktop: () => desk.desktop, desktopToken: () => desk.token, sessionLost: () => void desk.lost++ }));
 
 import { api, ApiError } from './api';
 
@@ -12,6 +15,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 
 beforeEach(() => {
   sdk.raw = 'query_id=1&user=%7B%7D&hash=abc';
+  Object.assign(desk, { desktop: false, token: null, lost: 0 });
   fetchMock.mockReset();
   fetchMock.mockImplementation(async () => json({ ok: true }));
   vi.stubGlobal('fetch', fetchMock);
@@ -94,6 +98,12 @@ describe('JSON-запросы', () => {
     ['markItem', () => api.markItem(2, 7, true, '2026-10-02'), 'PUT', '/groups/2/items/7/mark', { done: true, day: '2026-10-02' }],
     ['markItem за сегодня', () => api.markItem(2, 7, false), 'PUT', '/groups/2/items/7/mark', { done: false }],
     ['addEntry', () => api.addEntry(2, 7, 500), 'POST', '/groups/2/items/7/entries', { amount: 500 }],
+    ['desktopLogin', () => api.desktopLogin('mac'), 'POST', '/desktop/login', { device: 'mac' }],
+    ['desktopPoll', () => api.desktopPoll('s'.repeat(43)), 'POST', '/desktop/login/poll', { secret: 's'.repeat(43) }],
+    ['desktopApprove', () => api.desktopApprove('c'.repeat(22), 'web'), 'POST', '/desktop/approve', { code: 'c'.repeat(22), device: 'web' }],
+    ['desktopSessions', () => api.desktopSessions(), 'GET', '/desktop/sessions', undefined],
+    ['logoutEverywhere', () => api.logoutEverywhere(), 'DELETE', '/desktop/sessions', undefined],
+    ['logout', () => api.logout(), 'DELETE', '/desktop/session', undefined],
   ];
 
   it.each(cases)('%s', async (_name, run, method, path, body) => {
@@ -111,6 +121,30 @@ describe('JSON-запросы', () => {
     sdk.raw = undefined;
     await api.today();
     expect(sent().headers.Authorization).toBe('tma ');
+  });
+
+  it('на компьютере с ключом — Bearer вместо initData; без ключа — как раньше', async () => {
+    desk.desktop = true;
+    await api.today();
+    expect(sent().headers.Authorization).toBe(`tma ${sdk.raw}`);
+    desk.token = 'k'.repeat(43);
+    await api.today();
+    expect(sent().headers.Authorization).toBe(`Bearer ${'k'.repeat(43)}`);
+    // ключ остался от входа на компьютере, а открыто в Telegram — подпись Telegram
+    desk.desktop = false;
+    await api.today();
+    expect(sent().headers.Authorization).toBe(`tma ${sdk.raw}`);
+  });
+
+  it('401 на компьютере с ключом — ключ забыт, обратно на вход; в Telegram и без ключа — просто ошибка', async () => {
+    fetchMock.mockResolvedValue(json({ error: 'bad_session' }, 401));
+    await expect(api.today()).rejects.toMatchObject({ status: 401, code: 'bad_session' });
+    desk.desktop = true;
+    await expect(api.today()).rejects.toMatchObject({ status: 401 });
+    expect(desk.lost).toBe(0);
+    desk.token = 'k'.repeat(43);
+    await expect(api.today()).rejects.toMatchObject({ status: 401 });
+    expect(desk.lost).toBe(1);
   });
 
   it('ответ сервера отдаётся как есть', async () => {

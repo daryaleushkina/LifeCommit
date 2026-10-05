@@ -157,3 +157,15 @@ test('друзья: «Что показать», список, заявки, э�
   await expect(page.getByRole('heading', { name: 'Тимур зовёт в друзья' })).toBeVisible();
   await checkScreen(page, 'friend-link', { mask: [avatars] });
 });
+
+test('вход на компьютере: «Войти на Mac?» и «Готово»', async ({ app: page, request }) => {
+  const { link } = (await (await request.post('/api/desktop/login', { data: { device: 'mac' } })).json()) as { link: string };
+  const url = new URL(page.url());
+  url.searchParams.set('tgStart', new URL(link).searchParams.get('startapp')!);
+  await page.goto(url.toString());
+  await expect(page.getByRole('heading', { name: 'Войти на Mac?' })).toBeVisible();
+  await checkScreen(page, 'desktop-approve');
+  await page.getByRole('button', { name: 'Войти', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Готово' })).toBeVisible();
+  await checkScreen(page, 'desktop-approved');
+});

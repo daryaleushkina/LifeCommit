@@ -8,11 +8,16 @@ import { renderApp } from '../test/render';
 import { Profile } from './Profile';
 
 const m = vi.hoisted(() => ({
-  api: { settings: vi.fn(), writeAccess: vi.fn(), deleteAccount: vi.fn(), summary: vi.fn(), blocks: vi.fn(), unblock: vi.fn(), feedback: vi.fn() },
+  api: {
+    settings: vi.fn(), writeAccess: vi.fn(), deleteAccount: vi.fn(), summary: vi.fn(), blocks: vi.fn(), unblock: vi.fn(),
+    desktopSessions: vi.fn(), logoutEverywhere: vi.fn(), logout: vi.fn(), feedback: vi.fn(),
+  },
+  desk: { desktop: false, lost: 0 },
   share: { templates: null as Template[] | null },
   tg: { popup: false, answer: 'delete' as string | null, popups: [] as unknown[], writeAccess: false, writeAnswer: 'allowed', links: [] as string[] },
 }));
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), api: m.api }));
+vi.mock('../desktop/session', () => ({ isDesktop: () => m.desk.desktop, desktopToken: () => null, sessionLost: () => void m.desk.lost++ }));
 vi.mock('@tma.js/sdk-react', async (orig) => {
   const real = await orig<typeof import('@tma.js/sdk-react')>();
   const show = Object.assign(
@@ -72,6 +77,10 @@ beforeEach(() => {
   m.api.summary.mockResolvedValue([]);
   m.api.blocks.mockResolvedValue([]);
   m.api.unblock.mockResolvedValue({ ok: true });
+  m.api.desktopSessions.mockResolvedValue([]);
+  m.api.logoutEverywhere.mockResolvedValue({ ok: true });
+  m.api.logout.mockResolvedValue({ ok: true });
+  Object.assign(m.desk, { desktop: false, lost: 0 });
   m.share.templates = null;
   Object.assign(m.tg, { popup: false, answer: 'delete', popups: [], writeAccess: false, writeAnswer: 'allowed', links: [] });
 });
@@ -342,5 +351,78 @@ describe('«Сообщить о проблеме»', () => {
     await page.getByRole('button', { name: 'Готово' }).click();
     await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
     expect(m.api.feedback).toHaveBeenCalledWith('Не листается', expect.objectContaining({ theme: 'light', screen: 'me' }), []);
+  });
+});
+
+describe('компьютеры (вход на Mac и в браузере)', () => {
+  const mac = { id: 2, device: 'mac', created_at: '2026-10-05T09:00:00Z', last_used_at: '2026-10-05T09:00:00Z', current: false };
+
+  it('в Telegram: не входили на компьютере — строки нет; входили — «Компьютеры» с числом', async () => {
+    await setup();
+    await expect.element(page.getByText('Тема')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /Компьютеры/ })).not.toBeInTheDocument();
+    m.api.desktopSessions.mockResolvedValue([mac, { ...mac, id: 3, device: 'web' }]);
+    await setup();
+    await expect.element(page.getByRole('button', { name: /Компьютеры\s*2/ })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Выйти на этом компьютере' })).not.toBeInTheDocument();
+  });
+
+  it('«Выйти везде»: «Отмена» — ничего; подтвердили — сервер выходит, строка пропадает; не вышло — ошибка', async () => {
+    m.api.desktopSessions.mockResolvedValue([mac]);
+    m.tg.popup = true;
+    m.tg.answer = null;
+    await setup();
+    const row = page.getByRole('button', { name: /Компьютеры/ });
+    await row.click();
+    await expect.poll(() => m.tg.popups.length).toBe(1);
+    expect(m.tg.popups[0]).toMatchObject({ message: 'Выйти из LifeCommit на всех компьютерах?', buttons: [{ id: 'out', type: 'destructive', text: 'Выйти везде' }, { type: 'cancel' }] });
+    expect(m.api.logoutEverywhere).not.toHaveBeenCalled();
+
+    m.tg.answer = 'out';
+    m.api.logoutEverywhere.mockRejectedValueOnce(new Error('offline'));
+    await row.click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(row).toBeVisible();
+
+    await row.click();
+    await expect.element(row).not.toBeInTheDocument();
+    expect(m.api.logoutEverywhere).toHaveBeenCalledTimes(2);
+  });
+
+  it('без подтверждений Telegram «Компьютеры» ничего не делает', async () => {
+    m.api.desktopSessions.mockResolvedValue([mac]);
+    await setup();
+    await page.getByRole('button', { name: /Компьютеры/ }).click();
+    expect(m.api.logoutEverywhere).not.toHaveBeenCalled();
+  });
+
+  it('на компьютере: списка компьютеров нет, есть «Выйти на этом компьютере» — с подтверждением', async () => {
+    m.desk.desktop = true;
+    m.tg.popup = true;
+    m.tg.answer = null;
+    await setup();
+    const out = page.getByRole('button', { name: 'Выйти на этом компьютере' });
+    await out.click();
+    await expect.poll(() => m.tg.popups.length).toBe(1);
+    expect(m.tg.popups[0]).toMatchObject({ message: 'Выйти из LifeCommit на этом компьютере?' });
+    expect(m.api.logout).not.toHaveBeenCalled();
+    expect(m.api.desktopSessions).not.toHaveBeenCalled();
+    await expect.element(page.getByRole('button', { name: /Компьютеры/ })).not.toBeInTheDocument();
+
+    m.tg.answer = 'out';
+    m.api.logout.mockRejectedValueOnce(new Error('offline'));
+    await out.click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    expect(m.desk.lost).toBe(0);
+
+    await out.click();
+    await expect.poll(() => m.desk.lost).toBe(1);
+  });
+
+  it('на компьютере без подтверждений «Выйти» ничего не делает', async () => {
+    m.desk.desktop = true;
+    await setup();
+    await page.getByRole('button', { name: 'Выйти на этом компьютере' }).click();
+    expect(m.api.logout).not.toHaveBeenCalled();
   });
 });

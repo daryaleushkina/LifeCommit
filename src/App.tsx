@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { mainButton, miniApp, useSignal } from '@tma.js/sdk-react';
 import type { TaskKind, TodayResponse, UserSettings } from '../shared/types';
 import { api } from './api';
@@ -21,6 +21,7 @@ import { Group } from './screens/Group';
 import { Groups } from './screens/Groups';
 import { Join } from './screens/Join';
 import { FriendLink, FriendScreen, Requests } from './screens/Friends';
+import { DesktopApprove, desktopLoginParam } from './screens/DesktopApprove';
 
 type Route =
   | { name: 'today' }
@@ -41,6 +42,8 @@ type Route =
   | { name: 'friend'; id: number }
   | { name: 'requests' }
   | { name: 'friendLink'; code: string }
+  // «Войти на Mac?»: компьютер открыл t.me/…?startapp=mac_<код> (вход на компьютере, src/desktop).
+  | { name: 'desktopApprove'; code: string; device: 'mac' | 'web' }
   // Правка привычки из голосового разбора; back — вкладка, с которой открыли шторку.
   | { name: 'draft'; index: number; back: Tab };
 type Tab = 'today' | 'calendar' | 'groups' | 'me';
@@ -93,6 +96,9 @@ export function App(): ReactNode {
   // Голосом добавили в группу, на экране которой стоим, — экран пересоздаётся из свежего кэша (без мигания).
   const [groupRev, setGroupRev] = useState(0);
 
+  // Ссылку запуска открываем один раз: загрузка бывает и второй (в разработке StrictMode запускает её дважды), и её
+  // ответ возвращал экран ссылки поверх того, куда человек уже ушёл (05.10.2026, e2e «Не входить»).
+  const launched = useRef(false);
   const load = useCallback(async () => {
     setBoot({ state: 'loading' });
     try {
@@ -105,6 +111,7 @@ export function App(): ReactNode {
       const joinCode = start_param?.startsWith('g_') ? start_param.slice(2) : joinParam && /^[a-z0-9]{6,20}$/.test(joinParam) ? joinParam : null;
       const groupId = start_param?.startsWith('grp_') ? Number(start_param.slice(4)) : null;
       const friendCode = start_param?.startsWith('f_') ? start_param.slice(2) : null;
+      const desktopLogin = desktopLoginParam(start_param);
       const day = logicalDayOf(user.timezone, user.day_start_hour);
       const quiet = (p: Promise<unknown>) => p.catch(() => null);
       const [today, heat] = await Promise.all([
@@ -135,11 +142,14 @@ export function App(): ReactNode {
       );
       const empty = today.tasks.length === 0 && today.archived.length === 0 && today.todos.length === 0 && today.todos_later === 0 && today.groups.length === 0;
       setBoot({ state: 'ready', user, onboarding: empty && !onboardingSkipped() });
+      if (launched.current) return;
+      launched.current = true;
       // Из бота кнопкой web_app start_param нет — приглашение тогда в адресе (?join=<код>).
       if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
       else if (joinCode) setRoute({ name: 'join', code: joinCode });
       else if (groupId) setRoute({ name: 'group', id: groupId, back: 'groups' });
       else if (friendCode) setRoute({ name: 'friendLink', code: friendCode });
+      else if (desktopLogin) setRoute({ name: 'desktopApprove', ...desktopLogin });
     } catch {
       setBoot({ state: 'error' });
     }
@@ -153,6 +163,12 @@ export function App(): ReactNode {
     // Заглушку Telegram убираем, когда на экране уже наша заставка.
     miniApp.ready.ifAvailable();
   }, []);
+
+  // Язык страницы — язык человека: по нему читалки экрана и подписи «Отмена» / «Cancel» в подтверждениях на компьютере.
+  const pageLang = boot.state === 'ready' && boot.user.language_code === 'en' ? 'en' : 'ru';
+  useEffect(() => {
+    document.documentElement.lang = pageLang;
+  }, [pageLang]);
 
   if (boot.state === 'loading') return <Splash />;
   if (boot.state === 'error') {
@@ -237,6 +253,8 @@ export function App(): ReactNode {
       setBoot((b) => (b.state === 'ready' ? { ...b, onboarding: false } : b));
       setRoute({ name: 'group', id, back: 'groups' });
     }} onClose={home} />;
+  } else if (route.name === 'desktopApprove') {
+    screen = <DesktopApprove code={route.code} device={route.device} onClose={home} />;
   } else if (route.name === 'friendLink') {
     screen = <FriendLink code={route.code} onClose={home} onFriends={() => setRoute({ name: 'groups', section: 'friends' })} />;
   } else if (boot.onboarding) {

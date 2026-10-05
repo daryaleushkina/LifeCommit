@@ -27,11 +27,17 @@ const ANDROID = {
   launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
 };
 
+// e2e/_explore — черновые проверки агента lc-explorer (в git не попадают, нарочно падают на найденном).
+// Обычный прогон и хук перед пушем их не видят; агент запускает их с E2E_EXPLORE=1.
+const EXPLORE = process.env.E2E_EXPLORE ? [] : ['**/_explore/**'];
+/** Приложение для Mac — свои проекты; в телефонах его сценарии не идут. */
+const DESKTOP = '**/e2e/desktop.spec.ts';
+/** Окно приложения для Mac (macos/): WKWebView — это WebKit; ширина телефона, как мини-апп в Telegram Desktop. */
+const MAC = { ...devices['Desktop Safari'], viewport: { width: 420, height: 860 }, tgPlatform: 'ios' as const, tgInsets: '0,0,0,0' };
+
 export default defineConfig<TgOptions>({
   testDir: 'e2e',
-  // e2e/_explore — черновые проверки агента lc-explorer (в git не попадают, нарочно падают на найденном).
-  // Обычный прогон и хук перед пушем их не видят; агент запускает их с E2E_EXPLORE=1.
-  testIgnore: process.env.E2E_EXPLORE ? [] : ['**/_explore/**'],
+  testIgnore: [...EXPLORE, DESKTOP],
   fullyParallel: true,
   workers: process.env.CI ? 2 : 6,
   retries: 1,
@@ -68,5 +74,8 @@ export default defineConfig<TgOptions>({
     { name: 'ios-dark', use: { ...devices['iPhone 15'], tgTheme: 'dark', tgPlatform: 'ios', tgInsets: '59,34,46,0' } },
     { name: 'android-light', use: { ...devices['Pixel 7'], ...ANDROID, tgTheme: 'light' } },
     { name: 'android-dark', use: { ...devices['Pixel 7'], ...ANDROID, tgTheme: 'dark' } },
+    // Приложение для Mac и вход на компьютере (src/desktop, e2e/desktop.spec.ts): без подмены Telegram.
+    { name: 'mac-light', testMatch: DESKTOP, testIgnore: EXPLORE, use: { ...MAC, tgTheme: 'light' } },
+    { name: 'mac-dark', testMatch: DESKTOP, testIgnore: EXPLORE, use: { ...MAC, tgTheme: 'dark' } },
   ],
 });

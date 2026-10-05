@@ -1,4 +1,5 @@
 import { retrieveRawInitData } from '@tma.js/sdk-react';
+import { desktopToken, isDesktop, sessionLost } from './desktop/session';
 import type { GroupDayBlock, GroupKind, GroupMode, GroupToday } from '../shared/groups';
 import type { TaskHistory } from '../shared/stats';
 import type { SummaryItem } from '../shared/summary';
@@ -18,6 +19,15 @@ export interface CalendarAccount {
   collections: { url: string; name: string; color: string | null; enabled: boolean; writable: boolean }[];
 }
 
+/** Компьютер, где вошли в LifeCommit; current — этот. */
+export interface DesktopSession {
+  id: number;
+  device: 'mac' | 'web';
+  created_at: string;
+  last_used_at: string;
+  current: boolean;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -27,7 +37,11 @@ export class ApiError extends Error {
   }
 }
 
-const auth = () => `tma ${retrieveRawInitData() ?? ''}`;
+/** На компьютере — ключ сессии (src/desktop), в Telegram — подписанная initData. */
+const auth = () => {
+  const token = isDesktop() ? desktopToken() : null;
+  return token ? `Bearer ${token}` : `tma ${retrieveRawInitData() ?? ''}`;
+};
 
 /**
  * Тело ответа как JSON. Не JSON или оборвалось (страницу перезагрузили, связь пропала посреди ответа) — ошибка
@@ -37,6 +51,8 @@ async function read<T>(res: Response): Promise<T> {
   // «Нет содержимого» — законный успех без тела.
   if (res.status === 204) return {} as T;
   const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+  // Ключ компьютера отозвали или он истёк — обратно на экран входа.
+  if (res.status === 401 && isDesktop() && desktopToken()) sessionLost();
   if (!res.ok || data === null) throw new ApiError(res.status, data?.error ?? 'network');
   return data;
 }
@@ -80,6 +96,13 @@ export const api = {
   feedbackVoice,
   /** В чат: подготовленное сообщение для shareMessage; не вышло — картинка пришла в личку с ботом (sent). */
   shareChat: (fileId: string, caption: string) => call<{ prepared_id?: string; sent?: boolean }>('POST', '/share/chat', { file_id: fileId, caption }),
+  // Вход на компьютере (worker/desktop.ts): начать и забрать ключ — без подписи; подтвердить — из Telegram.
+  desktopLogin: (device: 'mac' | 'web') => call<{ secret: string; code: string; link: string }>('POST', '/desktop/login', { device }),
+  desktopPoll: (secret: string) => call<{ status: 'pending' } | { status: 'ok'; token: string }>('POST', '/desktop/login/poll', { secret }),
+  desktopApprove: (code: string, device: 'mac' | 'web') => call<{ ok: true }>('POST', '/desktop/approve', { code, device }),
+  desktopSessions: () => call<DesktopSession[]>('GET', '/desktop/sessions'),
+  logoutEverywhere: () => call<{ ok: true }>('DELETE', '/desktop/sessions'),
+  logout: () => call<{ ok: true }>('DELETE', '/desktop/session'),
   session: (timezone: string) =>
     call<{ user: UserSettings; start_param: string | null; is_new: boolean }>('POST', '/session', { timezone }),
   today: () => call<TodayResponse>('GET', '/today'),

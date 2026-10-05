@@ -1,6 +1,7 @@
 // Приложение целиком: заставка и загрузка, ошибка с «Ещё раз», вкладки, ссылки запуска, переходы между экранами и голос.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
+import { StrictMode } from 'react';
 import { render } from 'vitest-browser-react';
 import type { GroupDayItem, GroupItemDraft } from '../shared/groups';
 import type { TaskInput, TodayResponse, TodayTask, TodoInput, UserSettings } from '../shared/types';
@@ -18,6 +19,7 @@ const m = vi.hoisted(() => ({
     createTasks: vi.fn(), createItem: vi.fn(), createTask: vi.fn(), updateTask: vi.fn(), archiveTask: vi.fn(), restoreTask: vi.fn(),
     deleteTask: vi.fn(), settings: vi.fn(), summary: vi.fn(), log: vi.fn(), checkGroupChat: vi.fn(), markItem: vi.fn(),
     friends: vi.fn(), friend: vi.fn(), friendLink: vi.fn(), blocks: vi.fn(), requestFriend: vi.fn(), setShown: vi.fn(),
+    desktopSessions: vi.fn(), desktopApprove: vi.fn(),
   },
   main: { text: '', press: null as null | (() => void) },
   back: { current: null as (() => void) | null },
@@ -111,6 +113,8 @@ beforeEach(() => {
   m.api.friend.mockResolvedValue({ person: { id: 2, first_name: 'Маша', username: 'masha', photo_url: null }, since: null, today: TODAY, heat: [], habits: [] });
   m.api.friendLink.mockResolvedValue({ person: { id: 3, first_name: 'Даша Л', username: null, photo_url: null }, status: 'none' });
   m.api.blocks.mockResolvedValue([]);
+  m.api.desktopSessions.mockResolvedValue([]);
+  m.api.desktopApprove.mockResolvedValue({ ok: true });
   m.api.history.mockResolvedValue({ start: TODAY, goals: [], logs: [] });
   m.api.laterTodos.mockResolvedValue([]);
   m.api.createTodos.mockResolvedValue({ ids: [] });
@@ -421,6 +425,51 @@ describe('вкладки', () => {
 });
 
 describe('ссылки запуска', () => {
+  it('startapp=mac_<код> (вход на Mac) — «Войти на Mac?»; «Войти» подтверждает, «На главную» — «Сегодня»', async () => {
+    const code = 'AbCdEfGhIjKlMnOpQrSt_-';
+    await boot({ start_param: `mac_${code}` });
+    await expect.element(heading('Войти на Mac?')).toBeVisible();
+    await page.getByRole('button', { name: 'Войти', exact: true }).click();
+    await expect.element(heading('Готово')).toBeVisible();
+    expect(m.api.desktopApprove).toHaveBeenCalledWith(code, 'mac');
+    await page.getByRole('button', { name: 'На главную' }).click();
+    await expect.element(heading('Сегодня')).toBeVisible();
+  });
+
+  it('startapp=web_<код> — «Войти в браузере?»; «Не входить» — на «Сегодня»', async () => {
+    await boot({ start_param: `web_${'x'.repeat(22)}` });
+    await expect.element(heading('Войти в браузере?')).toBeVisible();
+    await page.getByRole('button', { name: 'Не входить' }).click();
+    await expect.element(heading('Сегодня')).toBeVisible();
+    expect(m.api.desktopApprove).not.toHaveBeenCalled();
+  });
+
+  it('ссылка запуска открывается один раз: вторая загрузка (StrictMode в разработке) не возвращает её экран', async () => {
+    // В разработке React запускает загрузку дважды; ответ второй пришёл позже, чем человек ушёл с экрана ссылки.
+    let second!: () => void;
+    const answer = { user: user(), start_param: `web_${'x'.repeat(22)}`, is_new: false };
+    m.api.session.mockResolvedValueOnce(answer).mockReturnValueOnce(new Promise((r) => (second = () => r(answer))));
+    m.api.today.mockResolvedValue(today());
+    await render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await expect.poll(() => m.api.session.mock.calls.length).toBe(2);
+    await expect.element(heading('Войти в браузере?')).toBeVisible();
+    await page.getByRole('button', { name: 'Не входить' }).click();
+    await expect.element(heading('Сегодня')).toBeVisible();
+    second();
+    await expect.poll(() => m.api.today.mock.calls.length).toBeGreaterThanOrEqual(2);
+    await new Promise((r) => setTimeout(r, 50));
+    await expect.element(heading('Сегодня')).toBeVisible();
+  });
+
+  it('испорченный код входа — просто «Сегодня»', async () => {
+    await boot({ start_param: 'mac_short' });
+    await expect.element(heading('Сегодня')).toBeVisible();
+  });
+
   it('startapp=calendars (вернулись из входа Google) — «Календарь» с открытой шторкой календарей', async () => {
     await boot({ start_param: 'calendars' });
     await expect.element(heading('Календарь')).toBeVisible();

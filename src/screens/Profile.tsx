@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
 import { heatLevel, type HeatDay, type Person, type UserSettings } from '../../shared/types';
-import { api } from '../api';
+import { api, type DesktopSession } from '../api';
+import { isDesktop, sessionLost } from '../desktop/session';
 import type { Theme } from '../App';
 import { HeatCard, useMonthName } from '../components/HeatCard';
 import { monthOf, shiftMonth } from '../components/Heatmap';
@@ -56,6 +57,12 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   const [blockedOpen, setBlockedOpen] = useState(false);
   // Сервер не разблокировал — человек возвращается в список, в шторке строка ошибки.
   const [unblockError, setUnblockError] = useState(false);
+  // Компьютеры, где вошли (приложение для Mac, браузер): строка видна в Telegram, только если такие есть.
+  const desktop = isDesktop();
+  const [computers, setComputers] = useState<DesktopSession[]>([]);
+  useEffect(() => {
+    if (!desktop) api.desktopSessions().then(setComputers, () => {});
+  }, [desktop]);
   useEffect(() => {
     api.blocks().then(setBlocked, () => {});
   }, []);
@@ -86,6 +93,31 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
       await api.writeAccess();
       onUser({ ...user, bot_chat_ok: true });
     }
+  };
+
+  const logoutEverywhere = async () => {
+    if (!popup.show.isAvailable()) return;
+    const answer = await popup.show({ message: t.desktop.logoutAllConfirm, buttons: [{ id: 'out', type: 'destructive', text: t.desktop.logoutAll }, { type: 'cancel' }] });
+    if (answer !== 'out') return;
+    try {
+      await api.logoutEverywhere();
+      setComputers([]);
+    } catch {
+      setError(true);
+    }
+  };
+
+  const logout = async () => {
+    if (!popup.show.isAvailable()) return;
+    const answer = await popup.show({ message: t.desktop.logoutConfirm, buttons: [{ id: 'out', type: 'destructive', text: t.desktop.logoutOk }, { type: 'cancel' }] });
+    if (answer !== 'out') return;
+    try {
+      await api.logout();
+    } catch {
+      setError(true);
+      return;
+    }
+    sessionLost();
   };
 
   const deleteAccount = async () => {
@@ -234,6 +266,13 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
             <Chevron />
           </button>
         )}
+        {computers.length > 0 && (
+          <button className="row" onClick={() => void logoutEverywhere()}>
+            <span className="label">{t.desktop.computers}</span>
+            <span className="value">{t.num(computers.length)}</span>
+            <Chevron />
+          </button>
+        )}
       </section>
 
       {blockedOpen && (
@@ -274,6 +313,11 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
         </button>
       </section>
 
+      {desktop && (
+        <button className="quiet-link logout" onClick={() => void logout()}>
+          {t.desktop.logout}
+        </button>
+      )}
       <button className="quiet-link" onClick={() => void deleteAccount()}>
         {t.deleteAccount}
       </button>

@@ -5,6 +5,7 @@
 // сжимается в JPEG и уходит в Telegram, пока человек смотрит. К нажатию кнопки ссылка обычно уже есть.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { downloadFile, initData, openLink, requestWriteAccess, shareMessage, shareStory } from '@tma.js/sdk-react';
+import { isDesktop } from '../desktop/session';
 import { api, ApiError } from '../api';
 import { Sheet } from '../components/Picker';
 import { useT } from '../i18n';
@@ -27,6 +28,7 @@ interface Props {
 export function ShareSheet({ templates, onClose }: Props): ReactNode {
   const t = useT();
   const s = t.share;
+  const desktop = isDesktop();
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   const strip = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
@@ -168,19 +170,28 @@ export function ShareSheet({ templates, onClose }: Props): ReactNode {
         </div>
       )}
       {note && <p className="sheet-note">{note}</p>}
-      {shareStory.isAvailable() && (
-        <button className="act primary wide" disabled={busy} onClick={() => void run('story')}>
-          {busy ? s.busy : s.story}
+      {desktop ? (
+        // На компьютере сторис и отправки в чат нет (это умеет только Telegram) — только сохранить картинку.
+        <button className="act primary wide" disabled={busy} onClick={() => void run('save')}>
+          {busy ? s.busy : s.save}
         </button>
+      ) : (
+        <>
+          {shareStory.isAvailable() && (
+            <button className="act primary wide" disabled={busy} onClick={() => void run('story')}>
+              {busy ? s.busy : s.story}
+            </button>
+          )}
+          <div className="share-more">
+            <button className="act soft" disabled={busy} onClick={() => void run('chat')}>
+              {s.chat}
+            </button>
+            <button className="act soft" disabled={busy} onClick={() => void run('save')}>
+              {s.save}
+            </button>
+          </div>
+        </>
       )}
-      <div className="share-more">
-        <button className="act soft" disabled={busy} onClick={() => void run('chat')}>
-          {s.chat}
-        </button>
-        <button className="act soft" disabled={busy} onClick={() => void run('save')}>
-          {s.save}
-        </button>
-      </div>
     </Sheet>
   );
 }
