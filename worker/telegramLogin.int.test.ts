@@ -472,7 +472,16 @@ describe.skipIf(!ready)('вход через Telegram: ключи Telegram со 
 
   it('Telegram завис — через 4 секунды 502, а не вечное ожидание', async () => {
     net.routes = [];
-    net.on(JWKS_URL, (req) => new Promise<Response>((_, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason))));
+    // Telegram молчит, пока запрос не отменят. Отменён уже до подписки (под нагрузкой хука 4 секунды успели пройти) — как
+    // настоящий fetch, сразу ошибка: иначе событие abort уже прошло, и подделка висела вечно (06.10.2026, пуш упал по сроку).
+    net.on(
+      JWKS_URL,
+      (req) =>
+        new Promise<Response>((_, reject) => {
+          if (req.signal.aborted) return reject(req.signal.reason);
+          req.signal.addEventListener('abort', () => reject(req.signal.reason), { once: true });
+        }),
+    );
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const t0 = performance.now();
     expect(await signIn({ id_token: await idToken({ id: freshId() }), device: 'ios' })).toEqual({ status: 502, body: { error: 'telegram_unreachable' } });
