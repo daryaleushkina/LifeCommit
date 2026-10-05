@@ -5,7 +5,7 @@ import { api, ApiError, type CalendarAccount } from '../api';
 import { caches } from '../caches';
 import { useT } from '../i18n';
 import { renderApp } from '../test/render';
-import { CalendarsSheet, syncedLabel } from './CalendarsSheet';
+import { CalendarsSheet, finishErrorText, syncedLabel } from './CalendarsSheet';
 
 vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
@@ -352,12 +352,62 @@ describe('возврат из входа Google с кодом подключен
     expect(caches.accounts).toEqual([]);
   });
 
+  it('перечитывание после подключения — свежий запрос, а не тот, что ушёл при открытии шторки (он мог прочитать базу раньше)', async () => {
+    caches.accounts = [];
+    let early!: (v: CalendarAccount[]) => void;
+    vi.mocked(api.calendars)
+      .mockImplementationOnce(() => new Promise((res) => (early = res)))
+      .mockImplementation(async () => [google({ status: 'setup' })]);
+    vi.mocked(api.finishGoogle).mockResolvedValue({ account_id: 1, fresh: true });
+    await open(code('f'));
+    await expect.poll(() => vi.mocked(api.finishGoogle).mock.calls.length).toBe(1);
+    early([]);
+    await expect.element(page.getByText('Свои календари уже отмечены. Праздники и чужие календари — по желанию.')).toBeVisible();
+    expect(caches.accounts?.[0]?.status).toBe('setup');
+  });
+
+  it('связи не было — тот же код можно отправить снова (шторку закрыли и открыли)', async () => {
+    caches.accounts = [];
+    vi.mocked(api.finishGoogle).mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({ account_id: 1, fresh: true });
+    const r = await open(code('g'));
+    await expect.element(page.getByText('Не достучался до Google. Попробуйте ещё раз чуть позже.')).toBeVisible();
+    await r.unmount();
+    await open(code('g'));
+    await expect.poll(() => vi.mocked(api.finishGoogle).mock.calls.length).toBe(2);
+  });
+
   it('сервер не ответил — «Не достучался до Google», можно снова', async () => {
     caches.accounts = [];
     vi.mocked(api.finishGoogle).mockRejectedValueOnce(new ApiError(502, 'internal'));
     await open(code('e'));
     await expect.element(page.getByText('Не достучался до Google. Попробуйте ещё раз чуть позже.')).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Подключить' }).first()).toBeVisible();
+  });
+});
+
+describe('что сказать, если код подключения не принят', () => {
+  let t!: ReturnType<typeof useT>;
+  beforeEach(async () => {
+    const Probe = () => {
+      t = useT();
+      return null;
+    };
+    await renderApp(<Probe />);
+  });
+
+  it('код использован или устарел, а Google уже подключён (открыли ту же ссылку ещё раз) — молчим', () => {
+    for (const status of ['ok', 'setup'] as const) {
+      expect(finishErrorText(t, new ApiError(404, 'pending_not_found'), [google({ status })])).toBeNull();
+      expect(finishErrorText(t, new ApiError(410, 'pending_expired'), [google({ status })])).toBeNull();
+    }
+  });
+
+  it('Google не подключён или перестал пускать — «Ссылка устарела»; прочие сбои — «Не достучался до Google»', () => {
+    expect(finishErrorText(t, new ApiError(404, 'pending_not_found'), [])).toBe('Ссылка устарела — нажмите «Подключить» ещё раз.');
+    expect(finishErrorText(t, new ApiError(410, 'pending_expired'), [google({ status: 'auth_failed' })])).toBe('Ссылка устарела — нажмите «Подключить» ещё раз.');
+    expect(finishErrorText(t, new ApiError(404, 'pending_not_found'), null)).toBe('Ссылка устарела — нажмите «Подключить» ещё раз.');
+    expect(finishErrorText(t, new ApiError(502, 'internal'), [google()])).toBe('Не достучался до Google. Попробуйте ещё раз чуть позже.');
+    expect(finishErrorText(t, new TypeError('Failed to fetch'), [])).toBe('Не достучался до Google. Попробуйте ещё раз чуть позже.');
   });
 });
 

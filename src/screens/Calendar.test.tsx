@@ -21,7 +21,14 @@ vi.mock('../components/CalendarsSheet', async (orig) => {
   return {
     ...(await orig<typeof import('../components/CalendarsSheet')>()),
     CalendarsSheet: ({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) =>
-      h('div', { role: 'dialog', 'aria-label': 'Шторка календарей' }, h('button', { onClick: onClose }, 'Закрыть шторку'), h('button', { onClick: onChanged }, 'Календарь подключён')),
+      h(
+        'div',
+        { role: 'dialog', 'aria-label': 'Шторка календарей' },
+        h('button', { onClick: onClose }, 'Закрыть шторку'),
+        h('button', { onClick: onChanged }, 'Календарь подключён'),
+        // Вход Google закончен кодом впервые: шторка обновила список (кэш), а onChanged не зовёт — забирать пока нечего.
+        h('button', { onClick: () => void import('../caches').then(({ caches: c }) => (c.accounts = [{ id: 7, provider: 'google', login: 'g@gmail.com', status: 'setup', last_sync_at: null, default_url: null, collections: [] }])) }, 'Google ждёт выбора'),
+      ),
   };
 });
 
@@ -432,6 +439,15 @@ describe('подключённые календари', () => {
     await page.getByRole('button', { name: 'Календарь подключён' }).click();
     await expect.poll(() => onChanged.mock.calls.length).toBe(1);
     expect(m.api.syncCalendars).toHaveBeenCalled();
+  });
+
+  it('Google подключили в шторке впервые — закрыли её, и экран знает о нём: метка «Выберите календари», плашки нет', async () => {
+    await setup({ openSheet: true });
+    await expect.element(page.getByText('Подключите календарь')).toBeVisible();
+    await page.getByRole('button', { name: 'Google ждёт выбора' }).click();
+    await page.getByRole('button', { name: 'Закрыть шторку' }).click();
+    await expect.element(page.getByRole('button', { name: /Выберите календари/ })).toBeVisible();
+    await expect.element(page.getByText('Подключите календарь')).not.toBeInTheDocument();
   });
 
   it('шестерёнка открывает шторку календарей', async () => {

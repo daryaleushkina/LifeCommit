@@ -15,4 +15,6 @@ create table public.google_pending (
   created_at timestamptz not null default now()
 );
 create index google_pending_created_idx on public.google_pending (created_at);
+-- Удаление человека каскадом чистит его ожидания — без индекса читал бы таблицу целиком (как у desktop_sessions).
+create index google_pending_user_idx on public.google_pending (user_id);
 alter table public.google_pending enable row level security;

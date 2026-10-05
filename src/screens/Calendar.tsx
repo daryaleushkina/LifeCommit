@@ -209,7 +209,11 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
       {sheet && (
         <CalendarsSheet
           googlePending={googlePending}
-          onClose={() => setSheet(false)}
+          onClose={() => {
+            setSheet(false);
+            // Шторка могла подключить календарь, не позвав onChanged (новый Google ждёт выбора), — берём её список.
+            if (caches.accounts) setAccounts(caches.accounts);
+          }}
           onChanged={() => {
             void syncNow();
           }}

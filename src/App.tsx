@@ -152,11 +152,10 @@ export function App(): ReactNode {
       launched.current = true;
       // Из бота кнопкой web_app start_param нет — приглашение тогда в адресе (?join=<код>).
       if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
-      if (start_param?.startsWith('gcal_')) {
+      else if (start_param?.startsWith('gcal_')) {
         const code = start_param.slice(5);
         setRoute({ name: 'calendar', sheet: true, ...(/^[A-Za-z0-9_-]{43}$/.test(code) && { googlePending: code }) });
-      }
-      else if (joinCode) setRoute({ name: 'join', code: joinCode });
+      } else if (joinCode) setRoute({ name: 'join', code: joinCode });
       else if (groupId) setRoute({ name: 'group', id: groupId, back: 'groups' });
       else if (friendCode) setRoute({ name: 'friendLink', code: friendCode });
       else if (desktopLogin) setRoute({ name: 'desktopApprove', ...desktopLogin });
