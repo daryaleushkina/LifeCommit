@@ -227,6 +227,10 @@ class AppModel(
             }
             onboarding = fresh.isEmpty && !onboardingSkipped
             phase = Phase.Ready
+            pendingLink?.let {
+                pendingLink = null
+                handleLink(it)
+            }
         } catch (e: ApiError) {
             if (e.isSignedOut) {
                 signOutLocally()
@@ -330,6 +334,9 @@ class AppModel(
             }
         }
         api.credential = null
+        // Чужое после выхода не показываем: дела и календари прошлого человека — прочь (/code-review 05.10).
+        calendar.reset()
+        pendingLink = null
         user = null
         today = TodayResponse(day = "")
         heat = emptyList()
@@ -562,9 +569,18 @@ class AppModel(
         override fun hide(todo: Todo) = removeWithUndo("todo:${todo.id}", strings.swipe.hidden(todo.title)) { calendar.commitHide(todo) }
     }
 
+    /** Ссылка, пришедшая до конца загрузки (приложение запустили этой ссылкой): разберём, когда загрузится. */
+    private var pendingLink: String? = null
+
     /** Ссылка в приложение: вход Telegram или возврат после входа Google. */
     fun handleLink(uri: String) {
         if (TelegramOAuth.isCallback(uri)) return handleCallback(uri)
+        // Возврат из Google ходит на сервер с ключом: пока ключ не прочитан и сессия не загружена, запрос ушёл бы без
+        // него, 401 стёр бы ключ и выкинул на вход (/code-review 05.10: Android выгрузил приложение, пока был открыт Google).
+        if (phase != Phase.Ready) {
+            pendingLink = uri
+            return
+        }
         if (calendar.handleGoogleReturn(uri)) {
             backToMain()
             tab = Tab.Calendar
