@@ -4,9 +4,12 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-29",
   "compatibility_flags": ["nodejs_compat"],
+  // Статика без SPA-заглушки: мини-апп — /app/ (у него нет своих путей), чего нет в статике — решает Worker.
+  // Лендинг и документы — без языка в адресе: язык выбирает Worker (worker/site.ts), старые /ru/… и /en/… он же
+  // переадресует, поэтому они идут через Worker, хотя такие файлы в статике есть.
   "assets": {
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/bot/*", "/google/*", "/share/*"]
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/bot/*", "/google/*", "/share/*", "/", "/privacy", "/privacy/", "/terms", "/terms/", "/lang/*", "/ru", "/ru/*", "/en", "/en/*"]
   },
   // Напоминания: раз в 15 минут смотрим, у кого сейчас время напоминания (там же — срок хранения жалоб).
   // Раз в 5 минут — черновики жалоб /bug: после 10 минут тишины жалоба уходит сама (worker/feedbackBot.ts).

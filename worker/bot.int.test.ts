@@ -10,6 +10,8 @@ if (!ready) console.warn('bot-тесты пропущены: нет локаль
 
 const GEMINI = 'https://generativelanguage.googleapis.com/';
 const APP = 'https://lifecommit.test';
+// Мини-апп с 04.10.2026 — /app/ (корень — лендинг): кнопки бота ведут прямо туда, без лишнего перехода.
+const MINI = `${APP}/app/`;
 
 // Пользователи, которых завёл сам бот (/start), — harness о них не знает, убираем сами.
 const extra: number[] = [];
@@ -139,7 +141,7 @@ describe.skipIf(!ready)('/start', () => {
     // Текст — нейтральный (03.10.2026): без «как в GitHub», «даже чуть-чуть» и «как зеленеет карта».
     expect(textOf(msg)).toContain('привычки, цели и дела на каждый день');
     expect(textOf(msg)).not.toMatch(/зеленеет|GitHub|понемногу|чуть-чуть/);
-    expect(buttons(msg)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: APP } }]);
+    expect(buttons(msg)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: MINI } }]);
   });
 
   it('уже знакомый: включаем личку; язык приветствия — из Telegram', async () => {
@@ -166,7 +168,7 @@ describe.skipIf(!ready)('/start', () => {
     // «g_» не по формату — обычная ссылка-приглашение
     await say(id, '/start g_AB');
     const urls = replies(id).map((m) => buttons(m)[0]!.web_app!.url);
-    expect(urls).toEqual([`${APP}/?ref=friend_42`, APP, `${APP}/?ref=g_AB`]);
+    expect(urls).toEqual([`${MINI}?ref=friend_42`, MINI, `${MINI}?ref=g_AB`]);
   });
 
   it('из чата группы (g_код): кнопка ведёт на «Вступить», текст по языку Telegram', async () => {
@@ -175,7 +177,7 @@ describe.skipIf(!ready)('/start', () => {
     await say(id, '/start g_abc123', { language_code: undefined });
     const [ru, en] = replies(id);
     expect(textOf(ru)).toBe('Откройте LifeCommit — и дела группы появятся у вас на «Сегодня».');
-    expect(buttons(ru)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: `${APP}/?join=abc123` } }]);
+    expect(buttons(ru)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: `${MINI}?join=abc123` } }]);
     expect(textOf(en)).toBe("Open LifeCommit — the group's to-dos will show up on your Today.");
     expect(buttons(en)[0]!.text).toBe('Open LifeCommit');
   });
@@ -197,7 +199,7 @@ describe.skipIf(!ready)('текст в личке', () => {
     await say(id, 'читать каждый день');
     const [msg] = replies(id);
     expect(textOf(msg)).toBe('Сначала открой LifeCommit — и потом можно диктовать привычки голосом.');
-    expect(buttons(msg)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: APP } }]);
+    expect(buttons(msg)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: MINI } }]);
     expect((await sb.from('users').select('id').eq('id', id)).data).toEqual([]);
     expect(net.calls).toEqual([]);
   });
@@ -235,7 +237,7 @@ describe.skipIf(!ready)('текст в личке', () => {
       ['Купить молоко', addDays(day, 1)],
     ]);
     expect(buttons(msg)).toEqual([
-      { text: 'Открыть LifeCommit', web_app: { url: APP } },
+      { text: 'Открыть LifeCommit', web_app: { url: MINI } },
       { text: 'Отменить', callback_data: `undo:${tasks!.map((t) => t.id).join(',')}|${todos!.map((t) => t.id).join(',')}` },
     ]);
     // Попытка взята из дневного лимита.
@@ -328,7 +330,7 @@ describe.skipIf(!ready)('текст в личке', () => {
     await say(u.id, 'длинный список');
     expect((await sb.from('tasks').select('id').eq('user_id', u.id)).data).toHaveLength(8);
     expect((await sb.from('todos').select('id').eq('user_id', u.id)).data).toHaveLength(12);
-    expect(buttons(replies(u.id)[0])).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: APP } }]);
+    expect(buttons(replies(u.id)[0])).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: MINI } }]);
   });
 
   it('дневной лимит (20 разборов, общий с мини-аппом): дальше — вежливый отказ, модель не зовём', async () => {
@@ -337,7 +339,7 @@ describe.skipIf(!ready)('текст в личке', () => {
     await say(u.id, 'читать каждый день');
     const [msg] = replies(u.id);
     expect(textOf(msg)).toBe('На сегодня хватит: разбираю до 20 сообщений в день. Завтра — снова можно, а пока привычки можно добавить в приложении.');
-    expect(buttons(msg)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: APP } }]);
+    expect(buttons(msg)).toEqual([{ text: 'Открыть LifeCommit', web_app: { url: MINI } }]);
     expect(net.calls).toEqual([]);
     expect((await sb.from('voice_usage').select('count').eq('user_id', u.id).single()).data?.count).toBe(20);
   });

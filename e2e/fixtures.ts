@@ -74,9 +74,39 @@ export const test = base.extend<TgOptions & { tgViewportExtra: number; me: Me; p
     page.on('response', (r) => {
       if (r.url().includes('/api/') && r.status() >= 500) problems.push(`сервер ${r.status()}: ${r.request().method()} ${new URL(r.url()).pathname}`);
     });
+    // WebKit для Linux (GitHub Actions) собран без записи звука, а WebKit на Маке и Telegram на iPhone её умеют. Только
+    // там, где записывать совсем нечем, подставляем микрофон, который «пишет» тишину: экран голоса проверяется так же,
+    // а распознавание в тестах всё равно подменено (page.route на /api/voice). Где запись есть — ничего не трогаем.
+    await page.addInitScript(() => {
+      const media = navigator.mediaDevices as MediaDevices | undefined;
+      if (typeof media?.getUserMedia === 'function' && typeof MediaRecorder !== 'undefined') return;
+      class SilentRecorder {
+        state: 'inactive' | 'recording' = 'inactive';
+        mimeType = 'audio/mp4';
+        ondataavailable: ((e: { data: Blob }) => void) | null = null;
+        onstop: (() => void) | null = null;
+        static isTypeSupported(t: string) {
+          return t === 'audio/mp4';
+        }
+        start() {
+          this.state = 'recording';
+        }
+        stop() {
+          if (this.state === 'inactive') return;
+          this.state = 'inactive';
+          setTimeout(() => {
+            this.ondataavailable?.({ data: new Blob(['e2e'], { type: 'audio/mp4' }) });
+            this.onstop?.();
+          }, 0);
+        }
+      }
+      const stream = { getTracks: () => [] };
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { ...media, getUserMedia: async () => stream } });
+      (window as unknown as { MediaRecorder: unknown }).MediaRecorder = SilentRecorder;
+    });
     // Внешнее подменяем: картинка «Поделиться» уходит в Telegram от имени человека, а у тестового чата с ботом нет.
     await page.route('**/api/share', (r) => r.fulfill({ json: { url: 'https://example.com/e2e.jpg', file_id: 'e2e'.repeat(10) } }));
-    await page.goto(`/?tgTheme=${tgTheme}&tgPlatform=${tgPlatform}&tgInsets=${tgInsets}&tgUserId=${me.id}&tgViewportExtra=${tgViewportExtra}`);
+    await page.goto(`/app/?tgTheme=${tgTheme}&tgPlatform=${tgPlatform}&tgInsets=${tgInsets}&tgUserId=${me.id}&tgViewportExtra=${tgViewportExtra}`);
     await expect(page.locator('main.app-shell').first()).toBeVisible({ timeout: 30_000 });
     // Отступы выреза приходят от Telegram после первой отрисовки — ждём их, иначе снимок «до» и «после» разный.
     const [safeTop, , contentTop] = tgInsets.split(',');

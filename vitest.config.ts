@@ -25,6 +25,9 @@ export default defineConfig({
           name: 'dom',
           include: ['src/**/*.test.tsx'],
           setupFiles: ['src/test/setup.ts'],
+          // Ожидания (expect.element, expect.poll) — до 4 с вместо 1: под подсчётом покрытия в GitHub Actions первая
+          // картинка «Поделиться» и экраны рисуются дольше секунды, и тесты падали по таймауту, а не по сути.
+          expect: { poll: { timeout: 4000 } },
           browser: { enabled: true, headless: true, provider: playwright(), viewport: { width: 390, height: 844 }, instances: [{ browser: 'chromium' }] },
         },
       },

@@ -175,8 +175,10 @@ describe('время', () => {
     const hours = page.getByRole('listbox', { name: 'Часы' }).element() as HTMLElement;
     hours.scrollTop = 9 * 44;
     await expect.element(selected('Часы')).toHaveTextContent('09');
-    // Тап по строке барабана докручивает до неё.
-    await page.getByRole('listbox', { name: 'Минуты' }).getByRole('option', { name: '45' }).click();
+    // Тап по строке барабана докручивает до неё. Нажимаем прямо по элементу: «45» за краем барабана, и клик Playwright
+    // сначала сам докручивает список, а барабан с scroll-snap после этого сдвигается — под нагрузкой клик по координатам
+    // попадал в соседнюю строку («55»), хотя человек нажимает на видимую строку.
+    (page.getByRole('listbox', { name: 'Минуты' }).getByRole('option', { name: '45' }).element() as HTMLElement).click();
     await expect.element(selected('Минуты')).toHaveTextContent('45');
     // Докрутили и вернули на то же место — выбор не меняется.
     hours.scrollTop = 9 * 44 + 10;

@@ -2,6 +2,7 @@ import { useCallback, useState, type Dispatch, type SetStateAction } from 'react
 import { hapticFeedback } from '@tma.js/sdk-react';
 import { sortTodos, type Todo } from '../shared/types';
 import { api } from './api';
+import { trackEdit } from './caches';
 import { bumpChange, type Cache } from './useTaskLog';
 
 /** Тот же раз дела: у повторяющегося дела один id на все дни, различает их день. */
@@ -41,12 +42,11 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
   const toggle = useCallback(
     async (todo: Todo) => {
       const done = !todo.done;
-      bumpChange();
       patchList((list) => list.map((d) => (sameTodo(d, todo) ? { ...d, done } : d)));
       if (done) hapticFeedback.notificationOccurred.ifAvailable('success');
       try {
         // У повторяющегося дела «сделано» — на этот его день.
-        await api.updateTodo(todo.id, { done, ...(todo.recurring && { on: todo.day }) });
+        await trackEdit(api.updateTodo(todo.id, { done, ...(todo.recurring && { on: todo.day }) }));
       } catch {
         patchList((list) => list.map((d) => (sameTodo(d, todo) ? todo : d)));
         setError(errorText);
@@ -59,12 +59,11 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
   const add = useCallback(
     async (title: string, day: string) => {
       const temp: Todo = { id: -Date.now(), title, day, done: false, time: null, duration_min: null, recurring: false, source: null, details: null };
-      bumpChange();
       patchList((list) => [...list, temp]);
       try {
-        const { id } = await api.createTodo({ title, day });
-        // Дело уже на сервере: запросы, начатые до этой минуты, его не знают — пусть перечитают.
-        bumpChange();
+        // trackEdit отмечает изменение до запроса и после ответа: начатые раньше чтения устарели, а перечитка дней
+        // дождётся, пока дело создаётся (caches.ts), — иначе ответ без него ляжет поверх строки.
+        const { id } = await trackEdit(api.createTodo({ title, day }));
         patchList((list) => list.map((d) => (d.id === temp.id ? { ...d, id } : d)));
       } catch {
         patchList((list) => list.filter((d) => d.id !== temp.id));
@@ -83,10 +82,9 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
         ...(edit.location !== undefined && edit.location !== (todo.details?.location ?? '') && { location: edit.location }),
       };
       if (!Object.keys(patch).length) return;
-      bumpChange();
       patchList((list) => list.map((d) => (d.id === todo.id ? { ...d, title: edit.title, time: edit.time, ...(edit.location !== undefined && { details: withLocation(d.details, edit.location) }) } : d)));
       try {
-        await api.updateTodo(todo.id, patch);
+        await trackEdit(api.updateTodo(todo.id, patch));
       } catch {
         setError(errorText);
       }
@@ -97,11 +95,10 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
 
   const remove = useCallback(
     async (todo: Todo) => {
-      bumpChange();
       // Повторяющееся удаляется целиком — со всеми днями.
       patchList((list) => list.filter((d) => d.id !== todo.id));
       try {
-        await api.deleteTodo(todo.id);
+        await trackEdit(api.deleteTodo(todo.id));
       } catch {
         setError(errorText);
       }
@@ -113,9 +110,8 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
   /** Скрыть событие из календаря (свайп): у нас пропадает, в календаре остаётся. */
   const hide = useCallback(
     async (todo: Todo) => {
-      bumpChange();
       try {
-        await api.updateTodo(todo.id, { hidden: true });
+        await trackEdit(api.updateTodo(todo.id, { hidden: true }));
       } catch {
         setError(errorText);
       }
