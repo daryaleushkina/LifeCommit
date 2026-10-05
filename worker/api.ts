@@ -540,14 +540,24 @@ api.post('/calendars/google/finish', async (c) => {
   if (typeof pending !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(pending)) throw new HTTPException(400, { message: 'bad_pending' });
   const sb = c.get('sb');
   const user = c.get('user');
-  // Одноразовый: забираем удалением — повтор и два запроса наперегонки найдут пусто.
+  // Одноразовый: забираем удалением — повтор и два запроса наперегонки найдут пусто. Чужой код тоже сгорает: если его
+  // принёс не тот, кто начал вход, подключить им уже не выйдет ни у кого.
+  const hash = await tokenHash(pending);
   const row = must(
-    await sb.from('google_pending').delete().eq('code_hash', await tokenHash(pending)).eq('user_id', user.id).select('secret, login, calendars, created_at').maybeSingle(),
-  ) as (GoogleGrant & { created_at: string }) | null;
-  if (!row) throw new HTTPException(404, { message: 'pending_not_found' });
+    await sb.from('google_pending').delete().eq('code_hash', hash).select('user_id, secret, login, calendars, created_at').maybeSingle(),
+  ) as (GoogleGrant & { user_id: number; created_at: string }) | null;
+  if (!row || row.user_id !== user.id) throw new HTTPException(404, { message: 'pending_not_found' });
   if (Date.now() - Date.parse(row.created_at) > GOOGLE_PENDING_TTL_MS) throw new HTTPException(410, { message: 'pending_expired' });
-  const { account, fresh } = await saveGoogle(sb, user, row);
-  return c.json({ account_id: account.id, fresh });
+  try {
+    const { account, fresh } = await saveGoogle(sb, user, row);
+    return c.json({ account_id: account.id, fresh });
+  } catch (e) {
+    // Не сохранилось (сбой базы) — код возвращаем на место: пока он жив, человек повторит, не проходя вход Google заново.
+    console.error('google finish: save failed', user.id, e);
+    const back = await sb.from('google_pending').insert({ code_hash: hash, user_id: row.user_id, secret: row.secret, login: row.login, calendars: row.calendars, created_at: row.created_at });
+    if (back.error) console.error('google finish: pending not restored', user.id, back.error.message);
+    throw e;
+  }
 });
 
 // Google подключён, человек выбрал календари — забираем события.

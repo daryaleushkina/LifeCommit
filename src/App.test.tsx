@@ -486,6 +486,14 @@ describe('ссылки запуска', () => {
     await expect.poll(() => m.api.finishGoogle.mock.calls).toEqual([[code]]);
   });
 
+  it('startapp=calendars, а в адресе ещё и приглашение (?join=) — открыта шторка календарей, а не приглашение', async () => {
+    window.history.replaceState(null, '', `${window.location.pathname}?join=abc123`);
+    await boot({ start_param: 'calendars' });
+    await expect.element(page.getByRole('dialog', { name: 'Календари' })).toBeVisible();
+    await expect.element(heading('Календарь')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Вступить' })).not.toBeInTheDocument();
+  });
+
   it('startapp=gcal_ с испорченным кодом — шторка открыта, на сервер ничего не уходит', async () => {
     await boot({ start_param: 'gcal_short' });
     await expect.element(page.getByRole('dialog', { name: 'Календари' })).toBeVisible();

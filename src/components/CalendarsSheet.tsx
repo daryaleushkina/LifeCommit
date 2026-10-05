@@ -24,9 +24,20 @@ interface Props {
 
 /**
  * Код подключения уходит на сервер один раз за жизнь страницы: он одноразовый, а шторку могут закрыть и открыть снова
- * (или React в разработке смонтирует её дважды) — повтор получил бы «ссылка устарела».
+ * (или React в разработке смонтирует её дважды) — повтор получил бы «ссылка устарела». Не дошёл (нет связи) — забываем:
+ * пока код жив, его можно отправить снова.
  */
 const finishing = new Map<string, Promise<{ fresh: boolean }>>();
+
+/**
+ * Код подключения не принят: что сказать человеку. Использован или устарел, а Google уже подключён (открыли ту же
+ * ссылку ещё раз) — молчим; не подключён — «Ссылка устарела»; прочее — «Не достучался до Google».
+ */
+export function finishErrorText(t: ReturnType<typeof useT>, e: unknown, accounts: CalendarAccount[] | null): string | null {
+  if (!(e instanceof ApiError && (e.code === 'pending_not_found' || e.code === 'pending_expired'))) return t.cal.errGoogle;
+  const google = accounts?.find((a) => a.provider === 'google');
+  return google && (google.status === 'ok' || google.status === 'setup') ? null : t.cal.googleLinkExpired;
+}
 
 /**
  * Календари: Google и Apple. Google подключается входом Google в браузере (внутри Telegram он не работает),
@@ -67,26 +78,47 @@ export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): Re
     let alive = true;
     let run = finishing.get(googlePending);
     if (!run) {
-      run = api.finishGoogle(googlePending);
-      finishing.set(googlePending, run);
+      const sent = api.finishGoogle(googlePending);
+      finishing.set(googlePending, sent);
+      sent.catch(() => finishing.delete(googlePending));
+      run = sent;
     }
+    // Список — заново, а не тот запрос, что ушёл при открытии шторки: он мог прочитать базу до подключения.
+    const reread = async () => {
+      await fetchInto.accounts().catch(() => null);
+      return fetchInto.accounts();
+    };
     run.then(
-      ({ fresh }) => {
-        if (!alive) return;
-        fetchInto.accounts().then(
-          (list) => alive && setAccountsState(list),
-          (e: unknown) => console.warn('calendars reload failed', e),
-        );
-        // Подключили заново — события могли поменяться; новое ждёт выбора календарей, забирать пока нечего.
+      async ({ fresh }) => {
+        // Подключили заново — события могли поменяться (экран «Календарь» ещё открыт, даже если шторку закрыли);
+        // новое ждёт выбора календарей, забирать пока нечего.
         if (!fresh && !notified.current) {
           notified.current = true;
           onChangedRef.current();
         }
+        try {
+          const list = await reread();
+          // Функцией, как setAccounts: React применит её после обновлений от более ранних ответов, и в кэше останется она.
+          if (alive)
+            setAccountsState(() => {
+              caches.accounts = list;
+              return list;
+            });
+        } catch (e) {
+          console.warn('calendars reload after google finish failed', e);
+          if (alive) setFailed(true);
+        }
       },
-      (e: unknown) => {
-        if (!alive) return;
+      async (e: unknown) => {
         console.warn('google finish failed', e);
-        setFinishError(e instanceof ApiError && (e.code === 'pending_not_found' || e.code === 'pending_expired') ? t.cal.googleLinkExpired : t.cal.errGoogle);
+        const list = await reread().catch(() => caches.accounts);
+        if (!alive) return;
+        if (list)
+          setAccountsState(() => {
+            caches.accounts = list;
+            return list;
+          });
+        setFinishError(finishErrorText(t, e, list));
       },
     );
     return () => {

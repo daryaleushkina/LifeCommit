@@ -20,14 +20,14 @@ export const google = new Hono<{ Bindings: Env }>();
 
 const TEXT = {
   ru: {
-    ok: ['Почти готово', 'Нажмите «Вернуться в LifeCommit» — там подключение закончится и вы выберете, какие календари забирать.'],
+    ok: ['Почти готово', 'Нажмите «Вернуться в LifeCommit» — там подключение закончится и вы выберете, какие календари забирать. Если LifeCommit уже открыт и ничего не произошло — закройте его и нажмите ещё раз.'],
     denied: ['Доступ не дали', 'Без доступа к событиям календарь не подключить. Попробуйте ещё раз из LifeCommit и оставьте галочки на экране Google.'],
     expired: ['Ссылка устарела', 'Откройте LifeCommit и нажмите «Подключить» ещё раз.'],
     failed: ['Не получилось подключить', 'Google не ответил как надо. Попробуйте ещё раз чуть позже.'],
     back: 'Вернуться в LifeCommit',
   },
   en: {
-    ok: ['Almost done', 'Tap “Back to LifeCommit” to finish connecting and choose which calendars to bring in.'],
+    ok: ['Almost done', 'Tap “Back to LifeCommit” to finish connecting and choose which calendars to bring in. If LifeCommit is already open and nothing happened, close it and tap again.'],
     denied: ['Access not granted', 'The calendar can’t be connected without access to events. Try again from LifeCommit and keep the boxes ticked on the Google screen.'],
     expired: ['This link has expired', 'Open LifeCommit and tap “Connect” again.'],
     failed: ['Couldn’t connect', 'Google didn’t respond as expected. Please try again a bit later.'],
