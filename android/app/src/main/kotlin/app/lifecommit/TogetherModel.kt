@@ -17,6 +17,7 @@ import app.lifecommit.core.GroupToday
 import app.lifecommit.core.Groups
 import app.lifecommit.core.Invitation
 import app.lifecommit.core.Person
+import app.lifecommit.core.acceptFriend
 import app.lifecommit.core.addEntry
 import app.lifecommit.core.checkGroupChat
 import app.lifecommit.core.createGroup
@@ -24,6 +25,7 @@ import app.lifecommit.core.createItem
 import app.lifecommit.core.deleteGroup
 import app.lifecommit.core.deleteItem
 import app.lifecommit.core.disconnectGroupChat
+import app.lifecommit.core.dropRequest
 import app.lifecommit.core.friend
 import app.lifecommit.core.friends
 import app.lifecommit.core.group
@@ -33,7 +35,9 @@ import app.lifecommit.core.invite
 import app.lifecommit.core.join
 import app.lifecommit.core.leaveGroup
 import app.lifecommit.core.markItem
+import app.lifecommit.core.promptSeen
 import app.lifecommit.core.renameGroup
+import app.lifecommit.core.setShown
 import app.lifecommit.core.setAdminsOnly
 import app.lifecommit.core.skipItem
 import app.lifecommit.core.updateItem
@@ -78,7 +82,11 @@ class TogetherModel(
     private var version = 0
     private var friendsSeq = 0
 
+    /** Номер человека: растёт при выходе — ответы, начатые при прошлом аккаунте, ничего не записывают. */
+    private var epoch = 0
+
     fun reset() {
+        epoch++
         version++
         friendsSeq++
         list = null
@@ -86,6 +94,10 @@ class TogetherModel(
         missing.clear()
         friendsData = null
         friendsFailed = false
+        answered = emptySet()
+        answerFailed = false
+        cancelFailed = false
+        showFailed = null
         profiles.clear()
         note = null
     }
@@ -111,6 +123,7 @@ class TogetherModel(
 
     suspend fun loadGroup(id: Long) {
         val seq = version
+        val e0 = epoch
         try {
             val g = api.group(id)
             if (seq == version) {
@@ -118,6 +131,7 @@ class TogetherModel(
                 missing.remove(id)
             }
         } catch (e: ApiError) {
+            if (e0 != epoch) return
             // «Не найдено» — только когда группы правда нет (404) или показать нечего; моргнула сеть — экран как был.
             if (e.status == 404 || id !in details) missing[id] = true
             handle(e)
@@ -186,39 +200,60 @@ class TogetherModel(
     /** Ссылка-приглашение в группу (для «Позвать в группу» и подключения чата). */
     suspend fun inviteLink(groupId: Long): String = api.invite(groupId).link
 
-    suspend fun rename(groupId: Long, title: String) {
-        val before = details[groupId]
+    /**
+     * Новое название: на экране сразу, сервер — в фоне модели, а не шторки (её закрывают тем же жестом, что и сохраняют:
+     * запрос шторки отменился бы вместе с ней, /lc-review 06.10). Не вышло — старое название и подсказка на экране группы.
+     */
+    fun rename(groupId: Long, title: String) {
+        val before = details[groupId]?.title
+        val beforeList = list
         details[groupId]?.let { details[groupId] = it.copy(title = title) }
-        try {
-            api.renameGroup(groupId, title)
-        } catch (e: ApiError) {
-            before?.let { details[groupId] = it }
-            throw e
+        list = list?.map { if (it.id == groupId) it.copy(title = title) else it }
+        val e0 = epoch
+        scope.launch {
+            try {
+                api.renameGroup(groupId, title)
+                if (e0 == epoch) onChanged()
+            } catch (e: ApiError) {
+                if (e0 != epoch) return@launch
+                if (e.isSignedOut) return@launch onSignedOut()
+                log.info("rename group $groupId: $e")
+                before?.let { old -> details[groupId]?.let { details[groupId] = it.copy(title = old) } }
+                list = beforeList
+                note = GroupNote(groupId, ERROR)
+            }
         }
-        onChanged()
     }
 
-    suspend fun setAdminsOnly(groupId: Long, on: Boolean) {
+    /** «Дела заводят только админы»: сразу; сервер — в фоне модели (шторку могут сразу закрыть); не вышло — назад и подсказка. */
+    fun setAdminsOnly(groupId: Long, on: Boolean) {
         fun set(v: Boolean) {
             details[groupId]?.let { g -> details[groupId] = g.copy(settings = g.settings?.copy(adminsOnlyEdit = v)) }
         }
         set(on)
-        try {
-            api.setAdminsOnly(groupId, on)
-        } catch (e: ApiError) {
-            set(!on)
-            throw e
+        val e0 = epoch
+        scope.launch {
+            try {
+                api.setAdminsOnly(groupId, on)
+            } catch (e: ApiError) {
+                if (e0 != epoch) return@launch
+                if (e.isSignedOut) return@launch onSignedOut()
+                log.info("admins only $groupId: $e")
+                set(!on)
+                note = GroupNote(groupId, ERROR)
+            }
         }
     }
 
     /** Чат ещё жив? Удалённый в Telegram пропадает из настроек сразу. */
     fun checkChat(groupId: Long) {
+        val e0 = epoch
         scope.launch {
             try {
                 val title = api.checkGroupChat(groupId).tgChatTitle
-                details[groupId]?.let { g -> details[groupId] = g.copy(settings = g.settings?.copy(tgChatTitle = title)) }
+                if (e0 == epoch) details[groupId]?.let { g -> details[groupId] = g.copy(settings = g.settings?.copy(tgChatTitle = title)) }
             } catch (e: ApiError) {
-                handle(e)
+                if (e0 == epoch) handle(e)
             }
         }
     }
@@ -277,12 +312,96 @@ class TogetherModel(
         }
     }
 
-    suspend fun loadFriend(id: Long): FriendProfile? = try {
-        api.friend(id).also { profiles[id] = it }
-    } catch (e: ApiError) {
-        handle(e)
-        if (e.status == 404) profiles.remove(id)
-        null
+    // Ответы на заявки и «Что показать» — в фоне модели, а не экрана: экран убирает заявку сразу, и человек тут же
+    // уходит «Назад» — запрос экрана отменился бы вместе с ним, и ничего бы не дошло (/lc-review 06.10).
+
+    /** Заявки, на которые уже ответили: на экране их нет, даже если старый ответ сервера ещё с ними. */
+    var answered by mutableStateOf(setOf<Long>())
+        private set
+
+    /** Ответ на заявку не дошёл — заявка снова на экране, строка ошибки. */
+    var answerFailed by mutableStateOf(false)
+
+    fun answer(id: Long, accept: Boolean) {
+        answerFailed = false
+        answered = answered + id
+        val e0 = epoch
+        scope.launch {
+            try {
+                if (accept) api.acceptFriend(id) else api.dropRequest(id)
+            } catch (e: ApiError) {
+                if (e0 != epoch) return@launch
+                if (e.isSignedOut) return@launch onSignedOut()
+                log.info("answer request $id: $e")
+                answered = answered - id
+                answerFailed = true
+            }
+            if (e0 == epoch) reloadFriends()
+        }
+    }
+
+    /** Своя заявка не отменилась — строка ошибки в списке друзей. */
+    var cancelFailed by mutableStateOf(false)
+
+    fun cancelRequest(id: Long) {
+        cancelFailed = false
+        val e0 = epoch
+        scope.launch {
+            try {
+                api.dropRequest(id)
+            } catch (e: ApiError) {
+                if (e0 != epoch) return@launch
+                if (e.isSignedOut) return@launch onSignedOut()
+                log.info("cancel request $id: $e")
+                cancelFailed = true
+            }
+            if (e0 == epoch) reloadFriends()
+        }
+    }
+
+    /** «Что показать друзьям?» не сохранилось — шторка снова с тем, что выбрали. */
+    var showFailed by mutableStateOf<List<Long>?>(null)
+
+    /** Шторку «Что показать» закрыли: ids — выбранные привычки; null — «Назад» (служебное «уже спросили»). */
+    fun saveShown(ids: List<Long>?) {
+        showFailed = null
+        val e0 = epoch
+        scope.launch {
+            if (ids != null) {
+                try {
+                    api.setShown(ids)
+                    if (e0 == epoch) onChanged()
+                } catch (e: ApiError) {
+                    if (e0 != epoch) return@launch
+                    if (e.isSignedOut) return@launch onSignedOut()
+                    log.info("shown: $e")
+                    showFailed = ids
+                    return@launch
+                }
+            } else {
+                // Служебная отметка «уже спросили»: не дошла — спросим в другой раз, ошибку не показываем.
+                try {
+                    api.promptSeen()
+                } catch (e: ApiError) {
+                    if (e0 != epoch) return@launch
+                    if (e.isSignedOut) return@launch onSignedOut()
+                    log.info("prompt seen: $e")
+                }
+            }
+            if (e0 == epoch) reloadFriends()
+        }
+    }
+
+    suspend fun loadFriend(id: Long): FriendProfile? {
+        val e0 = epoch
+        return try {
+            api.friend(id).also { if (e0 == epoch) profiles[id] = it }
+        } catch (e: ApiError) {
+            if (e0 != epoch) return null
+            handle(e)
+            if (e.status == 404) profiles.remove(id)
+            null
+        }
     }
 
     companion object {

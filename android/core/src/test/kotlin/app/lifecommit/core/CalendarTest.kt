@@ -96,4 +96,22 @@ class CalendarTest {
         assertEquals(TodoSource.Google, acc.provider)
         assertTrue(acc.collections[0].writable)
     }
+
+    @Test fun `webLink - только http и https с хостом`() {
+        assertEquals("https://meet.google.com/abc", webLink("https://meet.google.com/abc"))
+        assertEquals("http://example.com/x", webLink("http://example.com/x"))
+        assertEquals("HTTPS://Zoom.us/j/1", webLink("HTTPS://Zoom.us/j/1"))
+        assertEquals("https://x.y", webLink("  https://x.y  "))
+        assertNull(webLink(null))
+        assertNull(webLink(""))
+        assertNull(webLink("lifecommit://join/abcd1234"))
+        assertNull(webLink("intent://evil#Intent;end"))
+        assertNull(webLink("javascript:alert(1)"))
+        assertNull(webLink("zoommtg://zoom.us/join?confno=1"))
+        assertNull(webLink("tel:+79990000000"))
+        assertNull(webLink("https:evil.example"))
+        assertNull(webLink("https:///path"))
+        assertNull(webLink("https://"))
+        assertNull(webLink("meet.google.com/abc"))
+    }
 }

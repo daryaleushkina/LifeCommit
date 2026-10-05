@@ -137,7 +137,7 @@ fun GroupScreen(model: AppModel, id: Long, links: Links) {
                         items.forEachIndexed { i, it ->
                             androidx.compose.runtime.key(it.id) {
                                 if (i > 0) RowDivider()
-                                GroupItemRow(model, group.id, it, group.members, today, onToggle = { model.toggleGroupItem(group.id, it, today, onGroupScreen = true) }, onOpen = { editing = it })
+                                GroupItemRow(model, group.id, it, group.members, today, onToggle = { model.toggleGroupItem(group.id, it, today, AppModel.MarkFrom.Group) }, onOpen = { editing = it })
                             }
                         }
                     }
@@ -258,15 +258,7 @@ private fun GroupSettingsSheet(model: AppModel, group: GroupToday, links: Links,
     var confirmChat by remember { mutableStateOf(false) }
     val save = {
         val next = title.text.toString().trim()
-        if (next.isNotEmpty() && next != group.title) scope.launch {
-            try {
-                tg.rename(group.id, next)
-            } catch (e: ApiError) {
-                if (e.isSignedOut) model.signOutLocally()
-                error = true
-                tg.note = GroupNote(group.id, TogetherModel.ERROR)
-            }
-        }
+        if (next.isNotEmpty() && next != group.title) tg.rename(group.id, next)
     }
     // Добавить бота в чат Telegram: тот же код приглашения, но ссылка «в группу» (startgroup).
     val connectChat = {
@@ -284,20 +276,14 @@ private fun GroupSettingsSheet(model: AppModel, group: GroupToday, links: Links,
     }) {
         if (canManage) SheetInput(title, g.name, 60, "groupTitle", g.namePh)
         else Text(group.title, style = onest(16, color = p.muted), modifier = Modifier.padding(horizontal = 4.dp))
-        if (error) ErrorNote(t.error, Modifier.padding(top = 10.dp))
+        // Свой сбой шторки или правки группы, что ушла из неё («только админы»): подсказка экрана группы под шторкой не видна.
+        if (error || tg.note == GroupNote(group.id, TogetherModel.ERROR)) ErrorNote(t.error, Modifier.padding(top = 10.dp))
         if (canManage) {
             Column(Modifier.padding(top = 12.dp).fillMaxWidth().background(p.bg, RoundedCornerShape(Dim.radius))) {
                 val on = group.settings?.adminsOnlyEdit == true
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).pressable(role = Role.Switch) {
-                    scope.launch {
-                        error = false
-                        try {
-                            tg.setAdminsOnly(group.id, !on)
-                        } catch (e: ApiError) {
-                            if (e.isSignedOut) model.signOutLocally()
-                            error = true
-                        }
-                    }
+                    error = false
+                    tg.setAdminsOnly(group.id, !on)
                 }.padding(start = 18.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(g.adminsOnly, style = onest(16, 500, p.text), modifier = Modifier.weight(1f))
                     Switch(checked = on, onCheckedChange = null, colors = SwitchDefaults.colors(checkedTrackColor = p.accent, checkedThumbColor = p.surface, uncheckedTrackColor = p.heat[0], uncheckedThumbColor = p.surface, uncheckedBorderColor = Color.Transparent))

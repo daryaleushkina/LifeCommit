@@ -87,11 +87,8 @@ fun FriendsPanel(model: AppModel, links: Links) {
     val t = LocalStrings.current
     val fr = t.fr
     val tg = model.together
-    val scope = rememberCoroutineScope()
     var showing by remember { mutableStateOf(false) }
-    var showFailed by remember { mutableStateOf<List<Long>?>(null) }
     var inviting by remember { mutableStateOf(false) }
-    var cancelFailed by remember { mutableStateOf(false) }
     // «Что показать» — не больше раза за открытие, даже если сервер ещё не узнал, что шторку закрыли.
     var asked by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -133,7 +130,7 @@ fun FriendsPanel(model: AppModel, links: Links) {
                 StrokeGlyph(Glyph.CHEVRON, p.muted, 18.dp, 2.2f)
             }
         }
-        if (cancelFailed) ErrorNote(t.error, Modifier.padding(top = 12.dp)) { cancelFailed = false }
+        if (tg.cancelFailed) ErrorNote(t.error, Modifier.padding(top = 12.dp)) { tg.cancelFailed = false }
         if (data.friends.isEmpty() && data.outgoing.isEmpty()) EmptyNote(fr.empty)
         if (q.isNotEmpty() && shown.isEmpty()) EmptyNote(fr.nothingFound)
         shown.forEach { f ->
@@ -159,45 +156,16 @@ fun FriendsPanel(model: AppModel, links: Links) {
                     Text(o.firstName, style = onest(16, 600, p.text))
                     Text(fr.waiting, style = onest(13, color = p.muted))
                 }
-                LinkButton(fr.cancel) {
-                    cancelFailed = false
-                    scope.launch {
-                        try {
-                            model.api.dropRequest(o.id)
-                        } catch (e: ApiError) {
-                            if (e.isSignedOut) model.signOutLocally() else cancelFailed = true
-                        }
-                        tg.reloadFriends()
-                    }
-                }
+                LinkButton(fr.cancel) { tg.cancelRequest(o.id) }
             }
         }
     }
     if (inviting) AddFriendSheet(model, links) { inviting = false }
-    if (showing) ShowSheet(model.today.tasks, picked = showFailed, failed = showFailed != null) { ids ->
+    // Не сохранилось — шторка снова, с тем, что выбрали, и строкой ошибки.
+    val failed = tg.showFailed
+    if (showing || failed != null) ShowSheet(model.today.tasks, picked = failed, failed = failed != null) { ids ->
         showing = false
-        showFailed = null
-        scope.launch {
-            if (ids != null) {
-                try {
-                    model.api.setShown(ids)
-                    model.refresh()
-                } catch (e: ApiError) {
-                    if (e.isSignedOut) return@launch model.signOutLocally()
-                    showFailed = ids
-                    showing = true
-                    return@launch
-                }
-            } else {
-                // «Назад» — служебная отметка «уже спросили»: не дошла — спросим в другой раз, ошибку не показываем.
-                try {
-                    model.api.promptSeen()
-                } catch (e: ApiError) {
-                    if (e.isSignedOut) return@launch model.signOutLocally()
-                }
-            }
-            tg.reloadFriends()
-        }
+        tg.saveShown(ids)
     }
 }
 
@@ -271,19 +239,15 @@ fun RequestsScreen(model: AppModel) {
     val t = LocalStrings.current
     val fr = t.fr
     val tg = model.together
-    val scope = rememberCoroutineScope()
-    // Уже принятые и отклонённые: ответ, ушедший до нажатия, не должен вернуть их на экран.
-    val done = remember { mutableSetOf<Long>() }
-    var error by remember { mutableStateOf(false) }
-    var hidden by remember { mutableStateOf(setOf<Long>()) }
     LaunchedEffect(Unit) { tg.reloadFriends() }
-    val list = tg.friendsData?.incoming.orEmpty().filter { it.id !in hidden && it.id !in done }
+    // Уже принятые и отклонённые: ответ, ушедший до нажатия, не должен вернуть их на экран.
+    val list = tg.friendsData?.incoming.orEmpty().filter { it.id !in tg.answered }
     Box(Modifier.fillMaxSize()) {
         GlowBackground()
         Screen(withTabs = false, modifier = Modifier.testTag("requests")) {
             item { BackPill(model::back) }
             item { PageHead(fr.requestsTitle, top = 12.dp) }
-            if (error) item { ErrorNote(t.error, Modifier.padding(top = 12.dp)) { error = false } }
+            if (tg.answerFailed) item { ErrorNote(t.error, Modifier.padding(top = 12.dp)) { tg.answerFailed = false } }
             if (list.isEmpty()) item { EmptyNote(fr.nothingFound) }
             list.forEach { r ->
                 item(key = r.id) {
@@ -298,22 +262,7 @@ fun RequestsScreen(model: AppModel) {
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             for ((accept, label) in listOf(true to fr.accept, false to fr.decline)) {
-                                val act = {
-                                    error = false
-                                    done += r.id
-                                    hidden = hidden + r.id
-                                    scope.launch {
-                                        try {
-                                            if (accept) model.api.acceptFriend(r.id) else model.api.dropRequest(r.id)
-                                        } catch (e: ApiError) {
-                                            if (e.isSignedOut) return@launch model.signOutLocally()
-                                            done -= r.id
-                                            hidden = hidden - r.id
-                                            error = true
-                                        }
-                                        tg.reloadFriends()
-                                    }
-                                }
+                                val act = { tg.answer(r.id, accept) }
                                 if (accept) PrimaryButton(label, Modifier.weight(1f), wide = true, small = true, onClick = { act() })
                                 else Box(Modifier.weight(1f).heightIn(min = 40.dp).pressable { act() }.background(p.bg, RoundedCornerShape(Dim.radiusBtn)), contentAlignment = Alignment.Center) {
                                     Text(label, style = onest(14, 700, p.text))

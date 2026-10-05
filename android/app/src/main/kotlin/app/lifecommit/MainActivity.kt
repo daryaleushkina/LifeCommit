@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
                     model.refreshIfStale()
                     model.returnedWithoutCallback()
                     model.checkBot()
+                    model.calendar.resumed()
                 }
                 else -> Unit
             }
