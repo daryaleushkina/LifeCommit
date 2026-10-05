@@ -6,7 +6,8 @@
 alter table public.desktop_sessions drop constraint desktop_sessions_device_check;
 alter table public.desktop_sessions add constraint desktop_sessions_device_check check (device in ('mac', 'web', 'ios', 'android'));
 
--- Один id_token — один вход: отпечаток (SHA-256) использованного токена. Токен живёт у нас не дольше 10 минут
+-- Один id_token — один вход: отпечаток (SHA-256) подписанной части использованного токена (заголовок.данные — у одной
+-- подписи бывает несколько записей, у содержания одна). Токен живёт у нас не дольше 10 минут
 -- (worker/telegramLogin.ts) — строки старше уборка удаляет при следующих входах. Утёкший из лога или прокси токен так
 -- не превратить во второй, третий… ключ сессии.
 create table public.auth_token_uses (
