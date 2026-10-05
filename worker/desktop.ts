@@ -63,15 +63,15 @@ function sameText(a: string, b: string): boolean {
   return diff === 0;
 }
 
-function must<T>(res: { data: T | null; error: { message: string } | null }): T {
+export function must<T>(res: { data: T | null; error: { message: string } | null }): T {
   if (res.error) throw new Error(res.error.message);
   return res.data as T;
 }
 
-const badRequest = () => new HTTPException(400, { message: 'bad_request' });
+export const badRequest = () => new HTTPException(400, { message: 'bad_request' });
 
 /** Тело запроса — объект; иначе 400. */
-async function body(req: { json: () => Promise<unknown> }): Promise<Record<string, unknown>> {
+export async function body(req: { json: () => Promise<unknown> }): Promise<Record<string, unknown>> {
   const raw: unknown = await req.json().catch(() => null);
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw badRequest();
   return raw as Record<string, unknown>;

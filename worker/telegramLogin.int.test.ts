@@ -139,9 +139,8 @@ describe.skipIf(!ready)('вход через Telegram', () => {
     madeHere.push(id);
     const token = await idToken({ id, given_name: 'Я'.repeat(200), picture: 'javascript:alert(1)' });
     expect((await signIn({ id_token: token, device: 'mac' })).status).toBe(200);
-    const { data } = await sb.from('users').select('first_name, photo_url').eq('id', id).single<{ first_name: string; photo_url: string | null }>();
-    expect(data!.first_name.length).toBeLessThanOrEqual(64);
-    expect(data!.photo_url).toBeNull();
+    const { data } = await sb.from('users').select('first_name, photo_url').eq('id', id).single();
+    expect(data).toEqual({ first_name: 'Я'.repeat(64), photo_url: null });
   });
 
   it('ник занят в базе другим человеком (ник в Telegram сменили) — заводим без ника, а не 500', async () => {
@@ -174,6 +173,39 @@ describe.skipIf(!ready)('вход через Telegram', () => {
     expect((await asPhone(res.body.token, 'POST', '/session', {})).body.user.id).toBe(main.id);
     expect((await sb.from('desktop_sessions').select('telegram_id').eq('user_id', main.id)).data).toEqual([{ telegram_id: alias }]);
     expect((await sb.from('users').select('id').eq('id', alias)).data).toEqual([]);
+  });
+
+  it('aud числом (client_id у Telegram — число) тоже наш бот', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    expect((await signIn({ id_token: await idToken({ id, aud: Number(BOT_ID) }), device: 'ios' })).status).toBe(200);
+  });
+
+  it('один id_token — один вход: повтор того же токена — 409 token_used, второго ключа нет', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    const token = await idToken({ id });
+    expect((await signIn({ id_token: token, device: 'ios' })).status).toBe(200);
+    expect(await signIn({ id_token: token, device: 'android' })).toEqual({ status: 409, body: { error: 'token_used' } });
+    expect((await sb.from('desktop_sessions').select('device').eq('user_id', id)).data).toEqual([{ device: 'ios' }]);
+  });
+
+  it('двойное нажатие: два первых входа нового человека сразу — оба входят, пользователь один', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    const [a, b] = await Promise.all([idToken({ id }), idToken({ id, iat: now() - 1 })]);
+    const [ra, rb] = await Promise.all([signIn({ id_token: a, device: 'ios' }), signIn({ id_token: b, device: 'ios' })]);
+    expect([ra.status, rb.status]).toEqual([200, 200]);
+    expect((await sb.from('users').select('id').eq('id', id)).data).toEqual([{ id }]);
+    expect((await sb.from('desktop_sessions').select('id').eq('user_id', id)).data).toHaveLength(2);
+  });
+
+  it('нет ни имени, ни ника — человек всё равно с именем, а не пустой строкой', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    const token = await idToken({ id, given_name: undefined, family_name: undefined, name: undefined, preferred_username: undefined });
+    expect((await signIn({ id_token: token, device: 'ios' })).status).toBe(200);
+    expect((await sb.from('users').select('first_name').eq('id', id).single()).data).toEqual({ first_name: 'Telegram' });
   });
 
   it('ключ ES256 тоже принимается', async () => {
@@ -217,7 +249,8 @@ describe.skipIf(!ready)('вход через Telegram', () => {
     const stranger = await makeKey('oidc-x');
     const bad = await idToken({ id: freshId() }, stranger);
     expect((await signIn({ id_token: bad, device: 'ios' })).body).toEqual({ error: 'bad_token' });
-    expect((await signIn({ id_token: bad, device: 'ios' })).body).toEqual({ error: 'bad_token' });
+    // Минуту после промаха — «повторите позже» без похода к Telegram: вдруг это новый ключ, а не подделка.
+    expect((await signIn({ id_token: bad, device: 'ios' })).body).toEqual({ error: 'telegram_unreachable' });
     expect(keyFetches()).toBe(1);
   });
 
@@ -254,6 +287,9 @@ describe.skipIf(!ready)('вход через Telegram', () => {
       ['id не число', await idToken({ id: 'abc' })],
       ['id дробный', await idToken({ id: 1.5 })],
       ['из будущего', await idToken({ id, iat: now() + 600 })],
+      ['без exp', await idToken({ id, exp: undefined })],
+      ['без iat', await idToken({ id, iat: undefined })],
+      ['заголовок не объект', `${b64u('null')}.${p}.${s}`],
       ['две части', `${h}.${p}`],
       ['не base64', `@@@.${p}.${s}`],
       ['не JSON', `${b64u('не json')}.${p}.${s}`],
@@ -299,6 +335,81 @@ describe.skipIf(!ready)('вход через Telegram', () => {
     expect(res.status).toBe(200);
     expect((await asPhone(res.body.token, 'GET', '/today')).status).toBe(200);
     expect(errors).toHaveBeenCalledWith('desktop sign-in notice failed', id, id, expect.anything());
+  });
+});
+
+describe.skipIf(!ready)('вход через Telegram: ключи Telegram со временем', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('незнакомый kid после промаха: минуту — «повторите позже» (502), без похода к Telegram; потом ключи перечитываются', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.now();
+    const stranger = await makeKey('oidc-x');
+    expect((await signIn({ id_token: await idToken({ id: freshId() }, stranger), device: 'ios' })).body).toEqual({ error: 'bad_token' });
+    // Telegram опубликовал новый ключ.
+    const next = await makeKey('oidc-4');
+    net.routes = [];
+    serveKeys(rsa, next);
+    vi.setSystemTime(start + 30_000);
+    expect(await signIn({ id_token: await idToken({ id }, next), device: 'ios' })).toEqual({ status: 502, body: { error: 'telegram_unreachable' } });
+    expect(keyFetches()).toBe(1);
+    vi.setSystemTime(start + 61_000);
+    expect((await signIn({ id_token: await idToken({ id }, next), device: 'ios' })).status).toBe(200);
+    expect(keyFetches()).toBe(2);
+  });
+
+  it('ключи помнятся час: потом перечитываются, и отозванный Telegram ключ больше не принимается', async () => {
+    const a = freshId();
+    madeHere.push(a);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.now();
+    expect((await signIn({ id_token: await idToken({ id: a }), device: 'ios' })).status).toBe(200);
+    net.routes = [];
+    serveKeys(ec);
+    vi.setSystemTime(start + 61 * 60_000);
+    expect(await signIn({ id_token: await idToken({ id: freshId() }), device: 'ios' })).toEqual({ status: 401, body: { error: 'bad_token' } });
+    expect(keyFetches()).toBe(2);
+  });
+
+  it('ключи устарели, а Telegram не отвечает — проверяем старыми ключами; новые попытки скачать — не чаще раза в 30 секунд', async () => {
+    const a = freshId();
+    const b = freshId();
+    madeHere.push(a, b);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = Date.now();
+    expect((await signIn({ id_token: await idToken({ id: a }), device: 'ios' })).status).toBe(200);
+    net.routes = [];
+    net.on(JWKS_URL, () => new Response('down', { status: 503 }));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.setSystemTime(start + 61 * 60_000);
+    expect((await signIn({ id_token: await idToken({ id: b }), device: 'ios' })).status).toBe(200);
+    expect(keyFetches()).toBe(2);
+    // Незнакомый kid сразу после сбоя — к Telegram не идём.
+    const stranger = await makeKey('oidc-y');
+    expect(await signIn({ id_token: await idToken({ id: freshId() }, stranger), device: 'ios' })).toEqual({ status: 502, body: { error: 'telegram_unreachable' } });
+    expect(keyFetches()).toBe(2);
+  });
+
+  it('Telegram завис — через 4 секунды 502, а не вечное ожидание', async () => {
+    net.routes = [];
+    net.on(JWKS_URL, (req) => new Promise<Response>((_, reject) => req.signal.addEventListener('abort', () => reject(req.signal.reason))));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const t0 = performance.now();
+    expect(await signIn({ id_token: await idToken({ id: freshId() }), device: 'ios' })).toEqual({ status: 502, body: { error: 'telegram_unreachable' } });
+    expect(performance.now() - t0).toBeLessThan(8_000);
+    expect(errors).toHaveBeenCalledWith('telegram jwks fetch failed', expect.anything());
+  }, 15_000);
+
+  it('ключ Telegram не импортируется — это сбой на нашей стороне или у Telegram: 502 и в лог, а не «неверный токен»', async () => {
+    net.routes = [];
+    net.on(JWKS_URL, () => Response.json({ keys: [{ kty: 'RSA', kid: 'oidc-1', alg: 'RS256', e: 'AQAB' }] }));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await signIn({ id_token: await idToken({ id: freshId() }), device: 'ios' })).toEqual({ status: 502, body: { error: 'telegram_unreachable' } });
+    expect(errors).toHaveBeenCalledWith('telegram jwk import failed', 'oidc-1', 'RS256', expect.anything());
   });
 });
 

@@ -57,12 +57,12 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   const [blockedOpen, setBlockedOpen] = useState(false);
   // Сервер не разблокировал — человек возвращается в список, в шторке строка ошибки.
   const [unblockError, setUnblockError] = useState(false);
-  // Устройства, где вошли (приложение для Mac, браузер): строка видна в Telegram, только если такие есть.
+  // Устройства, где вошли (Mac, браузер, приложения на телефоне): строка видна в Telegram, только если такие есть.
   const desktop = isDesktop();
-  const [computers, setComputers] = useState<DesktopSession[]>([]);
+  const [devices, setDevices] = useState<DesktopSession[]>([]);
   useEffect(() => {
-    // Не загрузилось — строки нет, как и без компьютеров; в консоль — чтобы сбой был виден.
-    if (!desktop) api.desktopSessions().then(setComputers, (e: unknown) => console.warn('desktop sessions failed', e));
+    // Не загрузилось — строки нет, как и без устройств; в консоль — чтобы сбой был виден.
+    if (!desktop) api.desktopSessions().then(setDevices, (e: unknown) => console.warn('desktop sessions failed', e));
   }, [desktop]);
   useEffect(() => {
     api.blocks().then(setBlocked, () => {});
@@ -102,7 +102,7 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
     if (answer !== 'out') return;
     try {
       await api.logoutEverywhere();
-      setComputers([]);
+      setDevices([]);
     } catch {
       setError(true);
     }
@@ -267,10 +267,10 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
             <Chevron />
           </button>
         )}
-        {computers.length > 0 && (
+        {devices.length > 0 && (
           <button className="row" onClick={() => void logoutEverywhere()}>
-            <span className="label">{t.desktop.computers}</span>
-            <span className="value">{t.num(computers.length)}</span>
+            <span className="label">{t.desktop.devices}</span>
+            <span className="value">{t.num(devices.length)}</span>
             <Chevron />
           </button>
         )}

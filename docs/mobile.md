@@ -58,9 +58,10 @@
    - Пользователь берётся по `id` из токена (это id Telegram, тот же, что в initData). Если такого нет, он заводится
      из профиля Telegram, язык — `language` телефона (`ru…` → ru, иначе en).
    - Бот пишет человеку: «Вход в LifeCommit на iPhone / на Android / на Mac».
+   - Один id_token — один вход: тот же токен второй раз — 409 `token_used` (войти заново).
    - Ошибки: 400 `bad_request` (не тот запрос, устройство не из списка); 401 `bad_token` (подпись, издатель,
-     получатель, нет `id`); 401 `token_expired` (войти заново); 502 `telegram_unreachable` (ключи Telegram не
-     скачались, повторить позже).
+     получатель, нет `id`); 401 `token_expired` (войти заново); 409 `token_used`; 502 `telegram_unreachable`
+     (ключи Telegram не получить или незнакомый ключ сразу после промаха — повторить через минуту).
 4. Дальше все запросы идут с заголовком `Authorization: Bearer <token>`.
    - Ключ хранить в Keychain (iOS/Mac) или в хранилище с ключом из Android Keystore (DataStore + Tink).
      `EncryptedSharedPreferences` устарело.
@@ -69,6 +70,13 @@
      `apple_auth` у календаря) — это ошибка дела, а не выход.
    - Выйти на этом устройстве: `DELETE /api/desktop/session`. Список устройств: `GET /api/desktop/sessions`
      (`device`: mac, web, ios, android).
+
+**Адрес возврата и безопасность (ревью 05.10.2026).** Свою схему (`lifecommit://`) может объявить любое приложение на
+телефоне или Mac. Приложение-подделка начнёт вход с нашим `client_id`, человек увидит в Telegram «LifeCommit» и
+подтвердит — код уйдёт подделке, она обменяет его своим PKCE и получит наш ключ сессии (RFC 8252 §8.6; PKCE и nonce
+от этого не спасают). Поэтому своя схема — **только пока приложение не раздаётся людям**; перед выпуском — только
+https-адрес Telegram `https://app<id>-login.tg.dev` (universal link на iOS/Mac, проверенный App Link на Android:
+Telegram привязывает его к Team ID / подписи пакета), а `lifecommit://tglogin` — убрать из Allowed URLs.
 
 **Что нужно от владелицы** (без этого вход в проде не заработает):
 - @BotFather → бот → **Login Widget**. В Allowed URLs добавить `lifecommit://tglogin`. Для iOS — Bundle ID

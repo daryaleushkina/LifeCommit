@@ -407,3 +407,27 @@ app.lifecommit.mac url`); там же включается Safari → «Разр
   в «Загрузки».
 - Нет QR-кода для входа с телефона: ссылка открывает Telegram на этом же Маке, а если его нет — t.me в браузере.
 - Окно — шириной с телефон (до 640 px): широкой раскладки нет. Уведомлений macOS нет — напоминания приходят от бота.
+
+
+## Нативные приложения: iOS, Mac, Android (05.10.2026)
+
+Просьба владелицы: приложения для iOS и Android на родных языках (без React Native), Android — в параллельной сессии;
+каждая фича — сразу во всех клиентах. Решения допроса, вход и контракт API — `docs/mobile.md`; что где уже есть —
+`docs/parity.md`; правило — раздел «Платформы» в `CLAUDE.md`. Скиллы для Swift/SwiftUI и Kotlin/Compose — в
+`.claude/skills/` (список и грабли — `.claude/skills/README.md`), плагин expo удалён из `~/.claude`.
+
+**Вход (сервер готов, `worker/telegramLogin.ts`):** официальный вход Telegram (OpenID Connect). Приложение присылает
+id_token, Worker проверяет подпись ключами Telegram и выдаёт тот же ключ сессии, что компьютеру. **Новые публичные пути
+(без подписи Telegram):** `POST /api/auth/telegram` и `GET /api/auth/telegram/config` — вместе с `/api/desktop/login*`
+это все анонимные пути `/api`. Один id_token — один вход (таблица `auth_token_uses`, миграция
+`20261005000002_native_sessions.sql`; там же `desktop_sessions.device` += ios, android). В профиле мини-аппа строка
+«Компьютеры» стала «Устройства».
+
+**Решение по безопасности (ревью 05.10.2026, выбор владелицы):** пока приложение не раздаётся людям, Telegram
+возвращает в него по своей схеме `lifecommit://tglogin` (её надо внести в @BotFather → Login Widget → Allowed URLs).
+Перед TestFlight / Google Play — только https-адрес Telegram (universal link, нужен платный аккаунт Apple), схему из
+BotFather убрать: иначе приложение-подделка может получить вход от имени человека.
+
+**Ждёт владелицу:** @BotFather → Login Widget: Allowed URLs `lifecommit://tglogin`, Bundle ID `app.lifecommit` и Team ID
+(Xcode → Settings → Accounts) — без этого вход в нативных приложениях на проде не заработает (на локальном стенде есть
+подменённый вход). Проверить на живом аккаунте, что `id` в id_token совпадает с id из initData.
