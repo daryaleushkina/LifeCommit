@@ -121,10 +121,16 @@ class ScreensTest(private val theme: String) : AppTest() {
         )
     }
 
+    /** Открыть «Календарь» и дождаться календарей: баннер «Подключите» появляется после ответа и сдвигает экран. */
+    private fun openCalendar() {
+        compose.waitText(t.calendar).performClick()
+        compose.waitFor { model.calendar.accounts != null && model.calendar.todos != null }
+    }
+
     @Test fun calendar() {
         seedCalendar()
         start()
-        compose.waitText(t.calendar).performClick()
+        openCalendar()
         compose.waitText("Созвон с командой")
         shot("calendar-day")
         compose.waitText(t.month).performClick()
@@ -135,7 +141,7 @@ class ScreensTest(private val theme: String) : AppTest() {
     @Test fun todoSheets() {
         seedCalendar()
         start()
-        compose.waitText(t.calendar).performClick()
+        openCalendar()
         compose.waitText("Созвон с командой").performClick()
         compose.waitText(t.todo.join)
         shot("sheet-event")
@@ -152,7 +158,7 @@ class ScreensTest(private val theme: String) : AppTest() {
         server.accounts = listOf(app.lifecommit.core.CalendarAccount(8, app.lifecommit.core.TodoSource.Apple, "d@icloud.com", "ok", synced, "home",
             listOf(app.lifecommit.core.CalendarCollection("home", "Дом", "#3FA968", true, true), app.lifecommit.core.CalendarCollection("work", "Работа", "#4470CC", false, true))))
         start()
-        compose.waitText(t.calendar).performClick()
+        openCalendar()
         compose.waitLabel(t.cal.sheetTitle).performClick()
         compose.waitText(t.cal.whatToTake.uppercase())
         shot("sheet-calendars")
@@ -161,7 +167,7 @@ class ScreensTest(private val theme: String) : AppTest() {
     @Test fun appleForm() {
         seed()
         start()
-        compose.waitText(t.calendar).performClick()
+        openCalendar()
         compose.waitText(t.cal.connect).performClick()
         compose.onNodeWithTag("connectApple").performClick()
         compose.waitText(t.cal.appleTitle)

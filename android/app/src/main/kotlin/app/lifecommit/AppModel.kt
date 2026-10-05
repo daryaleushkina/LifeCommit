@@ -159,6 +159,7 @@ class AppModel(
     /** Вкладка «Календарь»: дни, дела, подключённые календари (CalendarModel). */
     val calendar = CalendarModel(
         api = api,
+        prefs = prefs,
         scope = scope,
         today = { today.day },
         onChanged = { refresh() },

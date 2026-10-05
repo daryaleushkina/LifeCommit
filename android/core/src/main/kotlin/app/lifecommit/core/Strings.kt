@@ -216,6 +216,8 @@ class Strings private constructor(
         val noCalendars: String,
         /** Возврат после входа Google с ошибкой: denied, expired, failed → заголовок и пояснение (worker/google.ts TEXT). */
         val googleReturn: Map<String, Pair<String, String>>,
+        /** Код возврата Google чужой, использованный или старше 15 минут (404, 410 у /calendars/google/finish). */
+        val googleLinkExpired: String,
     )
 
     class SwipeStrings(val remove: String, val undo: String, val removed: (String) -> String, val hide: String, val hidden: (String) -> String)
@@ -464,6 +466,7 @@ class Strings private constructor(
                         "expired" to ("Ссылка устарела" to "Откройте LifeCommit и нажмите «Подключить» ещё раз."),
                         "failed" to ("Не получилось подключить" to "Google не ответил как надо. Попробуйте ещё раз чуть позже."),
                     ),
+                    googleLinkExpired = "Ссылка устарела — нажмите «Подключить» ещё раз.",
                 ),
             )
         }
@@ -653,6 +656,7 @@ class Strings private constructor(
                         "expired" to ("This link has expired" to "Open LifeCommit and tap “Connect” again."),
                         "failed" to ("Couldn’t connect" to "Google didn’t respond as expected. Please try again a bit later."),
                     ),
+                    googleLinkExpired = "This link has expired — tap “Connect” again.",
                 ),
             )
         }
