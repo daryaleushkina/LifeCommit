@@ -27,6 +27,7 @@ final class FakeServer: Sendable {
         let method: String
         /// Путь без /api: "today", "todos/5".
         let path: String
+        var query: [String: String] = [:]
         let body: Data
 
         var key: String { "\(method) \(path)" }
@@ -49,6 +50,14 @@ final class FakeServer: Sendable {
     private let failures = Mutex<[String: (status: Int, code: String, left: Int)]>([:])
     /// История привычек для GET tasks/:id/history.
     let histories = Mutex<[Int: TaskHistory]>([:])
+    /// Дела для GET calendar (по from…to); nil — путь не отвечает (404).
+    let calendar = Mutex<[Todo]?>(nil)
+    /// Подключённые календари для GET calendars; nil — 404.
+    let accounts = Mutex<[CalendarAccount]?>(nil)
+    /// «Потом» для GET todos/later; nil — 404.
+    let later = Mutex<[Todo]?>(nil)
+    /// Заготовленные ответы по ключу запроса («POST calendars/google/finish»).
+    private let canned = Mutex<[String: (Int, Data)]>([:])
 
     init(today: TodayResponse, user: UserSettings = UserSettings(id: 777, firstName: "Даша")) {
         state = Mutex(today)
@@ -78,6 +87,12 @@ final class FakeServer: Sendable {
     /// status 0 — нет связи.
     func fail(_ key: String, status: Int = 500, code: String = "internal", times: Int = 1) {
         failures.withLock { $0[key] = (status, code, times) }
+    }
+
+    /// На запрос `key` отвечать так (пока не заготовят другое).
+    func answer(_ key: String, _ status: Int, _ object: [String: Any]) {
+        let data = try! JSONSerialization.data(withJSONObject: object)
+        canned.withLock { $0[key] = (status, data) }
     }
 
     /// Дождаться, пока придёт `times`-й запрос `key` (сам ответ может быть придержан).
@@ -129,9 +144,37 @@ final class FakeServer: Sendable {
     }
 
     private func handle(_ call: Call) -> (Int, Data) {
+        if let answer = canned.withLock({ $0[call.key] }) { return answer }
         let parts = call.path.split(separator: "/").map(String.init)
         let body = call.json
         switch (call.method, parts.first ?? "", parts.count) {
+        case ("GET", "calendar", 1):
+            guard let list = calendar.withLock({ $0 }) else { return Self.json(404, ["error": "not_found"]) }
+            let from = call.query["from"] ?? "", to = call.query["to"] ?? ""
+            return (200, try! Self.encoder.encode(CalendarRange(today: today.day, todos: list.filter { $0.day >= from && $0.day <= to })))
+        case ("GET", "calendars", 1):
+            guard let list = accounts.withLock({ $0 }) else { return Self.json(404, ["error": "not_found"]) }
+            return (200, try! Self.encoder.encode(list))
+        case ("POST", "calendars", 2) where parts[1] == "sync":
+            return Self.json(200, ["ok": true])
+        case ("PATCH", "calendars", 3) where parts[2] == "collections":
+            let id = Int(parts[1]) ?? 0
+            accounts.withLock { list in
+                list = list?.map { a in
+                    guard a.id == id else { return a }
+                    var next = a
+                    next.collections = a.collections.map { c in
+                        var col = c
+                        if c.url == body["url"] as? String, let on = body["enabled"] as? Bool { col.enabled = on }
+                        return col
+                    }
+                    return next
+                }
+            }
+            return Self.json(200, ["ok": true])
+        case ("GET", "todos", 2) where parts[1] == "later":
+            guard let list = later.withLock({ $0 }) else { return Self.json(404, ["error": "not_found"]) }
+            return (200, try! Self.encoder.encode(list))
         case ("POST", "session", 1):
             let user = try! JSONSerialization.jsonObject(with: Self.encoder.encode(self.user))
             return Self.json(200, ["user": user, "is_new": false])
@@ -145,17 +188,31 @@ final class FakeServer: Sendable {
                 n += 1
                 return n
             }
-            state.withLock { $0.todos.append(Todo(id: id, title: body["title"] as? String ?? "", day: $0.day)) }
+            let today = self.today.day
+            let todo = Todo(id: id, title: body["title"] as? String ?? "", day: body["day"] as? String ?? today)
+            if todo.day == today { state.withLock { $0.todos.append(todo) } }
+            calendar.withLock { $0 = $0.map { $0 + [todo] } }
             return Self.json(200, ["id": id])
         case ("PATCH", "todos", 2):
             let id = Int(parts[1]) ?? 0
-            state.withLock { s in
-                if body["hidden"] as? Bool == true { s.todos.removeAll { $0.id == id } }
-                if let done = body["done"] as? Bool, let i = s.todos.firstIndex(where: { $0.id == id }) { s.todos[i].done = done }
+            let edit = { (list: [Todo]) -> [Todo] in
+                if body["hidden"] as? Bool == true { return list.filter { $0.id != id } }
+                return list.map { d in
+                    guard d.id == id else { return d }
+                    var t = d
+                    if let done = body["done"] as? Bool { t.done = done }
+                    if let title = body["title"] as? String { t.title = title }
+                    if let day = body["day"] as? String { t.day = day }
+                    if body.keys.contains("time") { t.time = body["time"] as? String }
+                    return t
+                }
             }
+            state.withLock { $0.todos = edit($0.todos) }
+            calendar.withLock { $0 = $0.map(edit) }
             return Self.json(200, [:])
         case ("DELETE", "todos", 2):
             state.withLock { s in s.todos.removeAll { $0.id == Int(parts[1]) } }
+            calendar.withLock { $0 = $0?.filter { $0.id != Int(parts[1]) } }
             return Self.json(200, [:])
         case ("PUT", "logs", 1):
             state.withLock { s in
@@ -206,7 +263,8 @@ final class FakeProtocol: URLProtocol, @unchecked Sendable {
             stream.close()
         }
         let path = url.path.hasPrefix("/api/") ? String(url.path.dropFirst(5)) : url.path
-        let call = FakeServer.Call(method: request.httpMethod ?? "GET", path: path, body: body)
+        let query = (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).reduce(into: [String: String]()) { $0[$1.name] = $1.value ?? "" }
+        let call = FakeServer.Call(method: request.httpMethod ?? "GET", path: path, query: query, body: body)
         Task {
             let (status, data) = await server.respond(call)
             if status == 0 {

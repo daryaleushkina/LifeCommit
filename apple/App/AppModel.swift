@@ -107,6 +107,8 @@ final class AppModel {
             }
             onboarding = fresh.isEmpty && !onboardingSkipped
             phase = .ready
+            // Календари телефона подтягиваем в фоне при каждом входе — не задерживая экран (как App.tsx).
+            Task { await afterLoad() }
         } catch let error as APIError where error.isSignedOut {
             signOutLocally()
         } catch {
@@ -173,6 +175,14 @@ final class AppModel {
         api.setCredential(nil)
         user = nil
         today = TodayResponse(day: "")
+        // Календарь прошлого человека — забыть (дни, подключения, «Потом»).
+        ranges = [:]
+        shownRange = nil
+        accounts = nil
+        later = nil
+        calendarNotice = nil
+        calendarsSheetOpen = false
+        deferredGoogle = nil
         path = []
         tab = .today
         phase = .signedOut
@@ -306,15 +316,18 @@ final class AppModel {
         }
     }
 
-    /// Новое дело появляется сразу (временный отрицательный id), настоящий id приходит с сервера.
-    func addTodo(_ title: String) async {
+    /// Новое дело появляется сразу (временный отрицательный id), настоящий id приходит с сервера. day — во вкладке
+    /// «Календарь» выбранный день; без него — сегодня.
+    func addTodo(_ title: String, day chosen: String? = nil) async {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let temp = Todo(id: -Int(Date().timeIntervalSince1970 * 1000), title: trimmed, day: today.day)
-        patchTodos { $0 + [temp] }
-        let day = today.day
+        let day = chosen ?? today.day
+        let temp = Todo(id: -Int(Date().timeIntervalSince1970 * 1000), title: trimmed, day: day)
+        insertTodo(temp)
         do {
             let id = try await track { try await api.createTodo(title: trimmed, day: day) }
+            // Дело на другой день — на «Сегодня» меняется «Потом · N».
+            if day != today.day { Task { await refresh() } }
             patchTodos { list in list.map { $0.id == temp.id ? Self.with($0, id: id) : $0 } }
         } catch {
             patchTodos { list in list.filter { $0.id != temp.id } }
@@ -322,8 +335,46 @@ final class AppModel {
         }
     }
 
+    /// Правка дел на экране — сразу везде, где дело видно: «Сегодня» и дни календаря.
     private func patchTodos(_ transform: ([Todo]) -> [Todo]) {
         today.todos = Todos.sorted(transform(today.todos))
+        for key in ranges.keys { ranges[key] = transform(ranges[key] ?? []) }
+    }
+
+    /// Новое дело — на «Сегодня», если оно на сегодня, и в дни календаря, куда попадает его день.
+    private func insertTodo(_ todo: Todo) {
+        if todo.day == today.day { today.todos = Todos.sorted(today.todos + [todo]) }
+        for key in ranges.keys {
+            let bounds = key.split(separator: ":").map(String.init)
+            if bounds.count == 2, todo.day >= bounds[0], todo.day <= bounds[1] { ranges[key]?.append(todo) }
+        }
+    }
+
+    /// Правка из шторки дела: на экране сразу (название, время, место), на сервер — только изменённое; потом «Сегодня»
+    /// и дни перечитываются (день мог смениться). Не сохранилось — плашка, перечитанный экран покажет, как было.
+    func updateTodo(_ todo: Todo, _ edit: TodoEdit) async {
+        let patch = edit.patch(for: todo)
+        guard !patch.isEmpty else { return }
+        patchTodos { list in list.map { $0.id == todo.id ? Self.edited($0, edit) : $0 } }
+        do {
+            try await track { try await api.updateTodo(id: todo.id, patch) }
+        } catch {
+            fail(error)
+        }
+        await refresh()
+        await reloadCalendar()
+    }
+
+    private static func edited(_ todo: Todo, _ edit: TodoEdit) -> Todo {
+        var t = todo
+        t.title = edit.title
+        t.time = edit.time
+        if let location = edit.location {
+            var details = t.details ?? TodoDetails()
+            details.location = location.isEmpty ? nil : location
+            t.details = details
+        }
+        return t
     }
 
     private static func with(_ todo: Todo, done: Bool) -> Todo {
@@ -400,9 +451,11 @@ final class AppModel {
                 try await self?.track(commit)
             } catch {
                 await self?.refresh()
+                await self?.reloadCalendar()
                 throw error
             }
             await self?.refresh()
+            await self?.reloadCalendar()
         }
     }
 
@@ -424,6 +477,242 @@ final class AppModel {
         removeWithUndo(key: "todo:\(todo.id)", text: strings.swipe.hidden(todo.title), commit: commitThenRefresh { [api] in
             try await api.updateTodo(id: todo.id, ["hidden": .bool(true)])
         })
+    }
+
+    // MARK: Календарь (вкладка «Календарь», шторка «Календари», «Потом»)
+
+    /// Дела по промежуткам дней «from:to» (как caches.days мини-аппа): уже виденное открывается сразу.
+    private(set) var ranges: [String: [Todo]] = [:]
+    /// Промежуток на экране вкладки — его перечитываем после правок и синхронизации.
+    private var shownRange: (from: String, to: String)?
+    /// Подключённые календари; nil — ещё не знаем (не пишем «не подключено» — это было бы неправдой).
+    private(set) var accounts: [CalendarAccount]?
+    /// «Потом» — дела на следующие дни; грузится, когда открыли.
+    private(set) var later: [Todo]?
+    private(set) var calendarSyncing = false
+    /// Попросили обновить, пока шло обновление, — после него ещё раз (иначе просьба терялась).
+    private var syncAgain = false
+    var calendarsSheetOpen = false
+    /// Строка в шторке «Календари»: возврат из Google не удался, не сохранилось.
+    var calendarNotice: String?
+    /// На сервере не настроен Google — «Скоро».
+    var googleUnavailable = false
+    /// Возврат из Google пришёл, пока приложение ещё загружалось (ключа нет) — разберём после загрузки.
+    private var deferredGoogle: GoogleReturn?
+
+    private static func rangeKey(_ from: String, _ to: String) -> String { "\(from):\(to)" }
+
+    func calendarTodos(from: String, to: String) -> [Todo]? { ranges[Self.rangeKey(from, to)] }
+
+    /// Вкладка показывает этот промежуток: из памяти сразу, свежий — с сервера.
+    func showRange(from: String, to: String) async {
+        shownRange = (from, to)
+        await loadRange(from: from, to: to)
+    }
+
+    /// Соседние дни и месяц — заранее, если их ещё нет.
+    func prefetchRange(from: String, to: String) async {
+        guard ranges[Self.rangeKey(from, to)] == nil else { return }
+        await loadRange(from: from, to: to)
+    }
+
+    /// Свежие дела промежутка — как load.range в caches.ts: правка ещё у сервера — дождаться; за время ответа что-то
+    /// поменялось — спросить ещё раз (до 4 раз), иначе ответ без правки лёг бы поверх неё.
+    func loadRange(from: String, to: String) async {
+        do {
+            for _ in 0..<4 {
+                let seq = change
+                let fresh = try await api.calendar(from: from, to: to)
+                await settleEdits()
+                if seq == change {
+                    ranges[Self.rangeKey(from, to)] = fresh.todos
+                    return
+                }
+            }
+            modelLog.notice("calendar \(from, privacy: .public)…\(to, privacy: .public) kept changing while reading")
+        } catch let error as APIError where error.isSignedOut {
+            signOutLocally()
+        } catch {
+            modelLog.notice("calendar \(from, privacy: .public)…\(to, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// После правки дел: виденные промежутки устарели — на экране перечитываем сразу, остальные — когда откроют.
+    private func reloadCalendar() async {
+        guard let shown = shownRange else {
+            ranges = [:]
+            return
+        }
+        ranges = ranges.filter { $0.key == Self.rangeKey(shown.from, shown.to) }
+        await loadRange(from: shown.from, to: shown.to)
+        if later != nil { await loadLater() }
+    }
+
+    func loadAccounts() async {
+        do {
+            accounts = try await api.calendars()
+        } catch let error as APIError where error.isSignedOut {
+            signOutLocally()
+        } catch {
+            modelLog.notice("calendars failed: \(String(describing: error), privacy: .public)")
+            // Не загрузились — показываем как неподключённые (CalendarsSheet.tsx), но не затираем известное.
+            if accounts == nil { accounts = [] }
+        }
+    }
+
+    func loadLater() async {
+        do {
+            later = try await api.laterTodos()
+        } catch {
+            modelLog.notice("later failed: \(String(describing: error), privacy: .public)")
+            if later == nil { later = [] }
+        }
+    }
+
+    /// «Обновить» (и при запуске): забрать события из календарей, перечитать календари, дни и «Сегодня».
+    func syncCalendars() async {
+        if calendarSyncing {
+            syncAgain = true
+            return
+        }
+        calendarSyncing = true
+        defer { calendarSyncing = false }
+        repeat {
+            syncAgain = false
+            do {
+                try await api.syncCalendars()
+            } catch {
+                // Не синхронизировалось — состояние подключения покажут календари (auth_failed, error), не плашка.
+                modelLog.notice("calendar sync failed: \(String(describing: error), privacy: .public)")
+            }
+            await loadAccounts()
+            change += 1
+            await reloadCalendar()
+            await refresh()
+        } while syncAgain
+    }
+
+    // MARK: Шторка «Календари»
+
+    /// Включить или выключить календарь: на экране сразу, сервер догоняет; не сохранил — как было и строка ошибки.
+    func toggleCollection(_ account: CalendarAccount, url: String, enabled: Bool) async {
+        setCollection(account.id, url: url, enabled: enabled)
+        do {
+            try await api.toggleCollection(accountId: account.id, url: url, enabled: enabled)
+        } catch {
+            setCollection(account.id, url: url, enabled: !enabled)
+            fail(error, notice: strings.error)
+            return
+        }
+        // Выбор у подключения в работе — события поменялись (у «setup» — ещё нет, их заберёт «Готово»).
+        if account.status != .setup { await syncCalendars() }
+    }
+
+    private func setCollection(_ id: Int, url: String, enabled: Bool) {
+        accounts = accounts?.map { a in
+            guard a.id == id else { return a }
+            var next = a
+            next.collections = a.collections.map { c in
+                var col = c
+                if c.url == url { col.enabled = enabled }
+                return col
+            }
+            return next
+        }
+    }
+
+    /// Куда писать наши дела: сразу, сервер догоняет; не сохранил — как было.
+    func setDestination(_ account: CalendarAccount, url: String) async {
+        let before = account.defaultUrl
+        setDefault(account.id, url)
+        do {
+            try await api.setDefaultCalendar(accountId: account.id, url: url)
+        } catch {
+            setDefault(account.id, before)
+            fail(error, notice: strings.error)
+            return
+        }
+        await syncCalendars()
+    }
+
+    private func setDefault(_ id: Int, _ url: String?) {
+        accounts = accounts?.map { a in
+            guard a.id == id else { return a }
+            var next = a
+            next.defaultUrl = url
+            return next
+        }
+    }
+
+    func disconnectCalendar(_ provider: CalendarProvider) async {
+        do {
+            try await api.disconnectCalendar(provider)
+        } catch {
+            fail(error, notice: strings.error)
+            return
+        }
+        await syncCalendars()
+    }
+
+    /// Google подключён, календари выбраны — «Готово»: забрать события. false — Google не ответил.
+    func confirmGoogle(_ account: CalendarAccount) async -> Bool {
+        do {
+            try await api.confirmGoogle(accountId: account.id)
+        } catch let error as APIError where error.isSignedOut {
+            signOutLocally()
+            return false
+        } catch {
+            modelLog.error("google confirm failed: \(String(describing: error), privacy: .public)")
+            return false
+        }
+        await syncCalendars()
+        return true
+    }
+
+    /// Apple — паролем приложения. Ошибку отдаёт экрану: «Apple не пустил» и «нет связи» объясняются по-разному.
+    func connectApple(login: String, password: String) async throws {
+        try await api.connectApple(login: login, password: password)
+        await syncCalendars()
+    }
+
+    /// Вернулись из входа Google: ok — закончить подключение своим ключом (сервер примет код только от того, кто начал
+    /// вход), остальное — строкой в шторке. Пришло, пока приложение загружается, — разберём после загрузки.
+    func googleReturned(_ result: GoogleReturn) async {
+        guard phase == .ready else {
+            deferredGoogle = result
+            return
+        }
+        calendarsSheetOpen = true
+        switch result.status {
+        case .denied: calendarNotice = strings.cal.googleDenied
+        case .expired: calendarNotice = strings.cal.googleLinkExpired
+        case .failed: calendarNotice = strings.cal.googleFailed
+        case .ok:
+            guard let pending = result.pending else {
+                calendarNotice = strings.cal.googleFailed
+                return
+            }
+            do {
+                let done = try await api.finishGoogle(pending: pending)
+                calendarNotice = nil
+                await loadAccounts()
+                // Подключён заново — события могли поменяться; новый ждёт выбора календарей.
+                if !done.fresh { await syncCalendars() }
+            } catch let error as APIError where error.code == "pending_not_found" || error.code == "pending_expired" {
+                calendarNotice = strings.cal.googleLinkExpired
+            } catch {
+                fail(error, notice: strings.cal.errGoogle)
+            }
+        }
+    }
+
+    /// После загрузки: отложенный возврат из Google и синхронизация календарей в фоне (как при каждом входе в мини-апп).
+    private func afterLoad() async {
+        if let deferred = deferredGoogle {
+            deferredGoogle = nil
+            await googleReturned(deferred)
+        }
+        await syncCalendars()
     }
 
     // MARK: Экран привычки
@@ -536,9 +825,26 @@ final class AppModel {
     func setHistoryForTests(_ id: Int, _ history: TaskHistory) {
         histories[id] = history
     }
+
+    /// Календарь без сети — для снимков: дни (from, to, дела), подключения, «Потом».
+    func setCalendarForTests(ranges: [(String, String, [Todo])] = [], accounts: [CalendarAccount]? = nil, later: [Todo]? = nil) {
+        for (from, to, todos) in ranges { self.ranges[Self.rangeKey(from, to)] = todos }
+        if let accounts { self.accounts = accounts }
+        if let later { self.later = later }
+    }
     #endif
 
     // MARK: Ошибки
+
+    /// Не вышло в шторке «Календари»: ключ больше не пускает — на вход; иначе — строка в шторке.
+    func fail(_ error: Error, notice: String) {
+        if let api = error as? APIError, api.isSignedOut {
+            signOutLocally()
+            return
+        }
+        modelLog.error("calendar action failed: \(String(describing: error), privacy: .public)")
+        calendarNotice = notice
+    }
 
     /// Действие не вышло: ключ больше не пускает — на вход; иначе — плашка ошибки.
     func fail(_ error: Error) {

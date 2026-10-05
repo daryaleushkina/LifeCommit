@@ -250,6 +250,152 @@ struct AppModelFailureTests {
     }
 }
 
+/// Вкладка «Календарь» и шторка «Календари» против подменённого сервера: дни, правки дел, синхронизация, подключения.
+@MainActor
+@Suite("Модель: календарь", .timeLimit(.minutes(1)))
+struct CalendarModelTests {
+    static let day = AppModelTests.day
+    static let tomorrow = "2026-10-06"
+
+    func model(_ server: FakeServer) -> AppModel {
+        let m = AppModel(api: server.api, tokens: MemoryTokenStore("key"))
+        m.showForTests(user: server.user, today: server.today)
+        return m
+    }
+
+    @Test("день на экране: дела промежутка с сервера; дело на завтра — в календаре, не на «Сегодня»")
+    func showRangeAndAddTomorrow() async {
+        let server = FakeServer(today: AppModelTests.today())
+        server.calendar.withLock { $0 = [Todo(id: 40, title: "Созвон", day: Self.tomorrow, time: "10:00", source: .google)] }
+        let m = model(server)
+        await m.showRange(from: Self.tomorrow, to: Self.tomorrow)
+        #expect(m.calendarTodos(from: Self.tomorrow, to: Self.tomorrow)?.map(\.title) == ["Созвон"])
+        await m.addTodo("Забрать посылку", day: Self.tomorrow)
+        #expect(server.calls("POST todos").first?.json["day"] as? String == Self.tomorrow)
+        #expect(m.today.todos.isEmpty)
+        #expect(m.calendarTodos(from: Self.tomorrow, to: Self.tomorrow)?.map(\.title).sorted() == ["Забрать посылку", "Созвон"])
+    }
+
+    @Test("ответ дней, начатый до отметки, не затирает её — спрашиваем заново")
+    func rangeRaceWithToggle() async {
+        let todo = Todo(id: 5, title: "Купить хлеб", day: Self.day)
+        let server = FakeServer(today: AppModelTests.today(todos: [todo]))
+        server.calendar.withLock { $0 = [todo] }
+        let m = model(server)
+        await m.showRange(from: Self.day, to: Self.day)
+        let gate = server.hold("GET calendar")
+        let loading = Task { await m.showRange(from: Self.day, to: Self.day) }
+        await server.seen("GET calendar", times: 2)
+        await m.toggle(todo)
+        await gate.open()
+        await loading.value
+        #expect(m.calendarTodos(from: Self.day, to: Self.day)?.first?.done == true)
+        #expect(m.today.todos.first?.done == true)
+    }
+
+    @Test("правка дела из шторки: уходит только изменённое, на экране сразу; день и «Сегодня» перечитаны")
+    func updateTodo() async {
+        let todo = Todo(id: 5, title: "Купить хлеб", day: Self.day)
+        let server = FakeServer(today: AppModelTests.today(todos: [todo]))
+        server.calendar.withLock { $0 = [todo] }
+        let m = model(server)
+        await m.showRange(from: Self.day, to: Self.day)
+        await m.updateTodo(todo, TodoEdit(title: "Купить батон", day: Self.day, time: "18:00", location: ""))
+        let patch = server.calls("PATCH todos/5").first?.json
+        #expect(patch?["title"] as? String == "Купить батон")
+        #expect(patch?["time"] as? String == "18:00")
+        #expect(patch?["day"] == nil)
+        #expect(m.today.todos.first?.title == "Купить батон")
+        #expect(m.calendarTodos(from: Self.day, to: Self.day)?.first?.time == "18:00")
+    }
+
+    @Test("правка не сохранилась — плашка, экран перечитан с сервера")
+    func updateTodoFails() async {
+        let todo = Todo(id: 5, title: "Купить хлеб", day: Self.day)
+        let server = FakeServer(today: AppModelTests.today(todos: [todo]))
+        let m = model(server)
+        server.fail("PATCH todos/5")
+        await m.updateTodo(todo, TodoEdit(title: "Купить батон", day: Self.day, time: nil, location: ""))
+        #expect(m.banner == m.strings.error)
+        #expect(m.today.todos.first?.title == "Купить хлеб")
+    }
+
+    @Test("«Обновить» во время обновления не теряется — после первого идёт второе")
+    func syncAgain() async {
+        let server = FakeServer(today: AppModelTests.today())
+        server.accounts.withLock { $0 = [] }
+        let m = model(server)
+        let gate = server.hold("POST calendars/sync")
+        let first = Task { await m.syncCalendars() }
+        await server.seen("POST calendars/sync")
+        await m.syncCalendars()
+        await gate.open()
+        await first.value
+        #expect(server.calls("POST calendars/sync").count == 2)
+        #expect(!m.calendarSyncing)
+    }
+
+    @Test("возврат из Google: код уходит своим ключом, подключённый — в списке; чужой или старый код — «Ссылка устарела»")
+    func googleReturn() async {
+        let code = String(repeating: "A", count: 43)
+        let server = FakeServer(today: AppModelTests.today())
+        server.accounts.withLock { $0 = [] }
+        server.answer("POST calendars/google/finish", 200, ["account_id": 9, "fresh": true])
+        let m = model(server)
+        await m.googleReturned(GoogleReturn(status: .ok, pending: code))
+        #expect(server.calls("POST calendars/google/finish").first?.json["pending"] as? String == code)
+        #expect(m.calendarsSheetOpen)
+        #expect(m.calendarNotice == nil)
+        #expect(server.calls("GET calendars").count == 1)
+
+        server.answer("POST calendars/google/finish", 404, ["error": "pending_not_found"])
+        await m.googleReturned(GoogleReturn(status: .ok, pending: code))
+        #expect(m.calendarNotice == m.strings.cal.googleLinkExpired)
+        await m.googleReturned(GoogleReturn(status: .denied, pending: nil))
+        #expect(m.calendarNotice == m.strings.cal.googleDenied)
+    }
+
+    @Test("возврат из Google пришёл, пока приложение загружается, — разобран после загрузки (ключ уже прочитан)")
+    func googleReturnBeforeLoad() async {
+        let code = String(repeating: "B", count: 43)
+        let server = FakeServer(today: AppModelTests.today())
+        server.accounts.withLock { $0 = [] }
+        server.answer("POST calendars/google/finish", 200, ["account_id": 9, "fresh": true])
+        let m = AppModel(api: server.api, tokens: MemoryTokenStore("key"))
+        await m.googleReturned(GoogleReturn(status: .ok, pending: code))
+        #expect(server.calls("POST calendars/google/finish").isEmpty)
+        await m.start()
+        await server.seen("POST calendars/google/finish")
+        #expect(m.phase == .ready)
+    }
+
+    @Test("Apple: «Что забирать» не сохранилось — переключатель как был, строка ошибки")
+    func toggleCollectionFails() async {
+        let account = CalendarAccount(id: 2, provider: .apple, login: "d@icloud.com", collections: [CalendarCollection(url: "a1", name: "Дом", enabled: true)])
+        let server = FakeServer(today: AppModelTests.today())
+        server.accounts.withLock { $0 = [account] }
+        let m = model(server)
+        await m.loadAccounts()
+        server.fail("PATCH calendars/2/collections")
+        await m.toggleCollection(account, url: "a1", enabled: false)
+        #expect(m.accounts?.first?.collections.first?.enabled == true)
+        #expect(m.calendarNotice == m.strings.error)
+    }
+
+    @Test("вышли — календарь прошлого человека забыт")
+    func signOutClears() async {
+        let server = FakeServer(today: AppModelTests.today())
+        server.calendar.withLock { $0 = [Todo(id: 1, title: "x", day: Self.day)] }
+        server.accounts.withLock { $0 = [CalendarAccount(id: 1, provider: .apple, login: "a@b.c")] }
+        let m = model(server)
+        await m.showRange(from: Self.day, to: Self.day)
+        await m.loadAccounts()
+        m.signOutLocally()
+        #expect(m.calendarTodos(from: Self.day, to: Self.day) == nil)
+        #expect(m.accounts == nil)
+    }
+}
+
 @Suite("Адрес сервера")
 struct ConfigTests {
     @Test("подмена адреса из настроек — только в сборке для разработки: в сборке для людей ключ уходит лишь на прод")

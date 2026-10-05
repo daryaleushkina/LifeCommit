@@ -24,7 +24,7 @@ struct TodayView: View {
                         .accessibilityIdentifier("banner")
                 }
 
-                TodoListView()
+                TodoListView(todos: data.todos, later: data.todosLater, filterable: true) { title in Task { await model.addTodo(title) } }
 
                 SectionLabel(text: t.habits)
                     .padding(.horizontal, 4)
