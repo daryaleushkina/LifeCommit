@@ -41,6 +41,12 @@ class FakeServer {
     /** Задержать ответ GET /today (мс): ответ собран в момент запроса, приходит позже — «устаревший». */
     @Volatile var todayDelayMs = 0L
 
+    /** Задержать PUT /logs (мс) до того, как сервер его применит: отметка «ещё идёт на сервер». */
+    @Volatile var logDelayMs = 0L
+
+    /** Ссылка из /oauth/crossapp (есть приложение Telegram); null — ссылки нет. */
+    @Volatile var crossAppLink: String? = null
+
     /** Дела «на потом» — GET /todos/later. */
     @Volatile var later: List<Todo> = emptyList()
 
@@ -56,7 +62,11 @@ class FakeServer {
 
     fun start(): FakeServer {
         server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse = synchronized(this@FakeServer) { handle(request) }
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                // Медленная отметка: сервер применяет её не сразу (как настоящий, пока идёт запись в базу).
+                if (request.method == "PUT" && request.url.encodedPath == "/api/logs" && logDelayMs > 0) Thread.sleep(logDelayMs)
+                return synchronized(this@FakeServer) { handle(request) }
+            }
         }
         server.start()
         return this
@@ -80,7 +90,7 @@ class FakeServer {
         failures["${call.method} $path"]?.let { (status, code) -> return error(status, code) }
         val api = path.removePrefix("/api/")
         return when {
-            path == "/oauth/crossapp" -> ok("{}")
+            path == "/oauth/crossapp" -> ok(crossAppLink?.let { """{"url":"$it"}""" } ?: "{}")
             path == "/oauth/token" -> ok("""{"id_token":"h.p.s"}""")
             call.method == "GET" && api == "auth/telegram/config" -> ok("""{"client_id":"7000000001"}""")
             call.method == "POST" && api == "auth/telegram" -> ok("""{"token":"session-key","is_new":false}""")

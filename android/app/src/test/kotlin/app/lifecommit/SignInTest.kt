@@ -66,6 +66,20 @@ class SignInTest : AppTest() {
         compose.waitFor { !model.signingIn }
     }
 
+    @Test fun `ссылка в Telegram не открылась - страница входа в браузере, без ошибки`() {
+        runBlocking { tokens.clear() }
+        telegramInstalled = true
+        server.crossAppLink = "tg://oauth?token=1"
+        appLinksWork = false
+        launch()
+        compose.onNodeWithTag("signIn").performClick()
+        compose.waitFor { opened.size == 2 }
+        assertEquals("tg://oauth?token=1" to false, opened[0])
+        assertTrue(opened[1].second)
+        assertTrue(model.signingIn)
+        assertNull(model.signInError)
+    }
+
     @Test fun `чужой адрес возврата без начатого входа игнорируется`() {
         runBlocking { tokens.clear() }
         launch()

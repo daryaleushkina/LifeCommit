@@ -36,6 +36,9 @@ abstract class AppTest {
 
     /** false — на телефоне нечем открыть ссылку (нет браузера). */
     var linksWork = true
+
+    /** false — ссылку в приложение Telegram открыть нечем (браузер есть). */
+    var appLinksWork = true
     var dark = false
     lateinit var model: AppModel
     // Главный поток, как у viewModelScope в приложении; не Dispatchers.Main — его тестовое правило Compose подменяет
@@ -70,7 +73,7 @@ abstract class AppTest {
             LifeCommitTheme(dark, model.strings) {
                 Root(model, Links { url, inBrowser ->
                     opened += url to inBrowser
-                    linksWork
+                    linksWork && (inBrowser || appLinksWork)
                 }, telegramInstalled = { telegramInstalled })
             }
         }
