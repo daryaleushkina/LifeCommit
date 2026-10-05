@@ -151,7 +151,7 @@ describe('apple-changed.sh: нужна ли перед пушем проверк
     const site = commit('site/index.html');
     expect(needed(dir, base, site)).toBe(false);
     expect(needed(dir, site, commit('docs/landing.md'))).toBe(false);
-    for (const file of ['apple/App/X.swift', 'worker/api.ts', 'shared/types.ts', 'supabase/migrations/x.sql']) {
+    for (const file of ['apple/App/X.swift', 'worker/api.ts', 'shared/types.ts', 'supabase/migrations/x.sql', 'src/components/KindIcon.tsx']) {
       const before = git('rev-parse', 'HEAD').stdout.trim();
       expect({ file, needed: needed(dir, before, commit(file)) }).toEqual({ file, needed: true });
     }
@@ -184,7 +184,7 @@ describe('android-changed.sh: нужна ли перед пушем провер
     // apple/ — не повод проверять Android.
     const apple = git('rev-parse', 'HEAD').stdout.trim();
     expect(needed(dir, apple, commit('apple/App/X.swift'))).toBe(false);
-    for (const file of ['android/app/X.kt', 'worker/api.ts', 'shared/types.ts', 'supabase/migrations/x.sql']) {
+    for (const file of ['android/app/X.kt', 'worker/api.ts', 'shared/types.ts', 'supabase/migrations/x.sql', 'src/components/KindIcon.tsx', 'src/i18n.ts']) {
       const before = git('rev-parse', 'HEAD').stdout.trim();
       expect({ file, needed: needed(dir, before, commit(file)) }).toEqual({ file, needed: true });
     }

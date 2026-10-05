@@ -49,6 +49,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -230,7 +233,7 @@ class AppModel(
      * «Войти через Telegram»: id бота с сервера, новый PKCE; есть приложение Telegram — ссылка в него (/crossapp),
      * нет — страница входа Telegram в Custom Tab. Код вернётся в handleCallback.
      */
-    fun beginSignIn(telegramInstalled: Boolean, open: (url: String, inBrowser: Boolean) -> Unit) {
+    fun beginSignIn(telegramInstalled: Boolean, open: (url: String, inBrowser: Boolean) -> Boolean) {
         if (signingIn) return
         signingIn = true
         signInError = null
@@ -246,7 +249,13 @@ class AppModel(
             val pkce = TelegramOAuth.Pkce.random()
             pendingLogin = pkce to clientId
             val link = if (telegramInstalled) TelegramOAuth.crossAppLink(oauthHttp, clientId, pkce, oauthBase) else null
-            if (link != null) open(link, false) else open(TelegramOAuth.authUrl(clientId, pkce, oauthBase).toString(), true)
+            val opened = (link != null && open(link, false)) || open(TelegramOAuth.authUrl(clientId, pkce, oauthBase).toString(), true)
+            // Открыть нечем (нет ни Telegram, ни браузера) — сказать, а не крутить кнопку вечно.
+            if (!opened) {
+                pendingLogin = null
+                signingIn = false
+                signInError = strings.signInFailed
+            }
         }
     }
 
@@ -343,11 +352,35 @@ class AppModel(
             }
         }
         try {
-            today = api.today()
-            loadedAt = System.currentTimeMillis()
-            if (!today.isEmpty) onboarding = false
+            // Как trackEdit и load.range в src/caches.ts: сначала дождаться правок, которые ещё идут на сервер, —
+            // иначе ответ придёт без них; за время ответа что-то отметили — ответ устарел, спрашиваем заново.
+            repeat(3) {
+                writes.first { it == 0 }
+                val seq = change
+                val fresh = api.today()
+                if (seq == change && writes.value == 0) {
+                    today = fresh
+                    loadedAt = System.currentTimeMillis()
+                    if (!fresh.isEmpty) onboarding = false
+                    return
+                }
+            }
+            log.info("today refresh: still changing, kept what is on screen")
         } catch (e: ApiError) {
             if (e.isSignedOut) signOutLocally() else log.info("today refresh failed: $e")
+        }
+    }
+
+    /** Сколько правок «Сегодня» ещё идут на сервер (отметки, дела): перечитывание их ждёт. */
+    private val writes = MutableStateFlow(0)
+
+    /** Правка, которую ждёт перечитывание «Сегодня». */
+    private suspend fun <T> write(block: suspend () -> T): T {
+        writes.update { it + 1 }
+        try {
+            return block()
+        } finally {
+            writes.update { it - 1 }
         }
     }
 
@@ -413,7 +446,7 @@ class AppModel(
         if (!task.isDone && next.isDone) haptics(Haptic.Success)
         scope.launch {
             try {
-                api.log(task.id, value, status)
+                write { api.log(task.id, value, status) }
             } catch (e: ApiError) {
                 patchTask(task)
                 fail(e)
@@ -437,11 +470,13 @@ class AppModel(
         change++
         scope.launch {
             try {
-                api.updateTodo(todo.id, buildJsonObject {
-                    put("done", done)
-                    // У повторяющегося дела «сделано» — на этот его день.
-                    if (todo.recurring) put("on", todo.day)
-                })
+                write {
+                    api.updateTodo(todo.id, buildJsonObject {
+                        put("done", done)
+                        // У повторяющегося дела «сделано» — на этот его день.
+                        if (todo.recurring) put("on", todo.day)
+                    })
+                }
             } catch (e: ApiError) {
                 patchTodos { list -> list.map { if (it.isSame(todo)) todo else it } }
                 fail(e)
@@ -460,7 +495,7 @@ class AppModel(
         change++
         scope.launch {
             try {
-                val id = api.createTodo(trimmed, today.day)
+                val id = write { api.createTodo(trimmed, today.day) }
                 change++
                 patchTodos { list -> list.map { if (it.id == temp.id) it.copy(id = id) else it } }
             } catch (e: ApiError) {
@@ -517,7 +552,7 @@ class AppModel(
         change++
         scope.launch {
             try {
-                api.log(task.id, if (task.kind == TaskKind.Abstain) null else value, status, day)
+                write { api.log(task.id, if (task.kind == TaskKind.Abstain) null else value, status, day) }
             } catch (e: ApiError) {
                 if (before != null) histories[task.id] = before else histories.remove(task.id)
                 loadHistory(task.id)

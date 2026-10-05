@@ -98,18 +98,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Ссылки Telegram (tg://, t.me) — в приложение Telegram; страница входа — в Custom Tab. */
-    private fun open(url: String, inBrowser: Boolean) {
+    /** Ссылки Telegram (tg://, t.me) — в приложение Telegram; страница входа — в Custom Tab. false — открыть нечем. */
+    private fun open(url: String, inBrowser: Boolean): Boolean {
         val uri = Uri.parse(url)
-        try {
-            if (inBrowser) {
-                CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, uri)
-            } else {
-                startActivity(Intent(Intent.ACTION_VIEW, uri))
-            }
+        return try {
+            if (inBrowser) CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, uri)
+            else startActivity(Intent(Intent.ACTION_VIEW, uri))
+            true
         } catch (e: android.content.ActivityNotFoundException) {
             log.warning("no app for $url: $e")
-            if (!inBrowser) startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+            false
         }
     }
 

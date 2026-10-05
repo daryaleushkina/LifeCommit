@@ -148,7 +148,7 @@ class ApiClient(
     /** Отправить и вернуть тело успешного ответа; иначе — ApiError. */
     private suspend fun perform(request: Request): String {
         val (status, text) = try {
-            http.newCall(request).await().use { it.code to (it.body.string()) }
+            http.newCall(request).await().let { it.code to it.body }
         } catch (e: IOException) {
             log.warning("${request.method} ${request.url.encodedPath} failed: $e")
             throw ApiError(ApiError.Kind.Network)
@@ -185,11 +185,26 @@ class ApiClient(
     }
 }
 
-/** OkHttp-вызов как suspend: отмена корутины отменяет запрос. */
-internal suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
+/** Ответ целиком: статус и тело. */
+internal data class Reply(val code: Int, val body: String)
+
+/**
+ * OkHttp-вызов как suspend: отмена корутины отменяет запрос. Тело читается здесь же, в потоке OkHttp, — не там, где
+ * продолжится корутина (на Android это главный поток: чтение сокета там — NetworkOnMainThreadException; /code-review 05.10).
+ */
+internal suspend fun Call.await(): Reply = suspendCancellableCoroutine { cont ->
     cont.invokeOnCancellation { cancel() }
     enqueue(object : Callback {
-        override fun onResponse(call: Call, response: Response) = cont.resume(response) { _, r, _ -> r.close() }
+        override fun onResponse(call: Call, response: Response) {
+            val reply = try {
+                response.use { Reply(it.code, it.body.string()) }
+            } catch (e: IOException) {
+                if (!cont.isCancelled) cont.resumeWithException(e)
+                return
+            }
+            cont.resume(reply) { _, _, _ -> }
+        }
+
         override fun onFailure(call: Call, e: IOException) {
             if (!cont.isCancelled) cont.resumeWithException(e)
         }

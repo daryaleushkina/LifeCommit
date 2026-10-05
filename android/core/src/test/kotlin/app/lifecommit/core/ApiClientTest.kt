@@ -18,6 +18,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
+import okhttp3.OkHttpClient
+import okio.buffer
+import kotlinx.coroutines.asCoroutineDispatcher
 
 fun fixture(name: String): String = requireNotNull(object {}.javaClass.getResource("/$name.json")).readText()
 
@@ -160,6 +163,33 @@ class ApiClientTest {
         val body = ApiClient.json.parseToJsonElement(server.takeRequest().text).jsonObject
         assertEquals(JsonNull, body["time"])
         assertEquals(JsonPrimitive(true), body["done"])
+    }
+
+    @Test fun `тело ответа читается не в потоке, где продолжается корутина (на Android - главный)`() {
+        server.enqueue(json(200, fixture("today")))
+        val readOn = java.util.concurrent.atomic.AtomicReference<String>()
+        // Тело оборачиваем: чтение запоминает поток.
+        val http = OkHttpClient.Builder().addNetworkInterceptor { chain ->
+            val r = chain.proceed(chain.request())
+            val body = r.body
+            val tracked = object : okhttp3.ResponseBody() {
+                override fun contentType() = body.contentType()
+                override fun contentLength() = body.contentLength()
+                override fun source(): okio.BufferedSource = object : okio.ForwardingSource(body.source()) {
+                    override fun read(sink: okio.Buffer, byteCount: Long): Long {
+                        readOn.compareAndSet(null, Thread.currentThread().name)
+                        return super.read(sink, byteCount)
+                    }
+                }.buffer()
+            }
+            r.newBuilder().body(tracked).build()
+        }.build()
+        val api = ApiClient(server.url("/api").toString(), http)
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+        kotlinx.coroutines.runBlocking(caller) { api.today() }
+        caller.close()
+        // Имя потока в отладке корутин — «caller @coroutine#N».
+        assertFalse(readOn.get(), readOn.get().startsWith("caller"))
     }
 
     @Test fun `ключ не попадает в строку для лога`() {

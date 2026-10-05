@@ -1,6 +1,6 @@
 // Куда ходит приложение и как входит. Прод — https://lifecommit.app/api (BuildConfig.API_BASE). Для разработки —
 // параметры запуска, только в сборке Debug и только не на прод (сервер с DEV_AUTH_BYPASS):
-//   adb shell am start -n app.lifecommit/.MainActivity -e LCAPIBase http://10.0.2.2:5173/api --el LCDevUser 123
+//   adb shell am start -n app.lifecommit/.MainActivity -e LCAPIBase http://10.0.2.2:5173/api --el LCDevUser 123 (только 10.0.2.2)
 // LCDevUser — войти подменённым Telegram с этим id (docs/mobile.md, «Для разработки и тестов»).
 package app.lifecommit
 
@@ -20,8 +20,11 @@ data class Config(
         /** Устройство для сессии на сервере. */
         const val DEVICE = "android"
 
-        /** Стенд разработки — только этот компьютер (эмулятор видит его как 10.0.2.2). */
-        private val LOCAL_HOSTS = setOf("10.0.2.2", "localhost", "127.0.0.1")
+        /**
+         * Стенд разработки — только компьютер разработчика, каким его видит эмулятор (10.0.2.2). localhost и 127.0.0.1
+         * на телефоне — сам телефон: там может слушать чужое приложение и получить id_token входа (/code-review 05.10).
+         */
+        private val LOCAL_HOSTS = setOf("10.0.2.2")
 
         fun from(intent: Intent?): Config {
             if (!BuildConfig.DEBUG || intent == null) return Config()

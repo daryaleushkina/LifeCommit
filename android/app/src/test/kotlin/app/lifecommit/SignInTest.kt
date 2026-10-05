@@ -57,6 +57,15 @@ class SignInTest : AppTest() {
         compose.waitText(t.today)
     }
 
+    @Test fun `нечем открыть страницу входа - ошибка и снова кнопка, а не вечное ожидание`() {
+        runBlocking { tokens.clear() }
+        linksWork = false
+        launch()
+        compose.onNodeWithTag("signIn").performClick()
+        compose.waitText(t.signInFailed)
+        compose.waitFor { !model.signingIn }
+    }
+
     @Test fun `чужой адрес возврата без начатого входа игнорируется`() {
         runBlocking { tokens.clear() }
         launch()
