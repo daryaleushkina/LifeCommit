@@ -74,34 +74,26 @@ class CalendarModel(
     /** Дела групп в этот день. */
     fun groupsOfDay(day: String): List<app.lifecommit.core.GroupDayBlock> = groupRanges[key].orEmpty().filter { it.day == day }
 
-    /** Отметка группового дела на экране сразу. */
+    /** Отметка группового дела на экране сразу — во всех уже загруженных промежутках с этим днём. */
     fun patchGroupItem(groupId: Long, itemId: Long, day: String, f: (app.lifecommit.core.GroupDayItem) -> app.lifecommit.core.GroupDayItem) {
-        // Ответ, начатый до отметки, её не затирает.
-        version++
-        val k = key
-        groupRanges[k]?.let { list ->
+        for ((k, list) in groupRanges.toMap()) {
+            if (!covers(k, day)) continue
+            // Ответ этого промежутка, начатый до отметки, её не затирает.
+            stamp(k)
             groupRanges[k] = list.map { b -> if (b.group.id != groupId || b.day != day) b else b.copy(items = b.items.map { if (it.id == itemId) f(it) else it }) }
         }
     }
 
-    /** Перечитать то, что на экране (после правки в группе), без перечитывания «Сегодня». */
+    /** Перечитать то, что на экране (после правки в группе или делах), без перечитывания «Сегодня». */
     suspend fun reloadQuiet() {
         if (selected.isEmpty()) return
-        version++
-        // Соседние промежутки (месяц, прошлый день) тоже устарели — перечитаются, когда до них дойдут.
+        // Все промежутки устарели: ответы, что ещё в пути, выбрасываем; соседние (месяц, прошлый день) перечитаются,
+        // когда до них дойдут.
+        generation++
         ranges.keys.filter { it != key }.forEach { ranges.remove(it) }
         groupRanges.keys.filter { it != key }.forEach { groupRanges.remove(it) }
-        val seq = version
-        val k = key
-        try {
-            val r = api.calendar(days.first(), days.last())
-            if (seq == version) {
-                ranges[k] = r.todos
-                groupRanges[k] = r.groups
-            }
-        } catch (e: ApiError) {
-            if (e.isSignedOut) onSignedOut() else log.info("calendar quiet reload failed: $e")
-        }
+        inFlight++
+        fetchNow(days.first(), days.last(), snapshot(key))
     }
 
     /** Подключённые календари; null — ещё не знаем. */
@@ -123,23 +115,46 @@ class CalendarModel(
     /** Сервер не сохранил правку в шторке календарей — строка ошибки в шторке. */
     var sheetFailed by mutableStateOf(false)
 
-    /** Сколько запросов дел ещё в пути — тесты ждут их, а не паузу. */
+    /** Сколько запросов дел и календарей ещё в пути — тесты ждут их, а не паузу. */
     internal var inFlight by mutableStateOf(0)
         private set
 
-    /** Номер правки дел на экране: ответ, начатый раньше правки, её не затирает (как change в AppModel). */
-    private var version = 0
+    /** Номер человека: растёт при выходе — ответы, начатые при прошлом аккаунте, ничего не записывают. */
+    private var epoch = 0
+
+    /** Растёт, когда устарели все промежутки (правка на сервере): ответы, начатые раньше, выбрасываются. */
+    private var generation = 0
+
+    /**
+     * Номер правки каждого промежутка «from:to»: ответ, начатый раньше правки в нём, её не затирает. По промежутку, а
+     * не один на всех: правка в одном дне не должна выбрасывать загрузку другого (/code-review 06.10 — добавили дело и
+     * сразу ушли на далёкий день, а его список так и не появился).
+     */
+    private val stamps = mutableMapOf<String, Int>()
+
+    private fun stamp(k: String) {
+        stamps[k] = (stamps[k] ?: 0) + 1
+    }
+
+    /** Промежуток «from:to» содержит день. */
+    private fun covers(k: String, day: String) = k.substringBefore(':') <= day && day <= k.substringAfter(':')
+
+    /** Когда взяли ссылку входа Google: она живёт 15 минут, берём свежую, если ей больше 12 (как мини-апп). */
+    private var googleUrlAt = 0L
 
     /** Повторить синхронизацию, когда закончится текущая: её попросили, пока шла другая (правка календарей). */
     private var syncAgain = false
 
     /** Выход из аккаунта: всё прошлого человека забываем, ответы, что ещё в пути, выбрасываем. */
     fun reset() {
-        version++
+        epoch++
+        generation++
+        stamps.clear()
         ranges.clear()
         groupRanges.clear()
         accounts = null
         googleUrl = null
+        googleUrlAt = 0
         selected = ""
         mode = CalMode.Day
         sheetOpen = false
@@ -147,6 +162,10 @@ class CalendarModel(
         googleReturn = null
         error = null
         syncAgain = false
+        syncing = false
+        // Начатый вход Google и неотправленный код — прошлого человека: новому их не принимаем.
+        prefs.setString(WAIT_KEY, null)
+        retryPending = null
     }
 
     val days: List<String> get() = CalendarDays.range(mode, selected.ifEmpty { today() })
@@ -191,46 +210,61 @@ class CalendarModel(
 
     private fun fetch(mode: CalMode, anchor: String) {
         val d = CalendarDays.range(mode, anchor)
-        val seq = version
+        // Метки — сейчас, до запуска: правка, сделанная сразу после (в том же кадре), уже новее этого запроса.
+        val snap = snapshot("${d.first()}:${d.last()}")
         inFlight++
-        scope.launch {
-            try {
-                val r = api.calendar(d.first(), d.last())
-                if (seq == version) {
-                    ranges["${d.first()}:${d.last()}"] = r.todos
-                    groupRanges["${d.first()}:${d.last()}"] = r.groups
-                }
-            } catch (e: ApiError) {
-                if (e.isSignedOut) onSignedOut() else log.info("calendar ${d.first()}..${d.last()} failed: $e")
-            } finally {
-                inFlight--
-            }
-        }
+        scope.launch { fetchNow(d.first(), d.last(), snap) }
     }
 
-    /** После правки на сервере: все промежутки устарели, перечитываем то, что на экране. */
-    private suspend fun reload() {
-        version++
-        ranges.keys.filter { it != key }.forEach { ranges.remove(it) }
-        groupRanges.keys.filter { it != key }.forEach { groupRanges.remove(it) }
-        val seq = version
-        val k = key
+    /** Метки свежести промежутка на момент, когда за ним пошли. */
+    private data class Snap(val epoch: Int, val generation: Int, val stamp: Int?)
+
+    private fun snapshot(k: String) = Snap(epoch, generation, stamps[k])
+
+    /**
+     * Дела промежутка с сервера; ответ, начатый до правки в нём, до выхода или до «всё устарело», выбрасывается.
+     * inFlight увеличивает вызывающий — сразу, до запуска.
+     */
+    private suspend fun fetchNow(from: String, to: String, snap: Snap) {
+        val k = "$from:$to"
+        val e = snap.epoch
         try {
-            val r = api.calendar(days.first(), days.last())
-            if (seq == version) {
+            val r = api.calendar(from, to)
+            if (snap == snapshot(k)) {
                 ranges[k] = r.todos
                 groupRanges[k] = r.groups
             }
-        } catch (e: ApiError) {
-            if (e.isSignedOut) onSignedOut() else log.info("calendar reload failed: $e")
+        } catch (err: ApiError) {
+            if (e != epoch) return
+            if (err.isSignedOut) onSignedOut() else log.info("calendar $from..$to failed: $err")
+        } finally {
+            inFlight--
         }
+    }
+
+    /** После правки на сервере: все промежутки устарели, перечитываем то, что на экране, и «Сегодня». */
+    private suspend fun reload() {
+        reloadQuiet()
         onChanged()
     }
 
+    /** Правка дел на экране сразу — во всех уже загруженных промежутках (день, месяц), где она видна. */
     private fun patch(transform: (List<Todo>) -> List<Todo>) {
-        version++
-        val k = key
-        ranges[k]?.let { ranges[k] = transform(it) }
+        for ((k, list) in ranges.toMap()) {
+            val next = transform(list)
+            if (next == list) continue
+            stamp(k)
+            ranges[k] = next
+        }
+    }
+
+    /** Новое дело — в загруженные промежутки, где есть его день. */
+    private fun insert(todo: Todo) {
+        for ((k, list) in ranges.toMap()) {
+            if (!covers(k, todo.day)) continue
+            stamp(k)
+            ranges[k] = list + todo
+        }
     }
 
     private fun fail(e: ApiError) {
@@ -263,7 +297,7 @@ class CalendarModel(
         val trimmed = title.trim()
         if (trimmed.isEmpty()) return
         val temp = Todo(id = --tempId, title = trimmed, day = day)
-        patch { it + temp }
+        insert(temp)
         scope.launch {
             try {
                 val id = api.createTodo(trimmed, day)
@@ -318,32 +352,57 @@ class CalendarModel(
     // Подключённые календари
 
     fun loadAccounts() {
+        val e = epoch
+        inFlight++
         scope.launch {
             try {
-                accounts = api.calendars()
-            } catch (e: ApiError) {
-                if (e.isSignedOut) onSignedOut() else {
-                    log.info("calendars failed: $e")
+                val fresh = api.calendars()
+                if (e == epoch) accounts = fresh
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
+                if (err.isSignedOut) onSignedOut() else {
+                    log.info("calendars failed: $err")
+                    // Как мини-апп (CalendarsSheet: load → cur ?? []): не загрузилось — список пуст, кнопки «Подключить» видны.
                     if (accounts == null) accounts = emptyList()
                 }
+            } finally {
+                inFlight--
             }
-            // Нет Google — заранее берём ссылку входа: шторка откроется уже с кнопкой.
-            if (accounts?.none { it.provider == app.lifecommit.core.TodoSource.Google } == true) loadGoogleUrl()
         }
+        // Ссылка входа Google — заранее: шторка откроется уже с кнопкой (и «Переподключить» у сломанного Google).
+        ensureGoogleUrl()
+    }
+
+    /** Ссылка входа Google, если её нет или ей больше 12 минут (живёт 15). */
+    fun ensureGoogleUrl(now: Long = System.currentTimeMillis()) {
+        if (googleUrl == null || googleUrl != "" && now - googleUrlAt > GOOGLE_URL_TTL) loadGoogleUrl()
     }
 
     fun loadGoogleUrl() {
+        val e = epoch
         scope.launch {
-            googleUrl = try {
+            val url = try {
                 api.googleCalendarUrl()
-            } catch (e: ApiError) {
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
+                if (err.isSignedOut) return@launch onSignedOut()
                 // 503 calendar_unavailable — Google на сервере не настроен: «Скоро».
-                if (e.code == "calendar_unavailable") "" else {
-                    log.info("google url failed: $e")
+                if (err.code == "calendar_unavailable") "" else {
+                    log.info("google url failed: $err")
                     null
                 }
             }
+            if (e != epoch) return@launch
+            googleUrl = url
+            googleUrlAt = if (url.isNullOrEmpty()) 0 else System.currentTimeMillis()
         }
+    }
+
+    /** Вернулись в приложение: шторка календарей открыта — показать, что подключилось, и обновить ссылку входа. */
+    fun resumed() {
+        if (!sheetOpen) return
+        loadAccounts()
+        loadGoogleUrl()
     }
 
     /** «Обновить»: синхронизация на сервере, свежие календари и дела. */
@@ -354,17 +413,21 @@ class CalendarModel(
         }
         syncing = true
         syncAgain = false
+        val e = epoch
         scope.launch {
             try {
                 api.syncCalendars()
-            } catch (e: ApiError) {
-                log.info("sync failed: $e")
+            } catch (err: ApiError) {
+                log.info("sync failed: $err")
             }
+            if (e != epoch) return@launch
             try {
-                accounts = api.calendars()
-            } catch (e: ApiError) {
-                log.info("calendars failed: $e")
+                val fresh = api.calendars()
+                if (e == epoch) accounts = fresh
+            } catch (err: ApiError) {
+                log.info("calendars failed: $err")
             }
+            if (e != epoch) return@launch
             reload()
             syncing = false
             if (syncAgain) syncNow()
@@ -402,13 +465,15 @@ class CalendarModel(
         }
         set(enabled)
         sheetFailed = false
+        val e = epoch
         scope.launch {
             try {
                 api.toggleCollection(account.id, url, enabled)
-                if (sync) changed()
-            } catch (e: ApiError) {
+                if (sync && e == epoch) changed()
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
                 set(!enabled)
-                if (e.isSignedOut) onSignedOut() else sheetFailed = true
+                if (err.isSignedOut) onSignedOut() else sheetFailed = true
             }
         }
     }
@@ -420,37 +485,43 @@ class CalendarModel(
         }
         set(url)
         sheetFailed = false
+        val e = epoch
         scope.launch {
             try {
                 api.setDefaultCalendar(account.id, url)
-                changed()
-            } catch (e: ApiError) {
+                if (e == epoch) changed()
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
                 set(prev)
-                if (e.isSignedOut) onSignedOut() else sheetFailed = true
+                if (err.isSignedOut) onSignedOut() else sheetFailed = true
             }
         }
     }
 
     fun disconnect(account: CalendarAccount) {
         sheetFailed = false
+        val e = epoch
         scope.launch {
             try {
                 api.disconnectCalendar(account.provider)
-                changed()
-            } catch (e: ApiError) {
-                if (e.isSignedOut) onSignedOut() else sheetFailed = true
+                if (e == epoch) changed()
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
+                if (err.isSignedOut) onSignedOut() else sheetFailed = true
             }
         }
     }
 
     /** Подключили, отключили или выключили календарь — синхронизировать и перечитать. */
     private suspend fun changed() {
+        val e = epoch
         try {
-            accounts = api.calendars()
-        } catch (e: ApiError) {
-            log.info("calendars failed: $e")
+            val fresh = api.calendars()
+            if (e == epoch) accounts = fresh
+        } catch (err: ApiError) {
+            log.info("calendars failed: $err")
         }
-        syncNow()
+        if (e == epoch) syncNow()
     }
 
     /** Итог возврата после входа Google, если не получилось: denied, expired, failed, link (тексты — Strings.cal). */
@@ -496,26 +567,27 @@ class CalendarModel(
         return true
     }
 
-    private suspend fun changedNow() = changed()
-
     /** Код возврата, который сервер не принял из-за сети или своей ошибки (код он вернул себе) — «Ещё раз». */
     private var retryPending: String? = null
 
     private fun finish(pending: String) {
         retryPending = null
         googleReturn = null
+        val e = epoch
         scope.launch {
             try {
                 val res = api.finishGoogle(pending)
+                if (e != epoch) return@launch
                 // Новый — выбор календарей в шторке (статус setup); подключён заново — перечитать календари и дела.
-                if (res.fresh) loadAccounts() else changedNow()
-            } catch (e: ApiError) {
-                if (e.isSignedOut) return@launch onSignedOut()
-                log.info("google finish failed: $e")
+                if (res.fresh) loadAccounts() else changed()
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
+                if (err.isSignedOut) return@launch onSignedOut()
+                log.info("google finish failed: $err")
                 googleReturn = when {
-                    e.code == "pending_not_found" || e.code == "pending_expired" -> "link"
+                    err.code == "pending_not_found" || err.code == "pending_expired" -> "link"
                     // Нет связи или 5xx — код ещё действует (сервер вернул его себе): отправить его же ещё раз.
-                    e.kind == ApiError.Kind.Network || (e.status ?: 0) >= 500 -> RETRY.also { retryPending = pending }
+                    err.kind == ApiError.Kind.Network || (err.status ?: 0) >= 500 -> RETRY.also { retryPending = pending }
                     else -> "failed"
                 }
             }
@@ -532,6 +604,9 @@ class CalendarModel(
 
         /** googleReturn: сбой связи — показать «Ещё раз». */
         const val RETRY = "retry"
+
+        /** Ссылка входа Google живёт 15 минут на сервере; свежей считаем 12 (как GOOGLE_URL_TTL мини-аппа). */
+        private const val GOOGLE_URL_TTL = 12 * 60_000L
 
         /** Одноразовый код возврата Google: 43 знака base64url. */
         private val PENDING = Regex("^[A-Za-z0-9_-]{43}$")

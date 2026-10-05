@@ -81,6 +81,22 @@ object CalendarAccounts {
     fun appleFormValid(login: String, password: String): Boolean = login.contains('@') && password.replace(Regex("[\\s-]"), "").length >= 12
 }
 
+/**
+ * Ссылка из чужих данных (событие календаря: созвон, «Открыть в Google»), которую можно открыть: только http и https.
+ * Сервер берёт её из календаря как есть; мини-апп открывает через openLink Telegram, а тот пускает только http(s).
+ * Здесь та же граница — иначе приглашение со ссылкой lifecommit://… или схемой чужого приложения увело бы туда
+ * (/code-review и проверка безопасности 06.10). null — не открываем и строку не показываем.
+ */
+fun webLink(url: String?): String? {
+    val u = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val scheme = u.substringBefore(':', "").lowercase()
+    if (scheme != "http" && scheme != "https") return null
+    // После схемы — «//» и хост: «https:evil» и «https:///x» не ссылки.
+    val rest = u.substring(scheme.length + 1)
+    if (!rest.startsWith("//") || rest.length < 3 || rest[2] == '/') return null
+    return u
+}
+
 /** Ссылка на созвон — «Подключиться», остальное — «Открыть ссылку» (TodoSheet.tsx). */
 fun isCallLink(url: String): Boolean = Regex("meet|zoom|teams|telemost|webex|whereby|jit\\.si|jazz|ktalk|t\\.me/call|facetime", RegexOption.IGNORE_CASE).containsMatchIn(url)
 

@@ -36,7 +36,16 @@ class FakeServer {
     @Volatile var user = UserSettings(id = 9_000_000_000_001, firstName = "Даша")
 
     /** Ответить ошибкой на «МЕТОД /путь»: статус и код. */
-    val failures = mutableMapOf<String, Pair<Int, String>>()
+    val failures = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, String>>()
+
+    /**
+     * Задержать «МЕТОД /путь» (мс) до того, как сервер его примет: запрос «ещё в пути» — экран успевают закрыть, из
+     * аккаунта — выйти. Ответ (и ошибка из failures) — после задержки.
+     */
+    val slow = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** «МЕТОД /путь» запросов, которые дошли до сервера (ещё до задержки slow): запрос уже в пути. */
+    val arrived = CopyOnWriteArrayList<String>()
 
     /** Задержать ответ GET /today (мс): ответ собран в момент запроса, приходит позже — «устаревший». */
     @Volatile var todayDelayMs = 0L
@@ -111,6 +120,8 @@ class FakeServer {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 // Медленная отметка: сервер применяет её не сразу (как настоящий, пока идёт запись в базу).
                 if (request.method == "PUT" && request.url.encodedPath == "/api/logs" && logDelayMs > 0) Thread.sleep(logDelayMs)
+                arrived += "${request.method} ${request.url.encodedPath}"
+                slow["${request.method} ${request.url.encodedPath}"]?.let { Thread.sleep(it) }
                 if (request.method == "PUT" && request.url.encodedPath.endsWith("/mark") && markDelayMs > 0) Thread.sleep(markDelayMs)
                 if (request.method == "POST" && request.url.encodedPath == "/api/calendars/sync" && syncDelayMs > 0) Thread.sleep(syncDelayMs)
                 if (request.method == "POST" && request.url.encodedPath == "/api/session" && sessionDelayMs > 0) Thread.sleep(sessionDelayMs)

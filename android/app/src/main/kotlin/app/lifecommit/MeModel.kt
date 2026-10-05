@@ -48,8 +48,21 @@ class MeModel(
     /** Номер правки настроек: ответ на старую правку новую не затирает. */
     private var seq = 0
 
+    /** Номер человека: растёт при выходе — ответы, начатые при прошлом аккаунте, ничего не записывают. */
+    private var epoch = 0
+
+    /**
+     * Настройки, которые сервер точно сохранил, пока правки ещё идут; null — правок в пути нет. Не вышло — экран к ним, а
+     * не к «до этой правки»: там могла остаться прошлая правка, которую сервер тоже не принял (/lc-review 06.10).
+     */
+    private var saved: UserSettings? = null
+    private var saving = 0
+
     fun reset() {
         seq++
+        epoch++
+        saved = null
+        saving = 0
         blocked = emptyList()
         devices = emptyList()
         error = false
@@ -58,39 +71,60 @@ class MeModel(
 
     /** Открыли «Я»: заблокированные и устройства. Не загрузилось — строк нет (как в мини-аппе), причина — в лог. */
     fun load() {
+        val e = epoch
+        inFlight += 2
         scope.launch {
             try {
-                blocked = api.blocks()
-            } catch (e: ApiError) {
-                if (e.isSignedOut) return@launch onSignedOut()
-                log.info("blocks: $e")
+                val fresh = api.blocks()
+                if (e == epoch) blocked = fresh
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
+                if (err.isSignedOut) return@launch onSignedOut()
+                log.info("blocks: $err")
+            } finally {
+                inFlight--
             }
         }
         scope.launch {
             try {
-                devices = api.deviceSessions()
-            } catch (e: ApiError) {
-                if (e.isSignedOut) return@launch onSignedOut()
-                log.info("devices: $e")
+                val fresh = api.deviceSessions()
+                if (e == epoch) devices = fresh
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
+                if (err.isSignedOut) return@launch onSignedOut()
+                log.info("devices: $err")
+            } finally {
+                inFlight--
             }
         }
     }
+
+    /** Сколько загрузок «Я» ещё в пути — тесты ждут их, а не паузу. */
+    internal var inFlight by mutableStateOf(0)
+        private set
 
     /** Напоминание (HH:MM или null — выключено), конец дня (0–12), язык — на экране сразу, потом с сервера. */
     fun save(patch: Map<String, Any?>) {
         val before = user() ?: return
         val mine = ++seq
+        val e = epoch
+        if (saving++ == 0) saved = before
         error = false
         setUser(apply(before, patch))
         scope.launch {
             try {
                 val fresh = api.updateSettings(JsonObject(patch.mapValues { (_, v) -> json(v) }))
+                if (e != epoch) return@launch
+                saved = fresh
                 if (mine == seq) setUser(fresh)
-            } catch (e: ApiError) {
-                if (e.isSignedOut) return@launch onSignedOut()
-                log.info("settings: $e")
-                if (mine == seq) setUser(before)
+            } catch (err: ApiError) {
+                if (e != epoch) return@launch
+                if (err.isSignedOut) return@launch onSignedOut()
+                log.info("settings: $err")
+                if (mine == seq) saved?.let(setUser)
                 error = true
+            } finally {
+                if (e == epoch && --saving == 0) saved = null
             }
         }
     }
@@ -116,10 +150,12 @@ class MeModel(
         unblockError = false
         val at = blocked.indexOfFirst { it.id == p.id }.takeIf { it >= 0 } ?: return
         blocked = blocked.filter { it.id != p.id }
+        val e0 = epoch
         scope.launch {
             try {
                 api.unblock(p.id)
             } catch (e: ApiError) {
+                if (e0 != epoch) return@launch
                 if (e.isSignedOut) return@launch onSignedOut()
                 log.info("unblock: $e")
                 blocked = blocked.toMutableList().apply { add(at.coerceAtMost(size), p) }

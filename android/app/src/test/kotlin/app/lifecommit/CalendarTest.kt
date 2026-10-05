@@ -1,6 +1,7 @@
 // «Календарь» через интерфейс, как человек: дни, дела дня, шторка дела, подключение Apple и Google, возврат после Google.
 package app.lifecommit
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -311,5 +312,153 @@ class CalendarTest : AppTest() {
         compose.waitText(t.cal.googleChoose, timeout = 8_000)
         assertTrue(server.calls("POST", "/api/calendars/google/finish").all { it.auth == "Bearer session-key" })
         assertEquals("session-key", kotlinx.coroutines.runBlocking { tokens.load() })
+    }
+
+    // Сбои и края «Календаря» (/lc-review и /code-review 06.10)
+
+    @Test fun `отметка дела не дошла - снова пустой кружок и ошибка`() {
+        seed()
+        server.failures["PATCH /api/todos/11"] = 500 to "server_error"
+        launch()
+        openCalendar()
+        compose.waitLabel(t.nextDay).performClick()
+        compose.waitLabel(t.todo.check("Записаться к врачу")).performClick()
+        compose.waitText(t.error)
+        compose.waitLabel(t.todo.check("Записаться к врачу"))
+    }
+
+    @Test fun `новое дело не сохранилось - строки нет и ошибка`() {
+        seed()
+        server.failures["POST /api/todos"] = 500 to "server_error"
+        launch()
+        openCalendar()
+        compose.waitLabel(t.nextDay).performClick()
+        compose.waitText(t.calAdd).performClick()
+        compose.onNodeWithTag("todoInput").performTextInput("Купить подарок")
+        compose.onNodeWithTag("todoInput").performImeAction()
+        compose.waitText(t.error)
+        compose.waitFor { model.calendar.ofDay("2026-10-06").none { it.title == "Купить подарок" } }
+    }
+
+    @Test fun `своё дело свайпом - удаляется, а не скрывается`() {
+        seed()
+        launch(undoMillis = 300)
+        openCalendar()
+        compose.waitLabel(t.nextDay).performClick()
+        compose.waitText("Записаться к врачу").performTouchInput { swipeLeft(startX = right, endX = left - 900f) }
+        compose.waitFor { server.calls("DELETE", "/api/todos/11").size == 1 }
+        assertTrue(server.calls("PATCH", "/api/todos/11").isEmpty())
+    }
+
+    @Test fun `добавили дело и сразу ушли на далёкий день - его дела приходят, а дело получает свой номер`() {
+        seed()
+        launch()
+        openCalendar()
+        compose.waitFor { model.calendar.inFlight == 0 }
+        // Дело сохраняется быстро, а дела далёкого дня идут дольше: сохранение приходит, пока они ещё в пути.
+        server.slow["POST /api/todos"] = 300
+        server.calendarDelayMs = 1200
+        compose.runOnUiThread {
+            model.calendarTodos.add("Купить подарок", "2026-10-05")
+            model.calendar.select("2026-11-20")
+        }
+        compose.waitFor { server.calls("POST", "/api/todos").size == 1 }
+        compose.waitFor(8_000) { model.calendar.inFlight == 0 }
+        assertTrue(model.calendar.todos != null)
+        server.calendarDelayMs = 0
+        compose.runOnUiThread { model.calendar.select("2026-10-05") }
+        compose.waitFor { model.calendar.ofDay("2026-10-05").any { it.title == "Купить подарок" && it.id > 0 } }
+    }
+
+    @Test fun `Google сломался - в шторке «Переподключить» со свежей ссылкой`() {
+        seed()
+        server.accounts = listOf(CalendarAccount(9, TodoSource.Google, "d@gmail.com", "auth_failed", collections = listOf(CalendarCollection("work", "Работа", null, true, true))))
+        launch()
+        openCalendarConnected()
+        compose.waitLabel(t.cal.sheetTitle).performClick()
+        // «Подключить заново» есть и над днями (ведёт в шторку), и в самой шторке — нажимаем в шторке.
+        compose.waitFor { compose.onAllNodes(hasText(t.cal.reconnect).and(androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.isDialog()))).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasText(t.cal.reconnect).and(androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.isDialog()))).performClick()
+        compose.waitFor { opened.any { it.first.startsWith("https://accounts.google.com/") } }
+    }
+
+    @Test fun `«Наши дела — в» - выбор уходит на сервер, не вышло - как было и ошибка`() {
+        seed()
+        val cols = listOf(CalendarCollection("home", "Дом", null, true, true), CalendarCollection("work", "Работа", null, true, true))
+        server.accounts = listOf(CalendarAccount(8, TodoSource.Apple, "d@icloud.com", "ok", "2026-10-05T10:00:00Z", "home", cols))
+        launch()
+        openCalendarConnected()
+        compose.waitLabel(t.cal.sheetTitle).performClick()
+        compose.waitText(t.cal.writeTo).performClick()
+        compose.onAllNodes(hasText("Работа")).let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+        compose.waitFor { server.calls("PATCH", "/api/calendars/8/default").size == 1 }
+        assertEquals("\"work\"", server.calls("PATCH", "/api/calendars/8/default").single().json["url"].toString())
+        server.failures["PATCH /api/calendars/8/default"] = 500 to "server_error"
+        compose.waitFor { model.calendar.accounts?.single()?.defaultUrl == "work" }
+        compose.waitText(t.cal.writeTo).performClick()
+        compose.onAllNodes(hasText("Дом")).let { it[it.fetchSemanticsNodes().size - 1] }.performClick()
+        compose.waitText(t.error)
+        compose.waitFor { model.calendar.accounts?.single()?.defaultUrl == "work" }
+    }
+
+    @Test fun `событие со ссылкой не http - строк «Подключиться» и «Открыть в Google» нет`() {
+        seed()
+        server.calendarTodos = listOf(Todo(12, "Созвон с командой", "2026-10-06", time = "10:00", source = TodoSource.Google, details = TodoDetails(link = "lifecommit://join/abcd1234", openUrl = "intent://evil#Intent;end")))
+        launch()
+        openCalendar()
+        compose.waitLabel(t.nextDay).performClick()
+        compose.waitText("Созвон с командой").performClick()
+        compose.waitText(t.todo.event)
+        compose.waitForIdle()
+        compose.onAllNodes(hasText(t.todo.join)).assertCountEquals(0)
+        compose.onAllNodes(hasText(t.todo.openLink)).assertCountEquals(0)
+        compose.onAllNodes(hasText(t.todo.openGoogle, substring = true)).assertCountEquals(0)
+    }
+
+    @Test fun `шторка дела - «Без времени» стирает время`() {
+        seed()
+        launch()
+        compose.waitText("Позвонить в банк").performClick()
+        compose.waitText(t.todo.time).performClick()
+        compose.waitFor { (org.robolectric.shadows.ShadowDialog.getLatestDialog() as? android.app.TimePickerDialog)?.isShowing == true }
+        (org.robolectric.shadows.ShadowDialog.getLatestDialog() as android.app.TimePickerDialog).getButton(android.content.DialogInterface.BUTTON_NEUTRAL).performClick()
+        compose.waitText(t.todo.allDay)
+        compose.onNodeWithTag("todoDone").performClick()
+        compose.waitFor { server.calls("PATCH", "/api/todos/10").size == 1 }
+        assertEquals("null", server.calls("PATCH", "/api/todos/10").single().json["time"].toString())
+    }
+
+    // Выход из аккаунта: ответы, начатые при прошлом человеке, новому не достаются.
+
+    @Test fun `вышли, пока шёл запрос календарей, - чужие календари не записываются`() {
+        seed()
+        server.accounts = listOf(CalendarAccount(8, TodoSource.Apple, "d@icloud.com", "ok", collections = listOf(CalendarCollection("home", "Дом", null, true, true))))
+        server.slow["GET /api/calendars"] = 600
+        launch()
+        // Запрос календарей ушёл и ждёт ответа — тут выходим.
+        compose.waitText(t.calendar).performClick()
+        compose.waitFor { "GET /api/calendars" in server.arrived }
+        compose.runOnUiThread { model.signOutLocally() }
+        compose.waitText(t.signIn)
+        // Ответ дошёл и разобран.
+        compose.waitFor { model.calendar.inFlight == 0 }
+        assertEquals(1, server.calls("GET", "/api/calendars").size)
+        assertEquals(null, model.calendar.accounts)
+    }
+
+    @Test fun `выход забывает начатый вход Google - ссылка возврата новому входу не подходит`() {
+        seed()
+        launch()
+        startGoogle()
+        compose.runOnUiThread { model.signOutLocally() }
+        compose.waitText(t.signIn)
+        compose.onNodeWithTag("signIn").performClick()
+        compose.waitFor { opened.size >= 2 }
+        compose.runOnUiThread { model.handleCallback("lifecommit://tglogin?code=c0de") }
+        compose.waitText(t.today)
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=ok&pending=$code") }
+        compose.waitForIdle()
+        assertTrue(server.calls("POST", "/api/calendars/google/finish").isEmpty())
+        assertTrue(!model.calendar.sheetOpen)
     }
 }

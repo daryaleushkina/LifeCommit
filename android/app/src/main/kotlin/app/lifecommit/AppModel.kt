@@ -50,6 +50,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -238,12 +239,16 @@ class AppModel(
         prefs.setString("lc-together", if (on) "friends" else "groups")
     }
 
+    /** Откуда отметили групповое дело: от этого — где сказать, что не вышло. */
+    enum class MarkFrom { Today, Calendar, Group }
+
     /**
      * Отметка группового дела (на «Сегодня», в «Календаре», на экране группы): сразу на экране, потом с сервера.
      * Копия на «Сегодня» — только у сегодняшнего дня; перечитывание ждёт, пока отметка дойдёт до сервера.
-     * Подсказку («Уже кто-то сделал») показывает только экран группы — как в мини-аппе.
+     * Не вышло — как было; что случилось, говорят экран группы (подсказка) и «Календарь» (строка ошибки), как в мини-аппе
+     * (Calendar.tsx markError); «Сегодня» молча возвращает как было (GroupBlocks.tsx).
      */
-    fun toggleGroupItem(groupId: Long, item: app.lifecommit.core.GroupDayItem, day: String, onGroupScreen: Boolean = false) {
+    fun toggleGroupItem(groupId: Long, item: app.lifecommit.core.GroupDayItem, day: String, from: MarkFrom = MarkFrom.Today) {
         val done = !item.done
         val me = user?.id ?: 0
         val isToday = day == today.day
@@ -254,26 +259,53 @@ class AppModel(
         if (isToday) patchToday { app.lifecommit.core.Groups.marked(it, done, me) }
         calendar.patchGroupItem(groupId, item.id, day) { app.lifecommit.core.Groups.marked(it, done, me) }
         if (done) haptics(Haptic.Success)
+        val who = user?.id
+        marking++
         scope.launch {
-            val r = write { together.mark(groupId, item, if (isToday) null else day) }
-            if (r.signedOut) return@launch
-            if (!r.ok) {
-                // не вышло — вернуть как было
-                if (isToday) patchToday { item }
-                calendar.patchGroupItem(groupId, item.id, day) { item }
+            try {
+                markGroupItem(groupId, item, day, isToday, from, who, ::patchToday)
+            } finally {
+                marking--
             }
-            if (onGroupScreen) r.note?.let { together.note = GroupNote(groupId, it) }
-            // Счётчики «5 из 8» и чужие отметки — с сервера, когда отметка уже там.
-            refresh()
-            calendar.reloadQuiet()
-            together.loadGroup(groupId)
+        }
+    }
+
+    /** Сколько отметок групповых дел ещё не закончились (с перечитыванием) — тесты ждут их, а не паузу. */
+    internal var marking by mutableStateOf(0)
+        private set
+
+    private suspend fun markGroupItem(
+        groupId: Long,
+        item: app.lifecommit.core.GroupDayItem,
+        day: String,
+        isToday: Boolean,
+        from: MarkFrom,
+        who: Long?,
+        patchToday: ((app.lifecommit.core.GroupDayItem) -> app.lifecommit.core.GroupDayItem) -> Unit,
+    ) {
+        val r = write { together.mark(groupId, item, if (isToday) null else day) }
+        // Пока отметка шла, вышли из аккаунта — экраны уже не того человека.
+        if (r.signedOut || user?.id != who) return
+        if (!r.ok) {
+            // не вышло — вернуть как было
+            if (isToday) patchToday { item }
+            calendar.patchGroupItem(groupId, item.id, day) { item }
+            if (from == MarkFrom.Calendar) calendar.error = if (r.note == TogetherModel.NOT_YOURS) strings.gr.notYours else strings.error
+        }
+        if (from == MarkFrom.Group) r.note?.let { together.note = GroupNote(groupId, it) }
+        // Счётчики «5 из 8» и чужие отметки — с сервера, когда отметка уже там; три запроса — разом. Экран группы
+        // перечитываем, только если он уже загружен (открыт сейчас или был открыт).
+        coroutineScope {
+            launch { refresh() }
+            launch { calendar.reloadQuiet() }
+            if (groupId in together.details) launch { together.loadGroup(groupId) }
         }
     }
 
     /** Удалить групповое дело свайпом — с «Вернуть»; skipDay — только в этот день (у повторяющегося). */
     fun removeGroupItem(groupId: Long, item: app.lifecommit.core.GroupDayItem, skipDay: String?) {
         val text = if (skipDay != null) strings.swipe.skipped(item.title) else strings.swipe.removed(item.title)
-        removeWithUndo(groupItemKey(groupId, item.id, skipDay), text, failText = { e -> if (e.code == "admins_only") strings.swipe.notAllowed else strings.error }) {
+        removeWithUndo(groupItemKey(groupId, item.id, skipDay), text, failText = { e -> app.lifecommit.ui.removalError(e, strings) }) {
             together.removeItem(groupId, item.id, skipDay)
             calendar.reloadQuiet()
         }
@@ -457,7 +489,9 @@ class AppModel(
         together.reset()
         me.reset()
         botAsked = false
-        pendingLink = null
+        // Приглашение, которым запустили приложение, ждёт входа и после 401 (ключ протух): человек войдёт — экран
+        // «Вступить» откроется (/code-review 06.10). Остальное (возврат Google) — прошлого входа, его забываем.
+        pendingLink = pendingLink?.takeIf { invitePath(it) != null }
         user = null
         today = TodayResponse(day = "")
         heat = emptyList()

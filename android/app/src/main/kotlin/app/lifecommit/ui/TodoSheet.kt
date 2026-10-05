@@ -46,6 +46,7 @@ import app.lifecommit.core.TodoEdit
 import app.lifecommit.core.TodoEdits
 import app.lifecommit.core.TodoSource
 import app.lifecommit.core.isCallLink
+import app.lifecommit.core.webLink
 import java.time.LocalDate
 
 /** Карта по адресу — снаружи (браузер или приложение карт). */
@@ -124,7 +125,7 @@ fun TodoSheet(todo: Todo, today: String, links: Links, onSave: (TodoEdit) -> Uni
             }
         }
         if (source != null) {
-            val open = todo.details?.openUrl
+            val open = webLink(todo.details?.openUrl)
             if (open != null) {
                 Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
                     Box(Modifier.heightIn(min = 40.dp).pressable { links.open(open, true) }, contentAlignment = Alignment.Center) {
@@ -179,7 +180,7 @@ private fun EventDetails(d: TodoDetails, links: Links) {
             divider()
             DetailRow(Glyph.PIN, loc, null, chevron = true) { links.open(mapUrl(loc), true) }
         }
-        d.link?.let { link ->
+        webLink(d.link)?.let { link ->
             divider()
             DetailRow(Glyph.VIDEO, if (isCallLink(link)) t.todo.join else t.todo.openLink, hostOf(link), chevron = true) { links.open(link, true) }
         }

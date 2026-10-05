@@ -155,6 +155,49 @@ class MeTest : AppTest() {
         compose.onAllNodes(hasText(t.allowBot)).assertCountEquals(0)
     }
 
+    @Test fun `выйти везде не вышло - остаёмся, ключ на месте и ошибка`() {
+        seed()
+        server.devices = listOf(DeviceSession(1, "android", "2026-10-05T10:00:00Z", "2026-10-05T10:00:00Z", true))
+        server.failures["DELETE /api/desktop/sessions"] = 500 to "server_error"
+        launch()
+        openMe()
+        compose.scrollToText("me", t.devices).performClick()
+        compose.waitText(t.logoutAll).performClick()
+        compose.waitText(t.error)
+        assertEquals("session-key", runBlocking { tokens.load() })
+        compose.onAllNodes(hasText(t.signIn)).assertCountEquals(0)
+    }
+
+    @Test fun `две правки подряд, обе не сохранились - на экране то, что на сервере`() {
+        seed()
+        server.slow["PATCH /api/settings"] = 600
+        server.failures["PATCH /api/settings"] = 500 to "server_error"
+        launch()
+        openMe()
+        compose.waitText("04:00").performClick()
+        compose.waitText("06:00").performClick()
+        compose.scrollToText("me", "Русский").performClick()
+        compose.waitText("English").performClick()
+        compose.waitFor { server.calls("PATCH", "/api/settings").size == 2 }
+        compose.waitText(t.error)
+        compose.waitFor { model.user?.dayStartHour == 4 && model.user?.languageCode == "ru" }
+    }
+
+    @Test fun `вышли, пока грузились заблокированные, - чужой список не записывается`() {
+        seed()
+        server.blocked = listOf(Person(3, "Петя", "petya"))
+        server.slow["GET /api/blocks"] = 600
+        launch()
+        compose.waitText(t.me).performClick()
+        compose.waitFor { "GET /api/blocks" in server.arrived }
+        compose.runOnUiThread { model.signOutLocally() }
+        compose.waitText(t.signIn)
+        // Ответ дошёл и разобран.
+        compose.waitFor { model.me.inFlight == 0 }
+        assertEquals(1, server.calls("GET", "/api/blocks").size)
+        assertTrue(model.me.blocked.isEmpty())
+    }
+
     /** Системный выбор времени, который открыла строка. */
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.waitDialog(): TimePickerDialog {
         waitFor { (ShadowDialog.getLatestDialog() as? TimePickerDialog)?.isShowing == true }

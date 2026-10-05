@@ -163,6 +163,7 @@ fun CalendarScreen(model: AppModel, links: Links) {
                 cal.groupsOfDay(selected).map { b -> app.lifecommit.core.GroupToday(b.group.id, b.group.title, b.group.kind, members = b.group.members, items = b.items) },
                 selected,
                 canMark = selected <= today,
+                from = AppModel.MarkFrom.Calendar,
             )
         }
     }

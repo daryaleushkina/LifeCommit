@@ -20,6 +20,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +55,8 @@ fun CalendarsSheet(cal: CalendarModel, links: Links, onClose: () -> Unit) {
     val google = accounts?.firstOrNull { it.provider == TodoSource.Google }
     val destination = accounts?.let(CalendarAccounts::destination)
     val googleUrl = cal.googleUrl
+    // Ссылка входа Google живёт 15 минут: открыли шторку — свежая (и «Переподключить» у сломанного Google).
+    LaunchedEffect(Unit) { cal.ensureGoogleUrl() }
 
     if (form) {
         AppleForm(cal, apple?.login.orEmpty(), links, onDone = { form = false }, onClose = { form = false })

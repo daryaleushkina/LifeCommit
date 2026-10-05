@@ -19,10 +19,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,9 +56,11 @@ fun Avatar(member: GroupMember, size: Dp = 28.dp) {
     val loader = Photos.loader
     // Только https: фото с http (или чужой схемой) не грузим — буква.
     val url = member.photo?.takeIf { it.startsWith("https://") }
-    val photo by produceState(url?.let(loader::cached), url) {
-        if (value == null) value = url?.let { loader.load(it) }
-    }
+    // Состояние — по адресу: строку переиспользуют для другого человека (поиск, новый порядок) — и фото его, а не
+    // прежнего (produceState помнит значение без ключа, /code-review 06.10).
+    val state = remember(url) { mutableStateOf(url?.let(loader::cached)) }
+    LaunchedEffect(url) { if (state.value == null && url != null) state.value = loader.load(url) }
+    val photo = state.value
     photo?.let {
         Image(it, null, Modifier.size(size).clip(CircleShape).clearAndSetSemantics {}.testTag("avatarPhoto"), contentScale = ContentScale.Crop)
         return
@@ -213,7 +215,7 @@ fun CheckCircle(done: Boolean, ghost: Boolean = false) {
 
 /** Блоки групп (дизайн 16B): мои дела каждой группы под личным; заголовок ведёт в группу. */
 @Composable
-fun GroupBlocks(model: AppModel, groups: List<GroupToday>, day: String, canMark: Boolean = true) {
+fun GroupBlocks(model: AppModel, groups: List<GroupToday>, day: String, canMark: Boolean = true, from: AppModel.MarkFrom = AppModel.MarkFrom.Today) {
     val p = LocalPalette.current
     val t = LocalStrings.current
     groups.forEach { group ->
@@ -239,7 +241,7 @@ fun GroupBlocks(model: AppModel, groups: List<GroupToday>, day: String, canMark:
                             GroupItemRow(
                                 model, group.id, it, group.members, day,
                                 canMark = canMark && it.canMark,
-                                onToggle = { model.toggleGroupItem(group.id, it, day) },
+                                onToggle = { model.toggleGroupItem(group.id, it, day, from) },
                                 onOpen = { model.open(Route.Group(group.id)) },
                                 onPut = { model.open(Route.Group(group.id)) },
                             )

@@ -164,6 +164,18 @@ class ScreensTest(private val theme: String) : AppTest() {
         shot("sheet-calendars")
     }
 
+    @Test fun googleChoose() {
+        seed()
+        server.accounts = listOf(app.lifecommit.core.CalendarAccount(7, app.lifecommit.core.TodoSource.Google, "d@gmail.com", "setup", null, null,
+            listOf(app.lifecommit.core.CalendarCollection("work", "Работа", "#4470CC", true, true), app.lifecommit.core.CalendarCollection("hol", "Праздники", "#E67C73", false, false))))
+        start()
+        openCalendar()
+        compose.waitLabel(t.cal.sheetTitle).performClick()
+        compose.waitText(t.cal.googleChoose)
+        compose.waitText("Праздники")
+        shot("sheet-google-choose")
+    }
+
     @Test fun appleForm() {
         seed()
         start()
@@ -228,6 +240,75 @@ class ScreensTest(private val theme: String) : AppTest() {
         compose.waitText("Маша").performClick()
         compose.waitText("Читать")
         shot("friend")
+    }
+
+    @Test fun groupSheets() {
+        seedTogether()
+        start()
+        compose.waitText(t.groups).performClick()
+        compose.waitText("Семья").performClick()
+        compose.waitText("Семейный ужин")
+        compose.waitLabel(t.gr.settings).performClick()
+        compose.waitText(t.gr.adminsOnly)
+        compose.waitText("Семейный чат")
+        shot("sheet-group-settings")
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitFor { compose.onAllNodes(androidx.compose.ui.test.hasText(t.gr.adminsOnly)).fetchSemanticsNodes().isEmpty() }
+        compose.waitText("+ ${t.gr.put}").performClick()
+        compose.waitText(t.gr.putTitle("Отпуск в Грузии"))
+        shot("sheet-put")
+    }
+
+    @Test fun newGroupSheet() {
+        seedTogether()
+        start()
+        compose.waitText(t.groups).performClick()
+        compose.waitText("Бег по утрам")
+        compose.onNodeWithTag("newGroup").performClick()
+        compose.waitText(t.gr.create)
+        shot("sheet-new-group")
+    }
+
+    @Test fun requestsAndAddFriend() {
+        seedTogether()
+        start()
+        compose.waitText(t.groups).performClick()
+        compose.waitText(t.fr.tabFriends).performClick()
+        compose.waitText(t.fr.requests(1)).performClick()
+        compose.waitText(t.fr.viaLink)
+        shot("requests")
+        compose.runOnUiThread { model.back() }
+        compose.waitLabel(t.fr.invite).performClick()
+        compose.waitText(t.fr.sendLink)
+        shot("sheet-add-friend")
+    }
+
+    @Test fun showSheet() {
+        seedTogether()
+        server.friendsData = server.friendsData.copy(prompt = true)
+        start()
+        compose.waitText(t.groups).performClick()
+        compose.waitText(t.fr.tabFriends).performClick()
+        compose.waitText(t.fr.showTitle)
+        compose.waitText("Сходить в спортзал")
+        shot("sheet-show")
+    }
+
+    @Test fun joinAndFriendLink() {
+        seedTogether()
+        val members = listOf(app.lifecommit.core.InvitationMember(2, "Маша"), app.lifecommit.core.InvitationMember(3, "Петя"))
+        server.invites["abcd1234"] = app.lifecommit.core.Invitation(app.lifecommit.core.InvitationGroup(52, "Книжный клуб"), "Маша", members) to server.groups.first()
+        server.people["code:efgh5678"] = app.lifecommit.core.FoundPerson(app.lifecommit.core.Person(5, "Оля", "olya"), app.lifecommit.core.PersonStatus.None)
+        start()
+        compose.waitText("Позвонить в банк")
+        compose.runOnUiThread { model.handleLink("https://lifecommit.app/j/abcd1234") }
+        compose.waitText(t.gr.join.invites("Маша"))
+        compose.waitText(t.gr.join.points[2].first)
+        shot("join")
+        compose.runOnUiThread { model.handleLink("https://lifecommit.app/f/efgh5678") }
+        compose.waitText(t.fr.linkTitle("Оля"))
+        compose.waitText(t.fr.linkBtn)
+        shot("friend-link")
     }
 
     @Test fun todayWithGroups() {
