@@ -132,7 +132,9 @@ describe('временный репозиторий изолирован от о
   });
 });
 
-describe('apple-changed.sh: нужна ли перед пушем проверка iOS/Mac', () => {
+// Настоящий git: временный репозиторий и ~25 коммитов. В хуке (pnpm coverage, все файлы параллельно, рядом симулятор и
+// стенд) это дольше 5 секунд по умолчанию — 06.10.2026 тест упал по сроку, а не по сути; отдельно он идёт ~3 с.
+describe('apple-changed.sh: нужна ли перед пушем проверка iOS/Mac', { timeout: 30_000 }, () => {
   const SCRIPT = path.join(HOOKS, '..', 'apple-changed.sh');
   const needed = (dir: string, remote: string, sha: string) => spawnSync('sh', [SCRIPT, remote, sha], { cwd: dir, encoding: 'utf8', env: env() }).status === 0;
 
@@ -162,7 +164,9 @@ describe('apple-changed.sh: нужна ли перед пушем проверк
   });
 });
 
-describe('android-changed.sh: нужна ли перед пушем проверка Android', () => {
+// Настоящий git: временный репозиторий и ~25 коммитов. В хуке (pnpm coverage, все файлы параллельно, рядом симулятор и
+// стенд) это дольше 5 секунд по умолчанию — 06.10.2026 тест упал по сроку, а не по сути; отдельно он идёт ~3 с.
+describe('android-changed.sh: нужна ли перед пушем проверка Android', { timeout: 30_000 }, () => {
   const SCRIPT = path.join(HOOKS, '..', 'android-changed.sh');
   const needed = (dir: string, remote: string, sha: string) => spawnSync('sh', [SCRIPT, remote, sha], { cwd: dir, encoding: 'utf8', env: env() }).status === 0;
 
