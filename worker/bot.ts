@@ -5,6 +5,7 @@ import { cleanText } from '../shared/text';
 import { countActive, insertTasks, insertTodos, isPremium, takeVoiceQuota, today, USER_COLS, type UserRow } from './api';
 import { addDays } from './day';
 import { byTelegram, db, tg, type Env } from './env';
+import { askDesktopLogin, desktopLoginButton } from './desktopBot';
 import { handleFeedbackUpdate, type FeedbackUpdate } from './feedbackBot';
 import { acceptRequest, blockPerson, declineRequest } from './friends';
 import { handleGroupUpdate, type GroupUpdate } from './groupBot';
@@ -130,6 +131,8 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
   // Жалобы: /bug, кнопки «Отправить» / «Отмена» и сообщения, пока черновик открыт (worker/feedbackBot.ts).
   if (await handleFeedbackUpdate(env, update as FeedbackUpdate, appUrl)) return;
   if (update.callback_query?.data?.startsWith('fr:')) return friendRequest(env, update.callback_query);
+  // «Войти» / «Не входить» под вопросом о входе на компьютере (worker/desktopBot.ts).
+  if (update.callback_query?.data?.startsWith('dl:')) return desktopLoginButton(env, update.callback_query);
   if (update.callback_query) return undo(env, update.callback_query);
   const msg = update.message;
   if (!msg?.from || msg.from.is_bot) return;
@@ -151,6 +154,8 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
       { onConflict: 'id' },
     );
     const param = msg.text.split(' ')[1];
+    // Ссылка входа с компьютера (t.me/<бот>?start=mac_<билет>) — спросить «Войти на Mac?» прямо здесь.
+    if (await askDesktopLogin(env, msg.chat.id, param, msg.from.language_code)) return;
     // Из чата группы без LifeCommit: одной кнопкой — в приложение, на экран «Вступить».
     if (param?.startsWith('g_') && /^g_[a-z0-9]{6,20}$/.test(param)) {
       const g = msg.from.language_code?.startsWith('ru') ? 'Откройте LifeCommit — и дела группы появятся у вас на «Сегодня».' : "Open LifeCommit — the group's to-dos will show up on your Today.";

@@ -817,6 +817,6 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .desktop-approve .join-hero h1 { margin-top: 20px; }
 .desktop-approve .join-from { max-width: 320px; text-wrap: balance; }
 .desktop-approve .note { text-wrap: balance; }
-/* «Выйти на этом компьютере» и «Удалить аккаунт» — одна тихая пара внизу профиля. */
+/* «Выйти на этом устройстве» и «Удалить аккаунт» — одна тихая пара внизу профиля. */
 .quiet-link.logout + .quiet-link { margin-top: 0; }
 @media (prefers-reduced-motion: reduce) { .host-main.busy::after { animation-duration: 2.4s; } }

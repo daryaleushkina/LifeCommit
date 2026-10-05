@@ -1,9 +1,11 @@
 // Вход на компьютере (приложение для Mac и браузер, 05.10.2026). Подписи Telegram там нет, поэтому вход
 // подтверждают в мини-аппе — как вход в Telegram Desktop по QR:
-//   1. Компьютер: POST /api/desktop/login → случайный секрет и ссылка t.me/<бот>?startapp=mac_<билет>, где билет —
+//   1. Компьютер: POST /api/desktop/login → случайный секрет и ссылка t.me/<бот>?start=mac_<билет>, где билет —
 //      код (отпечаток секрета), время выдачи и подпись Worker'а. Ничего не пишется в базу: анонимно таблицу не забить.
-//   2. Человек открывает ссылку в Telegram, мини-апп спрашивает «Войти на Mac?» → POST /api/desktop/approve (только с
-//      подписью Telegram): подпись билета верна и ему не больше 10 минут — запись «код подтвердил такой-то».
+//   2. Ссылка открывает чат с ботом: «Войти в LifeCommit на Mac?» и кнопка «Войти» (worker/desktopBot.ts, решение
+//      владелицы 05.10.2026 — без мини-аппа). Старые ссылки startapp=mac_… открывают мини-апп с тем же вопросом
+//      (POST /api/desktop/approve, только с подписью Telegram). Подпись билета верна и ему не больше 10 минут — запись
+//      «код подтвердил такой-то» (approveLogin).
 //   3. Компьютер опрашивает POST /api/desktop/login/poll с секретом; есть подтверждение — оно отмечается забранным,
 //      компьютеру уходит долгий ключ сессии (`Authorization: Bearer <ключ>`, worker/auth.ts), а бот пишет человеку
 //      «Вход на Mac. Не вы? — Выйти везде», как Telegram о новых сеансах.
@@ -117,7 +119,7 @@ desktopLogin.post('/login', async (c) => {
   const code = await codeOf(secret);
   const ts = Math.floor(Date.now() / 1000).toString(36).padStart(7, '0');
   const ticket = `${code}${ts}${await signTicket(c.env, device, code, ts)}`;
-  return c.json({ secret, code, ticket, link: `https://t.me/${c.env.BOT_USERNAME}?startapp=${device}_${ticket}` });
+  return c.json({ secret, code, ticket, link: `https://t.me/${c.env.BOT_USERNAME}?start=${device}_${ticket}` });
 });
 
 desktopLogin.post('/login/poll', async (c) => {
@@ -153,8 +155,8 @@ async function signInNotice(env: Env, sb: ReturnType<typeof db>, who: { user_id:
   const en = user?.language_code === 'en';
   const where = en ? (who.device === 'mac' ? 'on a Mac' : 'in a browser') : who.device === 'mac' ? 'на Mac' : 'в браузере';
   const text = en
-    ? `Sign-in to LifeCommit ${where}. If it wasn't you, open LifeCommit → Me → Computers → Sign out everywhere.`
-    : `Вход в LifeCommit ${where}. Если это были не вы — откройте LifeCommit → «Я» → «Компьютеры» → «Выйти везде».`;
+    ? `Sign-in to LifeCommit ${where}. If it wasn't you, open LifeCommit → Me → Devices → Sign out everywhere.`
+    : `Вход в LifeCommit ${where}. Если это были не вы — откройте LifeCommit → «Я» → «Устройства» → «Выйти везде».`;
   await tg(env, 'sendMessage', { chat_id: who.telegram_id, text });
 }
 
@@ -162,25 +164,38 @@ async function signInNotice(env: Env, sb: ReturnType<typeof db>, who: { user_id:
 
 export const desktopApi = new Hono<App>();
 
-/** Подтвердить вход на компьютере — только из Telegram: ключом компьютера новые ключи не выпустить. */
-desktopApi.post('/desktop/approve', async (c) => {
-  if (c.get('desktop') !== undefined) throw new HTTPException(403, { message: 'telegram_only' });
-  const { ticket, device } = await body(c.req);
-  const parts = typeof ticket === 'string' ? TICKET_RE.exec(ticket) : null;
-  if (!parts || !isDevice(device)) throw badRequest();
+/** Чем кончилось подтверждение: ok, bad — билет не разобрать или подпись не та, expired — старше 10 минут, used — занят. */
+export type ApproveResult = 'ok' | 'bad' | 'expired' | 'used';
+
+/**
+ * Подтвердить вход по билету из ссылки — из мини-аппа или кнопкой в чате с ботом. Проверка подписи — первой:
+ * подделанный билет ничего не узнаёт ни о сроке, ни о базе. Код один на вход: уже подтверждённый (даже если компьютер
+ * ключ забрал) — used.
+ */
+export async function approveLogin(env: Env, sb: ReturnType<typeof db>, a: { ticket: unknown; device: unknown; userId: number; telegramId: number }): Promise<ApproveResult> {
+  const parts = typeof a.ticket === 'string' ? TICKET_RE.exec(a.ticket) : null;
+  if (!parts || !isDevice(a.device)) return 'bad';
   const [, code, ts, sig] = parts as unknown as [string, string, string, string];
-  // Подпись — первой: подделанный билет ничего не узнаёт ни о сроке, ни о базе.
-  if (!sameText(sig, await signTicket(c.env, device, code, ts))) throw badRequest();
-  if (Date.now() - parseInt(ts, 36) * 1000 > LOGIN_TTL_MS) throw new HTTPException(410, { message: 'login_expired' });
-  const sb = c.get('sb');
+  if (!sameText(sig, await signTicket(env, a.device, code, ts))) return 'bad';
+  if (Date.now() - parseInt(ts, 36) * 1000 > LOGIN_TTL_MS) return 'expired';
   // Заодно убираем подтверждения, которые компьютеры так и не забрали. Уборка необязательна: не вышла — в лог,
   // а подтверждение человека всё равно записываем.
   const cleanup = await sb.from('desktop_logins').delete().lt('approved_at', new Date(Date.now() - LOGIN_TTL_MS).toISOString());
   if (cleanup.error) console.error('desktop_logins cleanup failed', cleanup.error.message);
-  const res = await sb.from('desktop_logins').insert({ code, user_id: c.get('user').id, telegram_id: c.get('tgUser').id, device });
-  // Код уже подтвердил кто-то (или вы сами раньше), даже если компьютер ключ уже забрал, — второй раз нельзя.
-  if (res.error?.code === '23505') throw new HTTPException(409, { message: 'login_used' });
+  const res = await sb.from('desktop_logins').insert({ code, user_id: a.userId, telegram_id: a.telegramId, device: a.device });
+  if (res.error?.code === '23505') return 'used';
   must(res);
+  return 'ok';
+}
+
+/** Подтвердить вход на компьютере из мини-аппа — только с подписью Telegram: ключом компьютера новые ключи не выпустить. */
+desktopApi.post('/desktop/approve', async (c) => {
+  if (c.get('desktop') !== undefined) throw new HTTPException(403, { message: 'telegram_only' });
+  const { ticket, device } = await body(c.req);
+  const result = await approveLogin(c.env, c.get('sb'), { ticket, device, userId: c.get('user').id, telegramId: c.get('tgUser').id });
+  if (result === 'bad') throw badRequest();
+  if (result === 'expired') throw new HTTPException(410, { message: 'login_expired' });
+  if (result === 'used') throw new HTTPException(409, { message: 'login_used' });
   return c.json({ ok: true });
 });
 

@@ -2,7 +2,7 @@
 // по ссылке t.me/<бот>?startapp=mac_<код>, компьютер забирает ключ сессии и ходит с ним вместо подписи Telegram.
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { dbReady, env, request, sb, tg, user, type Res } from './test/harness';
+import { botUpdate, dbReady, env, request, sb, tg, user, type Res } from './test/harness';
 
 const ready = await dbReady();
 if (!ready) console.warn('desktop-тесты пропущены: нет локальной Supabase (pnpm db:start)');
@@ -45,13 +45,14 @@ describe.skipIf(!ready)('вход на компьютере', () => {
     expect(res.body.code).toMatch(/^[A-Za-z0-9_-]{22}$/);
     // В ссылке — код, время выдачи и подпись сервера: ссылка живёт 10 минут от выдачи, подделать её нельзя.
     expect(res.body.ticket).toMatch(new RegExp(`^${res.body.code.replace(/[-]/g, '\\-')}[0-9a-z]{7}[A-Za-z0-9_-]{22}$`));
-    expect(res.body.link).toBe(`https://t.me/LifeCommit_bot?startapp=mac_${res.body.ticket}`);
+    // Ссылка ведёт в чат с ботом: подтвердить вход можно прямо там, не открывая мини-апп (решение владелицы 05.10.2026).
+    expect(res.body.link).toBe(`https://t.me/LifeCommit_bot?start=mac_${res.body.ticket}`);
     expect(res.body.link.length - res.body.link.indexOf('=') - 1).toBeLessThanOrEqual(64);
     // Код — отпечаток секрета: по ссылке ключ не забрать, а у двух входов коды разные.
     expect(res.body.code).not.toBe((await start()).code);
     expect((await sb.from('desktop_logins').select('code').eq('code', res.body.code)).data).toEqual([]);
     // Из браузера — ссылка другая: мини-апп скажет «в браузере», а не «на Mac».
-    expect((await start('web')).link).toMatch(/startapp=web_[A-Za-z0-9_-]{51}$/);
+    expect((await start('web')).link).toMatch(/\?start=web_[A-Za-z0-9_-]{51}$/);
   });
 
   it('пока в Telegram не подтвердили — «ждём»; подтвердили — ключ, и он работает как вход через Telegram', async () => {
@@ -161,7 +162,7 @@ describe.skipIf(!ready)('вход на компьютере', () => {
     const sent = tg.sent('sendMessage');
     expect(sent).toHaveLength(1);
     expect(sent[0]!.body).toMatchObject({ chat_id: u.id, text: expect.stringContaining('Вход в LifeCommit на Mac') });
-    expect(String(sent[0]!.body.text)).toContain('«Выйти везде»');
+    expect(String(sent[0]!.body.text)).toContain('«Я» → «Устройства» → «Выйти везде»');
   });
 
   it('бот не смог написать (не запускали бота) — вход всё равно состоялся, ошибка в логе', async () => {
@@ -368,5 +369,72 @@ describe.skipIf(!ready)('вход на компьютере: уборка не �
     expect(errors).toHaveBeenCalledWith('desktop_logins cleanup failed', 'база недоступна');
     globalThis.fetch = harnessFetch;
     expect((await poll(s.secret)).body).toMatchObject({ status: 'ok' });
+  });
+});
+
+describe.skipIf(!ready)('вход на компьютере: подтверждение в чате с ботом', () => {
+  /** Человек открыл ссылку с компьютера: Telegram прислал боту /start с билетом. */
+  const openLink = (u: { id: number }, link: string, lang = 'ru') =>
+    botUpdate({ message: { chat: { id: u.id, type: 'private' }, from: { id: u.id, first_name: 'Даша', language_code: lang }, text: `/start ${link.split('?start=')[1]}` } });
+  /** Нажал кнопку под сообщением бота. */
+  const press = (u: { id: number }, data: string) =>
+    botUpdate({ callback_query: { id: `q${Math.random()}`, from: { id: u.id, first_name: 'Даша' }, data, message: { message_id: 77, chat: { id: u.id } } } });
+  const edited = () => tg.sent('editMessageText').map((m) => String(m.body.text));
+
+  it('бот спрашивает «Войти на Mac?» с кнопками; «Войти» — компьютер получает ключ, сообщение сменяется на «Готово»', async () => {
+    const u = await user();
+    const s = await start('mac');
+    await openLink(u, s.link);
+    const ask = tg.sent('sendMessage').at(-1)!.body;
+    expect(ask).toMatchObject({ chat_id: u.id, text: expect.stringContaining('Войти в LifeCommit на Mac?') });
+    const buttons = (ask.reply_markup as { inline_keyboard: { text: string; callback_data: string }[][] }).inline_keyboard.flat();
+    expect(buttons.map((b) => b.text)).toEqual(['Войти', 'Не входить']);
+    expect(buttons[0]!.callback_data.length).toBeLessThanOrEqual(64);
+    expect((await poll(s.secret)).body).toEqual({ status: 'pending' });
+
+    await press(u, buttons[0]!.callback_data);
+    expect(edited().at(-1)).toContain('Готово');
+    expect(tg.sent('answerCallbackQuery')).toHaveLength(1);
+    const got = await poll(s.secret);
+    if (got.body.status !== 'ok') throw new Error('нет ключа');
+    expect((await asDesktop(got.body.token, 'POST', '/session', {})).body.user.id).toBe(u.id);
+
+    // та же кнопка второй раз — «уже подтверждён»
+    await press(u, buttons[0]!.callback_data);
+    expect(edited().at(-1)).toContain('уже подтверждён');
+  });
+
+  it('«Не входить» — ничего не подтверждено; по-английски — по-английски', async () => {
+    const u = await user({ lang: 'en' });
+    const s = await start('web');
+    await openLink(u, s.link, 'en');
+    expect(String(tg.sent('sendMessage').at(-1)!.body.text)).toContain('Sign in to LifeCommit in a browser?');
+    await press(u, 'dl:no');
+    expect(edited().at(-1)).toContain('not signing in');
+    expect((await poll(s.secret)).body).toEqual({ status: 'pending' });
+  });
+
+  it('устаревшая и подделанная ссылка — бот так и говорит, ключа нет', async () => {
+    const u = await user();
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now - 11 * 60_000);
+    const old = await start('mac');
+    clock.mockRestore();
+    await openLink(u, old.link);
+    const data = (tg.sent('sendMessage').at(-1)!.body.reply_markup as { inline_keyboard: { callback_data: string }[][] }).inline_keyboard[0]![0]!.callback_data;
+    await press(u, data);
+    expect(edited().at(-1)).toContain('Ссылка устарела');
+    const s = await start('mac');
+    await press(u, `dl:m${s.ticket.slice(0, -1)}${s.ticket.at(-1) === 'A' ? 'B' : 'A'}`);
+    expect(edited().at(-1)).toContain('не подходит');
+    expect((await poll(s.secret)).body).toEqual({ status: 'pending' });
+    await press(u, 'dl:xyz');
+    expect(edited().at(-1)).toContain('не подходит');
+  });
+
+  it('испорченная ссылка в /start — обычное приветствие, без вопроса о входе', async () => {
+    const u = await user();
+    await botUpdate({ message: { chat: { id: u.id, type: 'private' }, from: { id: u.id, first_name: 'Даша', language_code: 'ru' }, text: '/start mac_short' } });
+    expect(String(tg.sent('sendMessage').at(-1)!.body.text)).not.toContain('Войти в LifeCommit');
   });
 });

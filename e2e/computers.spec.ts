@@ -1,5 +1,5 @@
-// Вход на компьютере — сторона Telegram: компьютер открыл ссылку t.me/LifeCommit_bot?startapp=mac_<код>, мини-апп
-// спрашивает «Войти на Mac?»; в профиле — «Компьютеры» и «Выйти везде». Компьютер здесь — запросы к API, как их шлёт
+// Вход на компьютере — сторона Telegram. Новая ссылка ведёт в чат с ботом (подтверждение кнопкой — в
+// worker/desktop.int.test.ts); здесь — старая ссылка t.me/LifeCommit_bot?startapp=mac_<билет>: мини-апп спрашивает «Войти на Mac?»; в профиле — «Устройства» и «Выйти везде». Компьютер здесь — запросы к API, как их шлёт
 // приложение для Mac (src/desktop/Login.tsx); сам компьютер — в desktop.spec.ts.
 import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, goTab, test } from './fixtures';
@@ -16,16 +16,16 @@ async function poll(request: APIRequestContext, secret: string) {
   return (await (await request.post('/api/desktop/login/poll', { data: { secret } })).json()) as { status: string; token?: string };
 }
 
-/** Открыть мини-апп по ссылке входа, как Telegram открывает t.me/…?startapp=… */
+/** Открыть мини-апп по старой ссылке входа t.me/…?startapp=<устройство>_<билет> (так открывает Telegram). */
 async function openLink(page: Page, link: string) {
   const url = new URL(page.url());
-  url.searchParams.set('tgStart', new URL(link).searchParams.get('startapp')!);
+  url.searchParams.set('tgStart', new URL(link).searchParams.get('start')!);
   await page.goto(url.toString());
 }
 
 test('«Войти на Mac?» — «Войти»: компьютер получает ключ и входит этим человеком', async ({ app: page, me, request }) => {
   const login = await startOnComputer(request);
-  expect(login.link).toBe(`https://t.me/LifeCommit_bot?startapp=mac_${login.ticket}`);
+  expect(login.link).toBe(`https://t.me/LifeCommit_bot?start=mac_${login.ticket}`);
   await openLink(page, login.link);
   await expect(page.getByRole('heading', { name: 'Войти на Mac?' })).toBeVisible();
   expect(await poll(request, login.secret)).toEqual({ status: 'pending' });
@@ -57,16 +57,16 @@ test('«Не входить» — ничего не подтверждено; т
   await expect(page.getByText('Этот вход уже подтверждён.')).toBeVisible();
 });
 
-test('«Я» → «Компьютеры»: видно, где вошли; «Выйти везде» — ключи перестают работать', async ({ app: page, me, request }) => {
+test('«Я» → «Устройства»: видно, где вошли; «Выйти везде» — ключи перестают работать', async ({ app: page, me, request }) => {
   await goTab(page, 'Я');
-  await expect(page.getByRole('button', { name: /Компьютеры/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Устройства/ })).toHaveCount(0);
 
   const login = await startOnComputer(request);
   await me.api('POST', '/desktop/approve', { ticket: login.ticket, device: 'mac' });
   const { token } = await poll(request, login.secret);
   await page.reload();
   await goTab(page, 'Я');
-  const row = page.getByRole('button', { name: /Компьютеры/ });
+  const row = page.getByRole('button', { name: /Устройства/ });
   await expect(row).toContainText('1');
   await row.click();
   // Подтверждение Telegram (в подмене — сразу первая кнопка «Выйти везде»).
