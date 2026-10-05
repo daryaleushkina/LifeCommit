@@ -83,3 +83,10 @@ object CalendarAccounts {
 
 /** Ссылка на созвон — «Подключиться», остальное — «Открыть ссылку» (TodoSheet.tsx). */
 fun isCallLink(url: String): Boolean = Regex("meet|zoom|teams|telemost|webex|whereby|jit\\.si|jazz|ktalk|t\\.me/call|facetime", RegexOption.IGNORE_CASE).containsMatchIn(url)
+
+@kotlinx.serialization.Serializable
+data class GoogleFinish(val accountId: Long, val fresh: Boolean)
+
+/** Подключить Google по одноразовому коду из возврата (своим ключом: чужой код сервер не примет). */
+suspend fun ApiClient.finishGoogle(pending: String): GoogleFinish =
+    send("POST", "calendars/google/finish", kotlinx.serialization.json.buildJsonObject { put("pending", kotlinx.serialization.json.JsonPrimitive(pending)) }, GoogleFinish.serializer())

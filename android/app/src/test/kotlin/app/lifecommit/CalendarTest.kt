@@ -160,25 +160,6 @@ class CalendarTest : AppTest() {
         assertTrue(server.calls("GET", "/api/calendars/google/url").isNotEmpty())
     }
 
-    @Test fun `возврат из Google - ok, выбор календарей и Готово`() {
-        seed()
-        server.accounts = listOf(CalendarAccount(7, TodoSource.Google, "dasha@gmail.com", "setup", collections = listOf(CalendarCollection("work", "Работа", "#4470CC", true, true), CalendarCollection("hol", "Праздники", null, false, false))))
-        launch()
-        compose.waitText("Позвонить в банк")
-        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=ok") }
-        compose.waitText(t.cal.googleChoose)
-        compose.onNodeWithTag("googleDone").performClick()
-        compose.waitFor { server.calls("POST", "/api/calendars/7/confirm").size == 1 }
-    }
-
-    @Test fun `возврат из Google - отказ - объяснение в шторке`() {
-        seed()
-        launch()
-        compose.waitText("Позвонить в банк")
-        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=denied") }
-        compose.waitText(t.cal.googleReturn.getValue("denied").first, substring = true)
-    }
-
     @Test fun `выключить календарь не вышло - переключатель назад и ошибка`() {
         seed()
         server.accounts = listOf(CalendarAccount(8, TodoSource.Apple, "d@icloud.com", "ok", "2026-10-05T10:00:00Z", "home", listOf(CalendarCollection("home", "Дом", null, true, true))))
@@ -207,17 +188,6 @@ class CalendarTest : AppTest() {
     private fun openCalendarConnected() {
         compose.waitText(t.calendar).performClick()
         compose.waitLabel(t.cal.refresh)
-    }
-
-    @Test fun `возврат из Google, пока приложение ещё загружается, - ключ не теряется, шторка после загрузки`() {
-        seed()
-        server.sessionDelayMs = 1000
-        launch()
-        // Приложение выгрузили, пока был открыт вход Google: возврат приходит сразу после запуска.
-        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=again") }
-        compose.waitText(t.cal.sheetTitle, timeout = 8_000)
-        assertTrue(server.calls("GET", "/api/calendars").none { it.auth == null })
-        assertEquals("session-key", kotlinx.coroutines.runBlocking { tokens.load() })
     }
 
     @Test fun `после выхода календарь чистый - чужие дела и календари не видны`() {
@@ -262,5 +232,69 @@ class CalendarTest : AppTest() {
             model.calendar.syncNow()
         }
         compose.waitFor(8_000) { server.calls("POST", "/api/calendars/sync").size == 2 }
+    }
+
+    private val code = "a".repeat(43)
+
+    /** Нажали «Подключить» у Google — приложение ждёт возврата 15 минут. */
+    private fun startGoogle() {
+        compose.waitText(t.calendar).performClick()
+        compose.waitText(t.cal.connect).performClick()
+        compose.onNodeWithTag("connectGoogle").performClick()
+        compose.waitFor { opened.isNotEmpty() }
+    }
+
+    @Test fun `возврат из Google - код своим ключом в finish, новый - выбор календарей и Готово`() {
+        seed()
+        launch()
+        startGoogle()
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=ok&pending=$code") }
+        compose.waitFor { server.calls("POST", "/api/calendars/google/finish").size == 1 }
+        val call = server.calls("POST", "/api/calendars/google/finish").single()
+        assertEquals("\"$code\"", call.json["pending"].toString())
+        assertEquals("Bearer session-key", call.auth)
+        compose.waitText(t.cal.googleChoose)
+        compose.onNodeWithTag("googleDone").performClick()
+        compose.waitFor { server.calls("POST", "/api/calendars/7/confirm").size == 1 }
+    }
+
+    @Test fun `ссылка возврата без начатого входа - не принимается`() {
+        seed()
+        launch()
+        compose.waitText("Позвонить в банк")
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=ok&pending=$code") }
+        compose.waitText("Позвонить в банк")
+        assertTrue(server.calls("POST", "/api/calendars/google/finish").isEmpty())
+        assertTrue(!model.calendar.sheetOpen)
+    }
+
+    @Test fun `возврат из Google - ссылка устарела или чужая - объяснение, без кода - не получилось`() {
+        seed()
+        launch()
+        startGoogle()
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=ok&pending=old" + "a".repeat(40)) }
+        compose.waitText(t.cal.googleLinkExpired, substring = true)
+        startGoogleAgain()
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=ok") }
+        compose.waitText(t.cal.googleReturn.getValue("failed").first, substring = true)
+        startGoogleAgain()
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=denied") }
+        compose.waitText(t.cal.googleReturn.getValue("denied").first, substring = true)
+        assertEquals(1, server.calls("POST", "/api/calendars/google/finish").size)
+    }
+
+    private fun startGoogleAgain() {
+        compose.onNodeWithTag("connectGoogle").performClick()
+    }
+
+    @Test fun `возврат, который запустил выгруженное приложение, - после загрузки и со своим ключом`() {
+        seed()
+        prefs.setString("lc-gcal-wait", (System.currentTimeMillis() + 60_000).toString())
+        server.sessionDelayMs = 1000
+        launch()
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=ok&pending=$code") }
+        compose.waitText(t.cal.googleChoose, timeout = 8_000)
+        assertTrue(server.calls("POST", "/api/calendars/google/finish").all { it.auth == "Bearer session-key" })
+        assertEquals("session-key", kotlinx.coroutines.runBlocking { tokens.load() })
     }
 }

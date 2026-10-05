@@ -59,14 +59,20 @@ fun CalendarsSheet(cal: CalendarModel, links: Links, onClose: () -> Unit) {
         AppleForm(cal, apple?.login.orEmpty(), links, onDone = { form = false }, onClose = { form = false })
         return
     }
-    val signInGoogle = { googleUrl?.takeIf { it.isNotEmpty() }?.let { links.open(it, true) } }
+    val signInGoogle = {
+        googleUrl?.takeIf { it.isNotEmpty() }?.let {
+            cal.beginGoogle()
+            cal.googleReturn = null
+            links.open(it, true)
+        }
+    }
 
     Sheet(t.cal.sheetTitle, onClose) {
         Text(t.cal.sheetHint, style = onest(14, color = p.muted), modifier = Modifier.padding(horizontal = 4.dp))
         if (cal.sheetFailed) ErrorNote(t.error, Modifier.padding(top = 10.dp)) { cal.sheetFailed = false }
         // Вернулись из входа Google ни с чем: что случилось и что делать (тексты страницы возврата, worker/google.ts).
-        cal.googleReturn?.let { key -> t.cal.googleReturn[key] }?.let { (title, hint) ->
-            ErrorNote("$title. $hint", Modifier.padding(top = 10.dp).testTag("googleReturn")) { cal.googleReturn = null }
+        cal.googleReturn?.let { key -> if (key == "link") t.cal.googleLinkExpired else t.cal.googleReturn[key]?.let { (title, hint) -> "$title. $hint" } }?.let { text ->
+            ErrorNote(text, Modifier.padding(top = 10.dp).testTag("googleReturn")) { cal.googleReturn = null }
         }
 
         // Google

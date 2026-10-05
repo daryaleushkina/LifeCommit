@@ -204,6 +204,19 @@ class FakeServer {
                 ok()
             }
             call.method == "POST" && api == "calendars/sync" -> ok()
+            call.method == "POST" && api == "calendars/google/finish" -> {
+                val pending = call.json["pending"]?.jsonPrimitive?.contentOrNull
+                when {
+                    pending == null || !Regex("^[A-Za-z0-9_-]{43}$").matches(pending) -> error(400, "bad_pending")
+                    pending.startsWith("old") -> error(410, "pending_expired")
+                    pending.startsWith("bad") -> error(404, "pending_not_found")
+                    else -> {
+                        val fresh = accounts.none { it.provider == app.lifecommit.core.TodoSource.Google }
+                        if (fresh) accounts = accounts + app.lifecommit.core.CalendarAccount(7, app.lifecommit.core.TodoSource.Google, "d@gmail.com", "setup", collections = listOf(app.lifecommit.core.CalendarCollection("work", "Работа", "#4470CC", true, true)))
+                        ok("""{"account_id":7,"fresh":$fresh}""")
+                    }
+                }
+            }
             call.method == "DELETE" && api.startsWith("todos/") -> {
                 val id = api.removePrefix("todos/").toLong()
                 today = today.copy(todos = today.todos.filter { it.id != id })

@@ -22,6 +22,7 @@ import app.lifecommit.core.connectApple
 import app.lifecommit.core.createTodo
 import app.lifecommit.core.deleteTodo
 import app.lifecommit.core.disconnectCalendar
+import app.lifecommit.core.finishGoogle
 import app.lifecommit.core.googleCalendarUrl
 import app.lifecommit.core.setDefaultCalendar
 import app.lifecommit.core.syncCalendars
@@ -49,6 +50,8 @@ interface TodoActions {
 
 class CalendarModel(
     private val api: ApiClient,
+    /** Где помним, что ждём возврата из Google (переживает выгрузку приложения, пока открыт вход). */
+    private val prefs: Prefs,
     private val scope: CoroutineScope,
     /** Сегодняшний логический день (из «Сегодня»). */
     private val today: () -> String,
@@ -406,13 +409,21 @@ class CalendarModel(
         syncNow()
     }
 
-    /** Итог возврата после входа Google, если не получилось: denied, expired, failed (тексты — Strings.cal.googleReturn). */
+    /** Итог возврата после входа Google, если не получилось: denied, expired, failed, link (тексты — Strings.cal). */
     var googleReturn by mutableStateOf<String?>(null)
 
+    /** Нажали «Подключить» у Google: 15 минут ждём возврата (столько живёт код). */
+    fun beginGoogle(now: Long = System.currentTimeMillis()) {
+        prefs.setString(WAIT_KEY, (now + 15 * 60_000).toString())
+    }
+
+    private fun waiting(now: Long = System.currentTimeMillis()) = (prefs.string(WAIT_KEY)?.toLongOrNull() ?: 0) > now
+
     /**
-     * Возврат после входа Google (docs/mobile.md «Возврат после входа Google»): lifecommit://calendars?status=ok|again|
-     * denied|expired|failed. Открываем шторку «Календари» со свежим списком: ok — там выбор календарей; again — уже
-     * подключён; остальное — заголовок и пояснение в шторке. Незнакомый статус — как failed.
+     * Возврат после входа Google (docs/mobile.md «Возврат после входа Google»): lifecommit://calendars?status=ok&pending=<код>
+     * или status=denied|expired|failed. Ссылке не доверяем: принимаем, только пока ждём вход, и только как сигнал отправить
+     * код своим ключом (POST /calendars/google/finish) — чужая ссылка чужой календарь к нам не подключит.
+     * true — ссылку приняли (открыть шторку «Календари»).
      */
     fun handleGoogleReturn(uri: String): Boolean {
         val u = try {
@@ -421,16 +432,45 @@ class CalendarModel(
             return false
         }
         if (u.scheme != "lifecommit" || u.host != "calendars") return false
-        val status = u.rawQuery.orEmpty().split('&').firstOrNull { it.startsWith("status=") }?.removePrefix("status=")
-        googleReturn = when (status) {
-            "ok", "again" -> null
-            "denied", "expired" -> status
-            else -> "failed"
+        if (!waiting()) {
+            log.warning("google return without a pending sign-in — ignored")
+            return false
         }
+        prefs.setString(WAIT_KEY, null)
+        val q = u.rawQuery.orEmpty().split('&').associate { it.substringBefore('=') to it.substringAfter('=', "") }
+        val status = q["status"]
+        val pending = q["pending"]?.takeIf { PENDING.matches(it) }
         sheetFailed = false
         sheetOpen = true
-        loadAccounts()
+        googleReturn = when {
+            status == "ok" && pending != null -> null
+            status == "denied" || status == "expired" -> status
+            else -> "failed"
+        }
+        if (googleReturn == null && pending != null) {
+            scope.launch {
+                try {
+                    val res = api.finishGoogle(pending)
+                    // Новый — выбор календарей в шторке (статус setup); подключён заново — перечитать календари и дела.
+                    if (res.fresh) loadAccounts() else changedNow()
+                } catch (e: ApiError) {
+                    if (e.isSignedOut) return@launch onSignedOut()
+                    googleReturn = if (e.code == "pending_not_found" || e.code == "pending_expired") "link" else "failed"
+                }
+            }
+        } else {
+            loadAccounts()
+        }
         loadGoogleUrl()
         return true
+    }
+
+    private suspend fun changedNow() = changed()
+
+    companion object {
+        private const val WAIT_KEY = "lc-gcal-wait"
+
+        /** Одноразовый код возврата Google: 43 знака base64url. */
+        private val PENDING = Regex("^[A-Za-z0-9_-]{43}$")
     }
 }
