@@ -1,12 +1,28 @@
 // Куда ходит приложение и как входит. Прод — https://lifecommit.app/api (Info.plist LCAPIBase). Для разработки и
-// UI-тестов — аргументы запуска (они попадают в UserDefaults): -LCAPIBase http://localhost:5181/api, -LCDevUser 123 —
-// войти подменённым Telegram (только сборка Debug и только не на прод: сервер с DEV_AUTH_BYPASS).
+// UI-тестов — аргументы запуска (они попадают в UserDefaults, и оба работают только в сборке Debug):
+// -LCAPIBase http://localhost:5181/api, -LCDevUser 123 — войти подменённым Telegram (только не на прод: сервер с
+// DEV_AUTH_BYPASS).
 import Foundation
 
 enum Config {
     static var apiBase: URL {
-        if let override = UserDefaults.standard.string(forKey: "LCAPIBase"), let url = URL(string: override) { return url }
-        if let plist = Bundle.main.object(forInfoDictionaryKey: "LCAPIBase") as? String, let url = URL(string: plist) { return url }
+        #if DEBUG
+        let allowOverride = true
+        #else
+        let allowOverride = false
+        #endif
+        return apiBase(
+            override: UserDefaults.standard.string(forKey: "LCAPIBase"),
+            plist: Bundle.main.object(forInfoDictionaryKey: "LCAPIBase") as? String,
+            allowOverride: allowOverride
+        )
+    }
+
+    /// Подмена адреса (аргумент запуска -LCAPIBase) — только в сборке для разработки: в сборке для людей настройки
+    /// приложения может переписать любая программа на Mac (`defaults write`), и ключ сессии ушёл бы на чужой сервер.
+    static func apiBase(override: String?, plist: String?, allowOverride: Bool) -> URL {
+        if allowOverride, let override, let url = URL(string: override) { return url }
+        if let plist, let url = URL(string: plist) { return url }
         return URL(string: "https://lifecommit.app/api")!
     }
 

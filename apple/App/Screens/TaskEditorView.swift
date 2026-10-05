@@ -5,13 +5,16 @@ import LifeCommitKit
 import SwiftUI
 
 struct TaskEditorView: View {
-    let taskId: Int?
-    let kind: TaskKind
+    /// Чья это форма — запоминается при открытии, как и сама форма: привычка может пропасть с «Сегодня», пока редактор
+    /// открыт (отложили, удалили на другом устройстве), — тогда маршрут .editTask соберёт редактор заново без неё, а
+    /// он не должен превратиться в «Новую привычку» и создать её второй раз.
+    @State private var taskId: Int?
+    @State private var kind: TaskKind
 
     /// Форма заполняется сразу из привычки (из «Сегодня», без загрузки) — без мигания пустой формы при открытии.
     init(task: TodayTask?, kind: TaskKind) {
-        taskId = task?.id
-        self.kind = task?.kind ?? kind
+        _taskId = State(initialValue: task?.id)
+        _kind = State(initialValue: task?.kind ?? kind)
         _form = State(initialValue: task.map {
             Form(title: $0.title, target: $0.target, unit: $0.unit ?? "", schedule: $0.schedule, weekdays: $0.weekdays,
                  perWeek: $0.perWeek ?? 3, visibility: $0.visibility, lastSlipOn: $0.lastSlipOn)

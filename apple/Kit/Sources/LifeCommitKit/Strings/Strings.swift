@@ -130,8 +130,10 @@ public struct Strings: Sendable {
 
     public struct SwipeStrings: Sendable {
         public let remove: String
+        public let hide: String
         public let undo: String
         public let removed: @Sendable (String) -> String
+        public let hidden: @Sendable (String) -> String
     }
 
     // MARK: Числа и даты
@@ -245,7 +247,7 @@ public extension Strings {
                 check: { "Сделано: \($0)" },
                 uncheck: { "Не сделано: \($0)" }
             ),
-            swipe: SwipeStrings(remove: "Удалить", undo: "Вернуть", removed: { "«\($0)» удалено" }),
+            swipe: SwipeStrings(remove: "Удалить", hide: "Скрыть", undo: "Вернуть", removed: { "«\($0)» удалено" }, hidden: { "«\($0)» скрыто" }),
             onboardingTitle: "Чего я хочу?",
             onboardingSkip: "Пропустить",
             intents: [
@@ -357,7 +359,7 @@ public extension Strings {
                 check: { "Done: \($0)" },
                 uncheck: { "Not done: \($0)" }
             ),
-            swipe: SwipeStrings(remove: "Delete", undo: "Undo", removed: { "“\($0)” deleted" }),
+            swipe: SwipeStrings(remove: "Delete", hide: "Hide", undo: "Undo", removed: { "“\($0)” deleted" }, hidden: { "“\($0)” hidden" }),
             onboardingTitle: "What do I want?",
             onboardingSkip: "Skip",
             intents: [

@@ -39,7 +39,7 @@ struct TodayView: View {
                 } else {
                     VStack(spacing: 10) {
                         ForEach(due) { task in
-                            SwipeRow(action: SwipeAction(label: t.swipe.remove) { model.removeTask(task) }, card: true) {
+                            SwipeRow(actions: [SwipeAction(label: t.swipe.remove) { model.removeTask(task) }], card: true) {
                                 TaskCard(task: task, onLog: { value, status in
                                     Task { await model.log(task, value: value, status: status) }
                                 }, onOpen: { model.path.append(.detail(task.id)) })
@@ -54,7 +54,7 @@ struct TodayView: View {
                 if !notDue.isEmpty {
                     VStack(spacing: 10) {
                         ForEach(notDue) { task in
-                            SwipeRow(action: SwipeAction(label: t.swipe.remove) { model.removeTask(task) }, card: true) {
+                            SwipeRow(actions: [SwipeAction(label: t.swipe.remove) { model.removeTask(task) }], card: true) {
                                 NotDueCard(task: task) { model.path.append(.editTask(task.id)) }
                             }
                         }

@@ -101,7 +101,11 @@ final class TodayUITests: XCTestCase {
         XCTAssertTrue(undo.waitForExistence(timeout: 5), "нет плашки «Вернуть»")
         undo.tap()
         XCTAssertTrue(card.waitForExistence(timeout: 5))
-        _ = XCTWaiter.wait(for: [XCTestExpectation()], timeout: 6)
+        // Сервер ничего не узнал — без ожидания вслепую: новое удаление сразу отправляет прежнее отложенное. Если бы
+        // «Вернуть» его не отменило, спортзал ушёл бы на сервер раньше воды (её отправит удаление «Не курить»).
+        drag(app.otherElements["task-Пить воду"].firstMatch, from: 0.95, to: 0.05)
+        drag(app.otherElements["task-Не курить"].firstMatch, from: 0.95, to: 0.05)
+        eventually("вода удалена на сервере") { try self.task(ids.water) == nil }
         XCTAssertNotNil(try task(ids.gym), "вернули — привычка осталась на сервере")
 
         // Свайп до конца — удаляется без кнопки; не вернули — через 5 секунд удалена на сервере.

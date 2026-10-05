@@ -34,11 +34,7 @@ struct RootView: View {
             // Под модульными тестами приложение — только хост: ни входа, ни запросов к серверу.
             if !Config.isUnitTestHost { await model.start() }
         }
-        .onChange(of: scenePhase) { _, phase in
-            // Свернули приложение — отложенное удаление уходит на сервер сейчас, а не теряется.
-            if phase != .active { model.flushRemoval() }
-            if phase == .active { Task { await model.refreshIfStale() } }
-        }
+        .onChange(of: scenePhase) { _, phase in model.scenePhaseChanged(phase) }
     }
 }
 

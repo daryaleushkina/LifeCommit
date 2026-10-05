@@ -11,8 +11,6 @@ struct SignInView: View {
     @Environment(\.palette) private var palette
     @Environment(\.webAuthenticationSession) private var webAuth
     @Environment(\.openURL) private var openURL
-    /// Ждём возврата из приложения Telegram с кодом.
-    @State private var pending: (pkce: TelegramOAuth.PKCE, clientId: String)?
 
     var body: some View {
         VStack(spacing: 20) {
@@ -50,8 +48,7 @@ struct SignInView: View {
         .padding(.horizontal, 20)
         .onOpenURL { url in
             // Вернулись из приложения Telegram: lifecommit://tglogin?code=…
-            guard url.scheme == TelegramOAuth.callbackScheme, let pending else { return }
-            self.pending = nil
+            guard url.scheme == TelegramOAuth.callbackScheme, let pending = model.takeTelegramPending() else { return }
             Task { await finish(callback: url, pkce: pending.pkce, clientId: pending.clientId) }
         }
     }
@@ -69,7 +66,7 @@ struct SignInView: View {
         #if os(iOS)
         if let tg = URL(string: "tg://resolve"), UIApplication.shared.canOpenURL(tg),
            let link = await TelegramOAuth.crossAppLink(session: .shared, clientId: clientId, pkce: pkce) {
-            pending = (pkce, clientId)
+            model.handOffToTelegram(.init(pkce: pkce, clientId: clientId))
             openURL(link)
             return
         }

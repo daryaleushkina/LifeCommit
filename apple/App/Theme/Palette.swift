@@ -19,6 +19,9 @@ struct Palette: Sendable {
     let warnText: Color
     let danger: Color
     let dangerText: Color
+    /// Спокойная кнопка под строкой («Скрыть»): --neutral-pill.
+    let neutralPill: Color
+    let neutralPillText: Color
     let outside: Color
     let heat: [Color]
     /// Стекло: заливка панели и обводка, тень.
@@ -66,6 +69,8 @@ struct Palette: Sendable {
         warnText: .white,
         danger: Color(hex: 0xC4413A),
         dangerText: .white,
+        neutralPill: Color(hex: 0x6B7368),
+        neutralPillText: .white,
         outside: Color(hex: 0x4470CC),
         heat: [Color(hex: 0xE4E8DF), Color(hex: 0xB8E0C4), Color(hex: 0x7CCB96), Color(hex: 0x3FA968), Color(hex: 0x237A46)],
         glass: Color.white.opacity(0.58),
@@ -104,6 +109,8 @@ struct Palette: Sendable {
         warnText: Color(hex: 0x1B110C),
         danger: Color(hex: 0xEC7A6F),
         dangerText: Color(hex: 0x1F0D0B),
+        neutralPill: Color(hex: 0xA3AD9F),
+        neutralPillText: Color(hex: 0x0F1511),
         outside: Color(hex: 0x7F9FE3),
         heat: [Color.white.opacity(0.09), Color(hex: 0x1E4A2E), Color(hex: 0x2B7143), Color(hex: 0x3FA968), Color(hex: 0x7CCB96)],
         glass: Color.white.opacity(0.07),
