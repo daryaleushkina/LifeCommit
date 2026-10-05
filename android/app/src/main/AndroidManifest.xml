@@ -60,6 +60,23 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lifecommit" android:host="calendars" />
             </intent-filter>
+            <!-- Приглашения (решение владелицы 05.10): проверенный App Link lifecommit.app/j/<код> (в группу) и /f/<код>
+                 (в друзья) — assetlinks.json сайта с отпечатком нашего ключа подписи. Код сверяется в AppModel.invitePath. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="lifecommit.app" android:pathPrefix="/j/" />
+                <data android:scheme="https" android:host="lifecommit.app" android:pathPrefix="/f/" />
+            </intent-filter>
+            <!-- Кнопка «Открыть в приложении» на странице приглашения (там, где App Link не сработал). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lifecommit" android:host="join" />
+                <data android:scheme="lifecommit" android:host="friend" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

@@ -65,6 +65,21 @@ class FakeServer {
     /** Задержать POST /session (мс): приложение ещё загружается. */
     @Volatile var sessionDelayMs = 0L
 
+    /** Группы человека (экран группы целиком): GET /groups и /groups/:id; «Сегодня» отдаёт их в today.groups. */
+    @Volatile var groups: List<app.lifecommit.core.GroupToday> = emptyList()
+
+    /** Приглашения: код → (приглашение, группа, которая появится после вступления). */
+    val invites = mutableMapOf<String, Pair<app.lifecommit.core.Invitation, app.lifecommit.core.GroupToday>>()
+
+    /** Друзья — GET /friends. */
+    @Volatile var friendsData = app.lifecommit.core.FriendsResponse(link = "https://t.me/LifeCommit_bot?startapp=f_me")
+
+    /** Экраны друзей — GET /friends/:id. */
+    val profiles = mutableMapOf<Long, app.lifecommit.core.FriendProfile>()
+
+    /** Поиск по @username и чужие ссылки: ключ → человек и статус. */
+    val people = mutableMapOf<String, app.lifecommit.core.FoundPerson>()
+
     /** Дела «на потом» — GET /todos/later. */
     @Volatile var later: List<Todo> = emptyList()
 
@@ -115,7 +130,7 @@ class FakeServer {
             call.method == "GET" && api == "auth/telegram/config" -> ok("""{"client_id":"7000000001"}""")
             call.method == "POST" && api == "auth/telegram" -> ok("""{"token":"session-key","is_new":false}""")
             call.method == "POST" && api == "session" -> ok(enc(SessionResponse(user = user, isNew = false)))
-            call.method == "GET" && api == "today" -> ok(enc(today)).let { r ->
+            call.method == "GET" && api == "today" -> ok(enc(today.copy(groups = groups.map { it.copy(settings = null, upcoming = emptyList()) }))).let { r ->
                 if (todayDelayMs > 0) r.newBuilder().headersDelay(todayDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS).build() else r
             }
             call.method == "GET" && api == "heatmap" -> ok(enc(HeatmapResponse(today.day, emptyList())))
@@ -216,6 +231,116 @@ class FakeServer {
                         ok("""{"account_id":7,"fresh":$fresh}""")
                     }
                 }
+            }
+            call.method == "GET" && api == "groups" -> ok(enc(groups.map { it.copy(settings = null, upcoming = emptyList()) }))
+            call.method == "POST" && api == "groups" -> {
+                val id = nextId++
+                groups = groups + app.lifecommit.core.GroupToday(id, call.json["title"]!!.jsonPrimitive.content, role = app.lifecommit.core.GroupRole.Owner, members = listOf(app.lifecommit.core.GroupMember(user.id, user.firstName)), settings = app.lifecommit.core.GroupSettings())
+                ok("""{"id":$id}""", 201)
+            }
+            call.method == "GET" && api.matches(Regex("groups/\\d+")) -> {
+                val id = api.removePrefix("groups/").toLong()
+                groups.firstOrNull { it.id == id }?.let { ok(enc(it)) } ?: error(404, "not_found")
+            }
+            call.method == "PATCH" && api.matches(Regex("groups/\\d+")) -> {
+                val id = api.removePrefix("groups/").toLong()
+                val b = call.json
+                groups = groups.map { g ->
+                    if (g.id != id) g else g.copy(
+                        title = b["title"]?.jsonPrimitive?.contentOrNull ?: g.title,
+                        settings = b["admins_only_edit"]?.jsonPrimitive?.booleanOrNull?.let { g.settings?.copy(adminsOnlyEdit = it) } ?: g.settings,
+                    )
+                }
+                ok()
+            }
+            call.method == "DELETE" && api.matches(Regex("groups/\\d+")) || call.method == "POST" && api.matches(Regex("groups/\\d+/leave")) -> {
+                val id = api.split('/')[1].toLong()
+                groups = groups.filter { it.id != id }
+                ok()
+            }
+            call.method == "POST" && api.matches(Regex("groups/\\d+/invite")) -> ok("""{"code":"abcd1234","link":"https://t.me/LifeCommit_bot?startapp=g_abcd1234","expires_at":"2026-10-12T00:00:00Z"}""")
+            call.method == "POST" && api.matches(Regex("groups/\\d+/chat/check")) -> {
+                val id = api.split('/')[1].toLong()
+                ok("""{"tg_chat_title":${groups.firstOrNull { it.id == id }?.settings?.tgChatTitle?.let { "\"$it\"" } ?: "null"}}""")
+            }
+            call.method == "DELETE" && api.matches(Regex("groups/\\d+/chat")) -> {
+                val id = api.split('/')[1].toLong()
+                groups = groups.map { if (it.id == id) it.copy(settings = it.settings?.copy(tgChatTitle = null)) else it }
+                ok()
+            }
+            call.method == "PUT" && api.matches(Regex("groups/\\d+/items/\\d+/mark")) -> {
+                val (gid, iid) = api.split('/').let { it[1].toLong() to it[3].toLong() }
+                val done = call.json["done"]!!.jsonPrimitive.booleanOrNull == true
+                var taken = false
+                groups = groups.map { g ->
+                    if (g.id != gid) g else g.copy(items = g.items.map { it2 ->
+                        if (it2.id != iid) it2 else {
+                            if (done && it2.mode == app.lifecommit.core.GroupMode.One && it2.doneBy.isNotEmpty()) taken = true
+                            it2.copy(done = done, doneBy = if (done) (it2.doneBy + user.id).distinct() else it2.doneBy - user.id)
+                        }
+                    })
+                }
+                ok("""{"ok":true,"taken":$taken}""")
+            }
+            call.method == "POST" && api.matches(Regex("groups/\\d+/items/\\d+/entries")) -> {
+                val (gid, iid) = api.split('/').let { it[1].toLong() to it[3].toLong() }
+                val amount = call.json["amount"]!!.jsonPrimitive.doubleOrNull ?: 0.0
+                groups = groups.map { g -> if (g.id != gid) g else g.copy(items = g.items.map { if (it.id == iid) it.copy(total = (it.total ?: 0.0) + amount) else it }) }
+                ok()
+            }
+            call.method == "POST" && api.matches(Regex("groups/\\d+/items/\\d+/skip")) || call.method == "DELETE" && api.matches(Regex("groups/\\d+/items/\\d+")) -> {
+                val (gid, iid) = api.split('/').let { it[1].toLong() to it[3].toLong() }
+                groups = groups.map { g -> if (g.id != gid) g else g.copy(items = g.items.filter { it.id != iid }) }
+                ok()
+            }
+            call.method == "POST" && api.matches(Regex("groups/\\d+/items")) -> {
+                val gid = api.split('/')[1].toLong()
+                val b = call.json
+                val id = nextId++
+                val item = app.lifecommit.core.GroupDayItem(id = id, title = b["title"]!!.jsonPrimitive.content, mode = app.lifecommit.core.GroupMode.entries.first { it.wire == b["mode"]!!.jsonPrimitive.content }, forMe = true, canMark = true, start = today.day)
+                groups = groups.map { g -> if (g.id != gid) g else g.copy(items = g.items + item) }
+                ok("""{"id":$id}""", 201)
+            }
+            call.method == "PATCH" && api.matches(Regex("groups/\\d+/items/\\d+")) -> {
+                val (gid, iid) = api.split('/').let { it[1].toLong() to it[3].toLong() }
+                val title = call.json["title"]?.jsonPrimitive?.contentOrNull
+                groups = groups.map { g -> if (g.id != gid) g else g.copy(items = g.items.map { if (it.id == iid && title != null) it.copy(title = title) else it }) }
+                ok()
+            }
+            call.method == "GET" && api.startsWith("invites/") -> invites[api.removePrefix("invites/")]?.let { ok(enc(it.first)) } ?: error(404, "not_found")
+            call.method == "POST" && api.matches(Regex("invites/[^/]+/join")) -> {
+                val code = api.split('/')[1]
+                invites[code]?.let { (_, g) ->
+                    groups = groups + g
+                    ok("""{"id":${g.id}}""")
+                } ?: error(410, "invite_expired")
+            }
+            call.method == "GET" && api == "friends" -> ok(enc(friendsData))
+            call.method == "GET" && api == "friends/find" -> people[r.url.queryParameter("username")!!.removePrefix("@")]?.let { ok(enc(it)) } ?: error(404, "not_found")
+            call.method == "GET" && api.startsWith("friends/link/") -> people["code:" + api.removePrefix("friends/link/")]?.let { ok(enc(it)) } ?: error(404, "not_found")
+            call.method == "POST" && api == "friends/requests" -> ok("""{"status":"sent"}""")
+            call.method == "POST" && api.matches(Regex("friends/requests/\\d+/accept")) -> {
+                val id = api.split('/')[2].toLong()
+                val r2 = friendsData.incoming.first { it.id == id }
+                friendsData = friendsData.copy(incoming = friendsData.incoming - r2, friends = friendsData.friends + app.lifecommit.core.FriendCard(r2.id, r2.firstName))
+                ok()
+            }
+            call.method == "DELETE" && api.matches(Regex("friends/requests/\\d+")) -> {
+                val id = api.split('/')[2].toLong()
+                friendsData = friendsData.copy(incoming = friendsData.incoming.filter { it.id != id }, outgoing = friendsData.outgoing.filter { it.id != id })
+                ok()
+            }
+            call.method == "GET" && api.matches(Regex("friends/\\d+")) -> profiles[api.removePrefix("friends/").toLong()]?.let { ok(enc(it)) } ?: error(404, "not_found")
+            call.method == "DELETE" && api.matches(Regex("friends/\\d+")) || call.method == "POST" && api.matches(Regex("friends/\\d+/block")) -> {
+                val id = api.split('/')[1].toLong()
+                friendsData = friendsData.copy(friends = friendsData.friends.filter { it.id != id })
+                profiles.remove(id)
+                ok()
+            }
+            call.method == "PUT" && api == "friends/shown" -> ok()
+            call.method == "POST" && api == "friends/prompted" -> {
+                friendsData = friendsData.copy(prompt = false)
+                ok()
             }
             call.method == "DELETE" && api.startsWith("todos/") -> {
                 val id = api.removePrefix("todos/").toLong()

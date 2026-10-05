@@ -174,6 +174,71 @@ class ScreensTest(private val theme: String) : AppTest() {
         shot("sheet-apple")
     }
 
+    private fun seedTogether() {
+        seed()
+        val me = server.user.id
+        val members = listOf(app.lifecommit.core.GroupMember(me, "Даша"), app.lifecommit.core.GroupMember(2, "Маша"), app.lifecommit.core.GroupMember(3, "Петя"))
+        server.groups = listOf(
+            app.lifecommit.core.GroupToday(50, "Семья", role = app.lifecommit.core.GroupRole.Owner, members = members, planned = 3, done = 1, settings = app.lifecommit.core.GroupSettings(tgChatTitle = "Семейный чат"), items = listOf(
+                app.lifecommit.core.GroupDayItem(61, "Вынести мусор", app.lifecommit.core.GroupMode.Assign, people = listOf(me), forMe = true, canMark = true, turn = me, rotate = true),
+                app.lifecommit.core.GroupDayItem(62, "Купить продукты", app.lifecommit.core.GroupMode.One, forMe = true, canMark = true, done = true, doneBy = listOf(2)),
+                app.lifecommit.core.GroupDayItem(64, "Семейный ужин", app.lifecommit.core.GroupMode.Event, time = "19:00", forMe = true),
+                app.lifecommit.core.GroupDayItem(63, "Отпуск в Грузии", app.lifecommit.core.GroupMode.Goal, forMe = true, target = 150000.0, total = 62400.0, unit = app.lifecommit.core.GoalUnit("money", listOf("рубль", "рубля", "рублей"), currency = "₽")),
+            )),
+            app.lifecommit.core.GroupToday(51, "Бег по утрам", members = members.take(2), planned = 0),
+        )
+        server.friendsData = server.friendsData.copy(
+            friends = listOf(app.lifecommit.core.FriendCard(2, "Маша", "masha", days = List(14) { (it % 4).toDouble() }, done = 2, due = 3)),
+            incoming = listOf(app.lifecommit.core.FriendRequest(3, "Петя", via = "link")),
+            outgoing = listOf(app.lifecommit.core.Person(4, "Вася")),
+        )
+        server.profiles[2] = app.lifecommit.core.FriendProfile(app.lifecommit.core.Person(2, "Маша", "masha"), today = "2026-10-05",
+            heat = (0 until 30).map { app.lifecommit.core.HeatDay(app.lifecommit.core.Days.add("2026-10-05", -it), (it % 6).toDouble()) },
+            habits = listOf(app.lifecommit.core.FriendHabit(9, "Бег", kind = app.lifecommit.core.TaskKind.Check, value = 1.0), app.lifecommit.core.FriendHabit(10, "Читать", kind = app.lifecommit.core.TaskKind.Count, target = 20.0, value = 12.0, unit = "страниц")))
+    }
+
+    @Test fun together() {
+        seedTogether()
+        start()
+        compose.waitText(t.groups).performClick()
+        compose.waitText("Бег по утрам")
+        shot("together-groups")
+        compose.waitText(t.fr.tabFriends).performClick()
+        compose.waitText(t.fr.requests(1))
+        shot("together-friends")
+    }
+
+    @Test fun groupScreen() {
+        seedTogether()
+        start()
+        compose.waitText(t.groups).performClick()
+        compose.waitText("Семья").performClick()
+        compose.waitText("Семейный ужин")
+        shot("group")
+        compose.onNodeWithTag("addGroupItem").performClick()
+        compose.waitText(t.gr.who.uppercase())
+        shot("sheet-group-item")
+    }
+
+    @Test fun friendScreen() {
+        seedTogether()
+        start()
+        compose.waitText(t.groups).performClick()
+        compose.waitText(t.fr.tabFriends).performClick()
+        compose.waitText("Маша").performClick()
+        compose.waitText("Читать")
+        shot("friend")
+    }
+
+    @Test fun todayWithGroups() {
+        seedTogether()
+        start()
+        compose.waitText("Позвонить в банк")
+        repeat(3) { compose.onNodeWithTag("today").performTouchInput { swipeUp() } }
+        compose.waitText("Вынести мусор")
+        shot("today-groups")
+    }
+
     @Test fun archive() {
         seed()
         start()
@@ -188,9 +253,6 @@ class ScreensTest(private val theme: String) : AppTest() {
     @Test fun pendingAndMe() {
         seed()
         start()
-        compose.waitText(t.groups).performClick()
-        compose.waitText(t.pendingSection)
-        shot("groups-pending")
         compose.waitText(t.me).performClick()
         compose.waitText(t.logoutDevice)
         shot("me")

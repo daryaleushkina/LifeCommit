@@ -68,6 +68,37 @@ class CalendarModel(
     /** Дела по промежуткам «from:to» — уже виденное открывается сразу. */
     private val ranges = mutableStateMapOf<String, List<Todo>>()
 
+    /** Дела групп по промежуткам (касаются меня), по дням. */
+    private val groupRanges = mutableStateMapOf<String, List<app.lifecommit.core.GroupDayBlock>>()
+
+    /** Дела групп в этот день. */
+    fun groupsOfDay(day: String): List<app.lifecommit.core.GroupDayBlock> = groupRanges[key].orEmpty().filter { it.day == day }
+
+    /** Отметка группового дела на экране сразу. */
+    fun patchGroupItem(groupId: Long, itemId: Long, day: String, f: (app.lifecommit.core.GroupDayItem) -> app.lifecommit.core.GroupDayItem) {
+        val k = key
+        groupRanges[k]?.let { list ->
+            groupRanges[k] = list.map { b -> if (b.group.id != groupId || b.day != day) b else b.copy(items = b.items.map { if (it.id == itemId) f(it) else it }) }
+        }
+    }
+
+    /** Перечитать то, что на экране (после правки в группе), без перечитывания «Сегодня». */
+    suspend fun reloadQuiet() {
+        if (selected.isEmpty()) return
+        version++
+        val seq = version
+        val k = key
+        try {
+            val r = api.calendar(days.first(), days.last())
+            if (seq == version) {
+                ranges[k] = r.todos
+                groupRanges[k] = r.groups
+            }
+        } catch (e: ApiError) {
+            if (e.isSignedOut) onSignedOut() else log.info("calendar quiet reload failed: $e")
+        }
+    }
+
     /** Подключённые календари; null — ещё не знаем. */
     var accounts by mutableStateOf<List<CalendarAccount>?>(null)
         private set
@@ -101,6 +132,7 @@ class CalendarModel(
     fun reset() {
         version++
         ranges.clear()
+        groupRanges.clear()
         accounts = null
         googleUrl = null
         selected = ""
@@ -158,8 +190,11 @@ class CalendarModel(
         inFlight++
         scope.launch {
             try {
-                val todos = api.calendar(d.first(), d.last()).todos
-                if (seq == version) ranges["${d.first()}:${d.last()}"] = todos
+                val r = api.calendar(d.first(), d.last())
+                if (seq == version) {
+                    ranges["${d.first()}:${d.last()}"] = r.todos
+                    groupRanges["${d.first()}:${d.last()}"] = r.groups
+                }
             } catch (e: ApiError) {
                 if (e.isSignedOut) onSignedOut() else log.info("calendar ${d.first()}..${d.last()} failed: $e")
             } finally {
@@ -172,11 +207,15 @@ class CalendarModel(
     private suspend fun reload() {
         version++
         ranges.keys.filter { it != key }.forEach { ranges.remove(it) }
+        groupRanges.keys.filter { it != key }.forEach { groupRanges.remove(it) }
         val seq = version
         val k = key
         try {
-            val todos = api.calendar(days.first(), days.last()).todos
-            if (seq == version) ranges[k] = todos
+            val r = api.calendar(days.first(), days.last())
+            if (seq == version) {
+                ranges[k] = r.todos
+                groupRanges[k] = r.groups
+            }
         } catch (e: ApiError) {
             if (e.isSignedOut) onSignedOut() else log.info("calendar reload failed: $e")
         }

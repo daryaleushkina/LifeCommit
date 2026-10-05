@@ -127,7 +127,7 @@ data class ArchivedTask(val id: Long, val title: String, val emoji: String? = nu
 @Serializable
 data class TaskLimits(val maxTasks: Int? = null, val active: Int = 0)
 
-/** GET /today. Группы (`groups`) придут вместе с разделом «Вместе» — пока их поле не читаем. */
+/** GET /today. */
 @Serializable
 data class TodayResponse(
     /** Логический день человека (YYYY-MM-DD). */
@@ -138,6 +138,8 @@ data class TodayResponse(
     val todos: List<Todo> = emptyList(),
     /** Сколько дел запланировано на потом. */
     val todosLater: Int = 0,
+    /** Мои группы с делами на сегодня (блоки под личным). */
+    val groups: List<GroupToday> = emptyList(),
 )
 
 @Serializable
@@ -213,9 +215,9 @@ data class CalendarAccount(
     val collections: List<CalendarCollection> = emptyList(),
 )
 
-/** GET /calendar?from&to: дела по дням (повторы раскрыты сервером). Группы (`groups`) — вместе с «Вместе». */
+/** GET /calendar?from&to: дела по дням (повторы раскрыты сервером) и дела групп, которые касаются меня, по дням. */
 @Serializable
-data class CalendarRange(val today: String, val todos: List<Todo> = emptyList())
+data class CalendarRange(val today: String, val todos: List<Todo> = emptyList(), val groups: List<GroupDayBlock> = emptyList())
 
 @Serializable
 data class LinkUrl(val url: String)
