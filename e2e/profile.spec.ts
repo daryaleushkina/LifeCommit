@@ -89,7 +89,12 @@ test('«Сообщить о проблеме»: текст и скриншот �
   await page.getByRole('button', { name: 'Сообщить о проблеме' }).click();
   const sheet = page.getByRole('dialog', { name: 'Что случилось?' });
   await expect(sheet.getByRole('button', { name: 'Отправить' })).toBeDisabled();
-  await sheet.getByRole('textbox', { name: 'Что случилось?' }).fill('Не листается месяц');
+  // Текст не уходит под кнопку микрофона (05.10.2026: на iPhone подсказка заезжала под неё).
+  const field = sheet.getByRole('textbox', { name: 'Что случилось?' });
+  const textRight = await field.evaluate((el) => el.getBoundingClientRect().right - parseFloat(getComputedStyle(el).paddingRight));
+  const micLeft = (await sheet.locator('.feedback-mic').boundingBox())!.x;
+  expect(textRight).toBeLessThanOrEqual(micLeft);
+  await field.fill('Не листается месяц');
   await sheet.getByLabel('+ Скриншот').setInputFiles({ name: 'shot.png', mimeType: 'image/png', buffer: readFileSync('design/avatar/lifecommit-avatar-640.png') });
   await expect(sheet.getByRole('button', { name: 'Убрать скриншот' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Отправить' }).click();
