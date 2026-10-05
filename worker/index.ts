@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { api } from './api';
 import { desktopLogin } from './desktop';
+import { telegramLogin } from './telegramLogin';
 import { bot } from './bot';
 import { syncDue } from './calsync';
 import { groupChatsTick } from './groupBot';
@@ -18,6 +19,8 @@ const app = new Hono<{ Bindings: Env }>();
 
 // Начать вход на компьютере и забрать ключ — без подписи Telegram, поэтому раньше /api (там проверка на всё).
 app.route('/api/desktop', desktopLogin);
+// Вход в нативные приложения через официальный вход Telegram — тоже без подписи initData.
+app.route('/api/auth', telegramLogin);
 app.route('/api', api);
 app.route('/bot', bot);
 app.route('/google', google);

@@ -26,6 +26,8 @@ const TOUCH_EVERY_MS = 3_600_000;
 
 const DEVICES = ['mac', 'web'] as const;
 export type Device = (typeof DEVICES)[number];
+/** Где бывают сессии: компьютер по ссылке (mac, web) и нативные приложения через вход Telegram (worker/telegramLogin.ts). */
+export type SessionDevice = Device | 'ios' | 'android';
 const isDevice = (v: unknown): v is Device => typeof v === 'string' && (DEVICES as readonly string[]).includes(v);
 
 /** 32 случайных байта в base64url — 43 знака. */
@@ -39,12 +41,12 @@ function b64url(bytes: Uint8Array): string {
   return btoa(s).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
-const randomToken = () => b64url(crypto.getRandomValues(new Uint8Array(32)));
+export const randomToken = () => b64url(crypto.getRandomValues(new Uint8Array(32)));
 const sha256 = async (text: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
 /** Код для ссылки из секрета компьютера. */
 const codeOf = async (secret: string) => b64url(await sha256(secret)).slice(0, 22);
 /** Отпечаток ключа сессии для базы. */
-const tokenHash = async (token: string) => [...(await sha256(token))].map((b) => b.toString(16).padStart(2, '0')).join('');
+export const tokenHash = async (token: string) => [...(await sha256(token))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
 /** Подпись билета: HMAC-SHA256 токеном бота, первые 16 байт. Устройство тоже подписано — mac на web не поменять. */
 async function signTicket(env: Env, device: Device, code: string, ts: string): Promise<string> {
@@ -146,14 +148,21 @@ desktopLogin.post('/login/poll', async (c) => {
   return c.json({ status: 'ok', token });
 });
 
+const WHERE: Record<SessionDevice, { ru: string; en: string }> = {
+  mac: { ru: 'на Mac', en: 'on a Mac' },
+  web: { ru: 'в браузере', en: 'in a browser' },
+  ios: { ru: 'на iPhone', en: 'on an iPhone' },
+  android: { ru: 'на Android', en: 'on Android' },
+};
+
 /**
- * Бот — тому аккаунту Telegram, кто подтвердил: вход состоялся; не вы — «Выйти везде». Если вход подтвердили обманом
+ * Бот — тому аккаунту Telegram, кто вошёл: вход состоялся; не вы — «Выйти везде». Если вход подтвердили обманом
  * (по чужой ссылке), человек узнаёт сразу. Не написалось (бота не запускали) — в лог, вход это не отменяет.
  */
-async function signInNotice(env: Env, sb: ReturnType<typeof db>, who: { user_id: number; telegram_id: number; device: Device }) {
+export async function signInNotice(env: Env, sb: ReturnType<typeof db>, who: { user_id: number; telegram_id: number; device: SessionDevice }) {
   const user = must(await sb.from('users').select('language_code').eq('id', who.user_id).maybeSingle<{ language_code: string }>());
   const en = user?.language_code === 'en';
-  const where = en ? (who.device === 'mac' ? 'on a Mac' : 'in a browser') : who.device === 'mac' ? 'на Mac' : 'в браузере';
+  const where = WHERE[who.device][en ? 'en' : 'ru'];
   const text = en
     ? `Sign-in to LifeCommit ${where}. If it wasn't you, open LifeCommit → Me → Devices → Sign out everywhere.`
     : `Вход в LifeCommit ${where}. Если это были не вы — откройте LifeCommit → «Я» → «Устройства» → «Выйти везде».`;
@@ -199,22 +208,22 @@ desktopApi.post('/desktop/approve', async (c) => {
   return c.json({ ok: true });
 });
 
-/** Компьютеры, где вошли: свои; current — тот, с которого спрашивают. */
+/** Устройства (компьютеры и телефоны), где вошли: свои; current — то, с которого спрашивают. */
 desktopApi.get('/desktop/sessions', async (c) => {
   const rows = must(
     await c.get('sb').from('desktop_sessions').select('id, device, created_at, last_used_at').eq('user_id', c.get('user').id).order('id', { ascending: false }),
-  ) as { id: number; device: Device; created_at: string; last_used_at: string }[];
+  ) as { id: number; device: SessionDevice; created_at: string; last_used_at: string }[];
   const current = c.get('desktop')?.id;
   return c.json(rows.map((r) => ({ ...r, current: r.id === current })));
 });
 
-/** Выйти на всех компьютерах. */
+/** Выйти на всех устройствах. */
 desktopApi.delete('/desktop/sessions', async (c) => {
   must(await c.get('sb').from('desktop_sessions').delete().eq('user_id', c.get('user').id));
   return c.json({ ok: true });
 });
 
-/** Выйти на этом компьютере. */
+/** Выйти на этом устройстве (компьютер или телефон). */
 desktopApi.delete('/desktop/session', async (c) => {
   const desktop = c.get('desktop');
   if (!desktop) throw new HTTPException(400, { message: 'not_desktop' });
