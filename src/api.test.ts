@@ -47,6 +47,7 @@ describe('JSON-запросы', () => {
     ['calendars', () => api.calendars(), 'GET', '/calendars', undefined],
     ['connectApple', () => api.connectApple('a@icloud.com', 'pw'), 'POST', '/calendars/apple', { login: 'a@icloud.com', password: 'pw' }],
     ['googleUrl', () => api.googleUrl(), 'GET', '/calendars/google/url', undefined],
+    ['finishGoogle', () => api.finishGoogle('c0de'), 'POST', '/calendars/google/finish', { pending: 'c0de' }],
     ['confirmGoogle', () => api.confirmGoogle(3), 'POST', '/calendars/3/confirm', undefined],
     ['toggleCollection', () => api.toggleCollection(3, 'u1', false), 'PATCH', '/calendars/3/collections', { url: 'u1', enabled: false }],
     ['setDefaultCalendar', () => api.setDefaultCalendar(3, 'u1'), 'PATCH', '/calendars/3/default', { url: 'u1' }],
