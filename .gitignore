@@ -39,3 +39,7 @@ e2e/_explore/
 
 # Журналы браузерного MCP (Playwright) — их пишут сессии Claude, в git не нужны
 .playwright-mcp/
+
+# Приложение для Mac: сборка Swift и готовый LifeCommit.app (собирается `pnpm mac:build`)
+macos/.build/
+macos/build/
