@@ -354,16 +354,16 @@ describe('«Сообщить о проблеме»', () => {
   });
 });
 
-describe('компьютеры (вход на Mac и в браузере)', () => {
+describe('устройства (вход на Mac, в браузере и в приложениях на телефоне)', () => {
   const mac = { id: 2, device: 'mac', created_at: '2026-10-05T09:00:00Z', last_used_at: '2026-10-05T09:00:00Z', current: false };
 
-  it('в Telegram: не входили на компьютере — строки нет; входили — «Устройства» с числом', async () => {
+  it('в Telegram: нигде не входили — строки нет; входили (компьютер, телефон) — «Устройства» с числом', async () => {
     await setup();
     await expect.element(page.getByText('Тема')).toBeVisible();
     await expect.element(page.getByRole('button', { name: /Устройства/ })).not.toBeInTheDocument();
-    m.api.desktopSessions.mockResolvedValue([mac, { ...mac, id: 3, device: 'web' }]);
+    m.api.desktopSessions.mockResolvedValue([mac, { ...mac, id: 3, device: 'web' }, { ...mac, id: 4, device: 'ios' }]);
     await setup();
-    await expect.element(page.getByRole('button', { name: /Устройства\s*2/ })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /Устройства\s*3/ })).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Выйти на этом устройстве' })).not.toBeInTheDocument();
   });
 
@@ -389,7 +389,7 @@ describe('компьютеры (вход на Mac и в браузере)', () =
     expect(m.api.logoutEverywhere).toHaveBeenCalledTimes(2);
   });
 
-  it('список компьютеров не загрузился — строки нет, сбой виден в консоли', async () => {
+  it('список устройств не загрузился — строки нет, сбой виден в консоли', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     m.api.desktopSessions.mockRejectedValue(new Error('offline'));
     await setup();
@@ -399,14 +399,14 @@ describe('компьютеры (вход на Mac и в браузере)', () =
     warn.mockRestore();
   });
 
-  it('без подтверждений Telegram «Компьютеры» ничего не делает', async () => {
+  it('без подтверждений Telegram «Устройства» ничего не делает', async () => {
     m.api.desktopSessions.mockResolvedValue([mac]);
     await setup();
     await page.getByRole('button', { name: /Устройства/ }).click();
     expect(m.api.logoutEverywhere).not.toHaveBeenCalled();
   });
 
-  it('на компьютере: списка компьютеров нет, есть «Выйти на этом компьютере» — с подтверждением', async () => {
+  it('на компьютере: списка устройств нет, есть «Выйти на этом компьютере» — с подтверждением', async () => {
     m.desk.desktop = true;
     m.tg.popup = true;
     m.tg.answer = null;

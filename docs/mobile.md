@@ -1,0 +1,211 @@
+# Нативные приложения: iOS, Mac, Android
+
+Обновлено 05.10.2026. Это общий документ для сессий, которые пишут нативные клиенты. В нём решения владелицы, устройство,
+вход и контракт API. Кто что уже умеет, лежит в `docs/parity.md`, правило «фича — сразу во всех клиентах» — в `CLAUDE.md`
+(раздел «Платформы»).
+
+## Решения (допрос 05.10.2026)
+
+| Что | Решение |
+| --- | --- |
+| Технология | Нативно, без React Native и Expo. **iOS и Mac** — одно приложение на SwiftUI (`apple/`). **Android** — Kotlin и Jetpack Compose (`android/`), его ведёт отдельная сессия |
+| Версии | **iOS 26+ и macOS 26+**. Правило «текущая версия и одна до неё»: в июне 2026 iOS 26 стояла у 79% айфонов. У кого старый айфон, остаётся мини-апп. Android — по выбору Android-сессии, записать сюда |
+| Вид | **Копия мини-аппа**: палитра «Мягкий», шрифт Onest, матовое стекло на карточках, своя нижняя панель с микрофоном посередине, шторки снизу. Источник правды — `DESIGN.md` и токены `src/styles/app.css` |
+| Поведение | **Родное для платформы**: свайп от края — назад, шторку тянут вниз, системная хаптика, размер текста из настроек (Dynamic Type / font scale), VoiceOver и TalkBack, на Mac — меню и ⌘-сочетания, на Android — системный «назад» и edge-to-edge |
+| Вход | **Официальный вход Telegram (OpenID Connect)** — сервер выдаёт тот же ключ сессии, что компьютеру. **Sign in with Apple** и аккаунты без Telegram — отдельный этап до App Store: правило 4.8 требует второй способ входа, 4.2.3 запрещает требовать установленный Telegram |
+| Аккаунт Apple Developer | Пока нет. Работаем на симуляторе, на свой iPhone — через бесплатный Personal Team (подпись на 7 дней). Покупаем перед TestFlight |
+| Порядок | Ядро → «Вместе» (группы и друзья) → «Я» → «Календарь» → «Голос» → «Поделиться» и жалобы |
+| Напоминания | Пока шлёт бот. Уведомления телефона — вместе со входом через Apple: тогда появятся люди без Telegram |
+| «Поддержать проект» (Tribute) | **В нативных приложениях не показываем**: App Store (3.1.1) отклоняет ссылки на донаты мимо своей оплаты, у Google Play похожее правило. Tribute остаётся в мини-аппе, боте и на сайте |
+| Сторис и «Отправить в чат» | Только Telegram. В нативных — «Сохранить» и системное «Поделиться» |
+| Проверка перед пушем | Хук гоняет нативные тесты, если в пуше есть правки `apple/`, `android/` или сервера. Пуш из облака проверяет GitHub Actions (macOS) |
+| Старое приложение для Mac | `macos/` — оболочка с мини-аппом, живёт, пока Mac из `apple/` её не догонит. Своих фич туда не добавлять |
+
+## Устройство
+
+### iOS и Mac (`apple/`)
+
+- **Проект Xcode — XcodeGen** (`apple/project.yml`). `.xcodeproj` генерируется (`xcodegen` в `apple/`) и в git не
+  кладётся, поэтому параллельные правки не ломают проект при слиянии.
+- **`LifeCommitKit`** — Swift-пакет без UI: модели (`Codable`, как `shared/types.ts`), клиент API, вход, ключ в
+  Keychain, логика с `shared/` (логический день, уровни карты, статистика привычки, сортировка дел, иконка по
+  названию). Тесты — Swift Testing, гоняются `swift test` без симулятора.
+- **Приложение** `LifeCommit` — одна мультиплатформенная цель (iOS + macOS): SwiftUI, `@Observable`, Swift 6 со
+  строгой проверкой потоков. Без сторонних зависимостей в приложении; в тестах — `swift-snapshot-testing`.
+- **Bundle ID** — `app.lifecommit`. После публикации в App Store не меняется.
+
+### Android (`android/`)
+
+Решает Android-сессия. Выбор (DI, навигация, хранение ключа, minSdk) записать сюда. Навыки уже лежат в
+`.claude/skills/` (список — в `.claude/skills/README.md`).
+
+## Вход
+
+### В проде: официальный вход Telegram
+
+1. Приложение берёт `client_id`: `GET /api/auth/telegram/config` → `{ client_id }` (это id бота).
+2. Приложение проходит `https://oauth.telegram.org` по PKCE (S256), без секрета — так работает официальный SDK
+   (`TelegramMessenger/telegram-login-ios`, `…-android`, MIT). Сами шаги:
+   - есть приложение Telegram: `GET https://oauth.telegram.org/crossapp?client_id=…&response_type=code&redirect_uri=…&scope=openid profile&code_challenge=…&code_challenge_method=S256`
+     → `{ url }` → открыть его, Telegram вернёт в приложение `redirect_uri?code=…`;
+   - Telegram нет: `ASWebAuthenticationSession` (Android — Custom Tab) на `https://oauth.telegram.org/auth?…` с теми
+     же параметрами;
+   - обмен: `POST https://oauth.telegram.org/token`, форма `client_id, code, grant_type=authorization_code, redirect_uri, code_verifier`
+     → `{ id_token }`.
+3. `POST /api/auth/telegram {id_token, device: 'ios'|'android'|'mac', language}` → `{ token, is_new }`.
+   - Сервер (`worker/telegramLogin.ts`) проверяет подпись ключами `https://oauth.telegram.org/.well-known/jwks.json`
+     (RS256 или ES256). Дальше проверяет `iss`, `aud` = id бота, срок жизни и что токену не больше 10 минут.
+   - Пользователь берётся по `id` из токена (это id Telegram, тот же, что в initData). Если такого нет, он заводится
+     из профиля Telegram, язык — `language` телефона (`ru…` → ru, иначе en).
+   - Бот пишет человеку: «Вход в LifeCommit на iPhone / на Android / на Mac».
+   - Ошибки: 400 `bad_request` (не тот запрос, устройство не из списка); 401 `bad_token` (подпись, издатель,
+     получатель, нет `id`); 401 `token_expired` (войти заново); 502 `telegram_unreachable` (ключи Telegram не
+     скачались, повторить позже).
+4. Дальше все запросы идут с заголовком `Authorization: Bearer <token>`.
+   - Ключ хранить в Keychain (iOS/Mac) или в хранилище с ключом из Android Keystore (DataStore + Tink).
+     `EncryptedSharedPreferences` устарело.
+   - Первый запрос после входа и при каждом запуске — `POST /api/session {timezone}`, как у мини-аппа.
+   - 401 с `bad_session` / `session_expired` / `no_session` → забыть ключ, экран входа. Любой другой 401 (например,
+     `apple_auth` у календаря) — это ошибка дела, а не выход.
+   - Выйти на этом устройстве: `DELETE /api/desktop/session`. Список устройств: `GET /api/desktop/sessions`
+     (`device`: mac, web, ios, android).
+
+**Что нужно от владелицы** (без этого вход в проде не заработает):
+- @BotFather → бот → **Login Widget**. В Allowed URLs добавить `lifecommit://tglogin`. Для iOS — Bundle ID
+  `app.lifecommit` и Team ID (из Xcode → Settings → Accounts; у бесплатного Personal Team он тоже есть). Для Android —
+  имя пакета и SHA-256 ключа подписи.
+- С платным аккаунтом Apple вместо `lifecommit://tglogin` будет universal link `https://app<id>-login.tg.dev`
+  (нужна возможность Associated Domains, её у Personal Team нет).
+
+**Не проверено на живом аккаунте:** что `id` в id_token совпадает с id из initData (по документации — да) и что
+Telegram принимает своё имя схемы в `redirect_uri` (SDK так делает на старых iOS).
+
+### Удаление аккаунта
+
+Сейчас `DELETE /api/account` с ключом устройства отвечает 403 `telegram_only` (решение для компьютеров: украденным
+ключом аккаунт не удалить). **App Store (5.1.1(v)) и Google Play требуют удаления внутри приложения.** Решить на этапе
+«Я». Предложение: телефон удаляет, только если в тот же запрос прислан свежий id_token Telegram (человек входит
+заново).
+
+### Для разработки и тестов: подменённый Telegram
+
+Локальный стенд (`pnpm db:start`, `pnpm dev`; в `.dev.vars` стоит `DEV_AUTH_BYPASS=1`) принимает подделанную initData.
+Заголовок `Authorization: tma <строка>`, строка — `URLSearchParams` из
+`auth_date=<сейчас>&hash=mock-hash-not-valid-for-backend&signature=mock-signature&user={"id":N,"first_name":"…","language_code":"ru","username":"uN"}`.
+У каждого UI-теста свой N (диапазон `9_000_000_000_000 + random`, как в `worker/test/harness.ts`). После теста — `DELETE /api/account`
+этим же заголовком. В сборке для App Store / Play этой ветки нет: только `#if DEBUG` / `BuildConfig.DEBUG`, адрес —
+не прод.
+
+## Контракт API
+
+Адрес — `https://lifecommit.app/api` (для разработки — `http://localhost:5173/api`, для тестов — порт стенда).
+Ошибка всегда `{"error":"<код>"}` с HTTP-статусом. Не JSON в теле — 400 `bad_json`, падение сервера — 500
+`internal`. Создание отвечает 201 `{id}` или `{ids}`, правки — `{ok:true}`. Типы — `shared/types.ts`, `shared/groups.ts`,
+`shared/stats.ts`, `shared/summary.ts`, `src/api.ts`. Модели нативных клиентов повторяют их поле в поле.
+
+Новый endpoint, поле или код ошибки добавляется сюда и в модели обоих нативных клиентов **в том же коммите** (`CLAUDE.md`).
+
+### Сессия и профиль
+| Метод и путь | Тело → ответ | Ошибки |
+| --- | --- | --- |
+| POST `/session` | `{timezone?}` → `{user: UserSettings, start_param, is_new}` | 401 `no_session` |
+| PATCH `/settings` | частично `{language_code, timezone, day_start_hour 0–12, remind_morning, remind_evening ("HH:MM"\|null)}` → `UserSettings` | неверные поля молча пропускаются |
+| DELETE `/account` | → `{ok}` | 403 `linked_account`, 403 `telegram_only` (ключ устройства, см. выше) |
+
+### Привычки
+| Метод и путь | Тело → ответ | Ошибки |
+| --- | --- | --- |
+| GET `/today` | → `TodayResponse` | |
+| POST `/tasks` | `TaskInput` → 201 `{id}` | 400 `title_required` `bad_kind` `bad_target` `bad_schedule` `bad_visibility` `bad_date`; 402 `task_limit` (лимит сейчас выключен) |
+| POST `/tasks/batch` | `{tasks: TaskInput[]}` (до 8) → 201 `{ids}` | + 400 `no_tasks` |
+| PATCH `/tasks/:id` | `Partial<TaskInput>` → `{ok, goal_effective_from}` (цель стала меньше — действует с завтра) | 404, 400 как выше |
+| POST `/tasks/:id/archive`, `/restore` | → `{ok}` | 404; restore — 402 `task_limit` |
+| DELETE `/tasks/:id` | → `{ok}` (стирает и историю) | |
+| PUT `/logs` | `{task_id, value?, status?: clean\|slip\|null, day?}` — `value` абсолютное; пусто — снять отметку | 404; 400 `bad_day` (будущее или старше 731 дня), `bad_status` |
+| GET `/tasks/:id/history` | → `TaskHistory` (`start`, `goals`, `logs`); статистику считает клиент | 404 |
+| GET `/heatmap?days=N` | N ≤ 371 → `{today, days: HeatDay[]}` | |
+| GET `/summary?from&to` | до 366 дней → `SummaryItem[]` | 400 `bad_range` |
+
+### Дела и календарь
+| Метод и путь | Тело → ответ | Ошибки |
+| --- | --- | --- |
+| POST `/todos` | `TodoInput` → 201 `{id}` | 400 `title_required`, `bad_time` |
+| POST `/todos/batch` | `{todos}` (до 12) → 201 `{ids}` | 400 `no_todos` |
+| PATCH `/todos/:id` | `{title?, day?, time?, done?, on?, location?, hidden?}`; `on` — день у повторяющегося | 404; 400 `event_not_checkable` |
+| DELETE `/todos/:id` | → `{ok}` (удаляет и событие в календаре) | |
+| GET `/todos/later` | → `Todo[]` | |
+| GET `/calendar?from&to` | до 62 дней → `{today, todos, groups: GroupDayBlock[]}`; повторы раскрыты сервером, **не отсортировано** (`sortTodos`) | 400 `bad_range` |
+| GET `/calendars` | → `CalendarAccount[]` | |
+| GET `/calendars/google/url` | → `{url}` | 503 `calendar_unavailable` |
+| POST `/calendars/apple` | `{login, password}` → 201 | 400 `apple_bad_input`, 401 `apple_auth` (не выход!), 502, 503 |
+| POST `/calendars/:id/confirm`; PATCH `/calendars/:id/collections` `{url, enabled}`; PATCH `/calendars/:id/default` `{url}`; DELETE `/calendars/:provider`; POST `/calendars/sync` | | 404, 400 `unknown_calendar`, `bad_provider` |
+
+Возврат после подключения Google (`/google/callback`) сейчас ведёт в Telegram (`t.me/…?startapp=calendars`).
+Нативным нужен свой возврат — сделать на этапе «Календарь».
+
+### Группы
+`GET /groups` → `GroupToday[]`; `POST /groups {title, kind?}`; `GET|PATCH|DELETE /groups/:id`; `POST /groups/:id/chat/check`;
+`DELETE /groups/:id/chat`; `POST /groups/:id/leave`; `POST /groups/:id/invite` → `{code, link, expires_at}`;
+`GET /invites/:code`, `POST /invites/:code/join`; `POST|PATCH|DELETE /groups/:id/items[/:item]`;
+`POST /groups/:id/items/:item/skip {day}`; `PUT /groups/:id/items/:item/mark {done?, day?}` → `{ok, taken}`;
+`POST /groups/:id/items/:item/entries {amount}`. Ошибки: 403 `forbidden` `admins_only` `not_yours`; 404; 410
+`invite_expired`; 400 `no_title` `bad_mode` `bad_time` `bad_repeat` `bad_target` `no_target` `bad_day` `bad_amount`.
+Кто делает сегодня (`for_me`, `can_mark`, `turn`, `done`) сервер присылает уже посчитанным.
+
+### Друзья
+`GET /friends` → `FriendsResponse`; `GET /friends/find?username=`; `GET /friends/link/:code` → `{person, status}`;
+`POST /friends/requests {username}|{code}` → `{status: sent|friends}`; `POST /friends/requests/:id/accept`;
+`DELETE /friends/requests/:id`; `DELETE /friends/:id`; `POST /friends/:id/block`; `GET /blocks`; `DELETE /blocks/:id`;
+`PUT /friends/shown {task_ids}`; `POST /friends/prompted`; `GET /friends/:id` → `FriendProfile`.
+Ошибки: 400 `bad_username` `self` `bad_tasks`; 409 `blocked`; 404.
+
+### Голос, жалобы, картинки
+- `POST /voice[?group=<id>]`: тело — сырое аудио (m4a/AAC на iOS годится — сервер берёт любой формат Whisper), больше 0 и не больше
+  3 000 000 байт, запись от 0,8 до 90 с. Ответ 200 `application/x-ndjson`, по строке на событие: `{text}`, потом
+  `{actions: VoiceAction[]}` или `{error: voice_limit|failed|too_long}`. 400 `no_audio`, 413 `too_long`, 429
+  `voice_limit` (20 в день на человека). В базу ничего не пишется — потом `/tasks/batch`, `/todos/batch`,
+  `POST /groups/:id/items`.
+- `POST /feedback`: multipart — `text` (до 2000), `context` (JSON: `version, platform, lang, theme, viewport, tz, screen`), `files`
+  (до 4 картинок по 5 МБ). 429 `feedback_limit` / `feedback_busy`. `POST /feedback/voice` — аудио → `{text}`.
+- `POST /share` (JPEG/PNG, до 6 МБ → `{file_id, url}`) и `/share/chat` — только Telegram, в нативных не нужны.
+
+### Только Telegram
+`POST /desktop/approve` (подтвердить вход на компьютере — из мини-аппа), `POST /write-access`, `/share/chat`, сторис.
+
+## Логика, которую повторяют клиенты
+
+Сервер считает: логический день (`day`/`today` в ответах), раскрытие повторов, кто делает групповое дело сегодня,
+итоги `/summary`. Клиент считает сам (переносить с тестами, теми же случаями, что в `shared/*.test.ts`):
+
+| Что | Откуда |
+| --- | --- |
+| Уровень клетки карты 0–4 | `heatLevel` в `shared/types.ts` |
+| Сегодняшняя клетка после отметки (без перезапроса карты) | `src/App.tsx` (`heatWithToday`) |
+| Очки дела, «сделано», «N дней без» | `src/components/TaskCard.tsx` (`taskScore`, `isDone`, `cleanDaysOf`) |
+| Статистика экрана привычки | `shared/stats.ts` (`targetOn`, `cleanRuns`, `lastDays`), `src/screens/TaskDetail.tsx` |
+| Порядок дел | `sortTodos` в `shared/types.ts` |
+| Иконка привычки по названию | `shared/habitIcon.ts` (словарь начал слов, ru/en) |
+| Склонения | `plural` в `shared/groups.ts`, `src/i18n.ts` |
+| Подписи повтора и дат дел | `src/repeat.ts`, `src/todoDates.ts` |
+| Сетка месяца и года карты | `src/components/Heatmap.tsx` (`monthCells`, `yearStart`) |
+| Цвета аватаров и групп по id | `src/components/groupUi.tsx` |
+
+## Вид
+
+- Токены: `src/styles/app.css` (светлая 8–62, тёмная 64–101, стекло 45–52 и 93–100, радиусы 20/14, цель нажатия
+  48), плитки видов привычек — 218–229, нижняя панель — 307–322. Описание и компоненты — `DESIGN.md`.
+- Шрифт Onest (OFL): в приложение кладётся файлом (TTF/OTF, переменный), с масштабированием под системный размер текста.
+- Тексты ru/en — `src/i18n.ts`. Мини-апп — источник формулировок, нативные повторяют их дословно.
+- Цифры пропорциональные, не моноширинные; разряды через пробел с 4 знаков (146, 1 146).
+
+## Тесты нативных
+
+| | iOS / Mac | Android |
+| --- | --- | --- |
+| Логика | Swift Testing в `LifeCommitKit` (`swift test`) | JUnit на JVM |
+| Экраны | снимки `swift-snapshot-testing`: iPhone и Mac, светлая и тёмная; эталоны в git, переснимать только при намеренной правке вида | Roborazzi на JVM (Robolectric) |
+| Сценарии | XCUITest против локального стенда, подменённый Telegram (см. «Вход») | Compose UI-тесты, по желанию эмулятор |
+| Отказы API | клиент на 400/401/403/404/409/410/429/5xx не молчит: экран возвращается как был и показывает ошибку | так же |
+
+Правила вёрстки из `CLAUDE.md` действуют и здесь: ничего поверх нижней панели при любой прокрутке, ничего шире экрана,
+последнее видно, список листается.

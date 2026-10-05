@@ -22,7 +22,8 @@ export interface CalendarAccount {
 /** Компьютер, где вошли в LifeCommit; current — этот. */
 export interface DesktopSession {
   id: number;
-  device: 'mac' | 'web';
+  /** Компьютер (mac, web) или приложение на телефоне (ios, android). */
+  device: 'mac' | 'web' | 'ios' | 'android';
   created_at: string;
   last_used_at: string;
   current: boolean;
