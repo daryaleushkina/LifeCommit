@@ -134,10 +134,13 @@ Telegram принимает своё имя схемы в `redirect_uri` (SDK т
 
 ### Удаление аккаунта
 
-Сейчас `DELETE /api/account` с ключом устройства отвечает 403 `telegram_only` (решение для компьютеров: украденным
-ключом аккаунт не удалить). **App Store (5.1.1(v)) и Google Play требуют удаления внутри приложения.** Решить на этапе
-«Я». Предложение: телефон удаляет, только если в тот же запрос прислан свежий id_token Telegram (человек входит
-заново).
+**App Store (5.1.1(v)) и Google Play требуют удаления внутри приложения.** Решение владелицы 06.10.2026: «просто
+подтверждением» — одно окно «Удалить навсегда?», без повторного входа Telegram. `DELETE /api/account` с ключом сессии
+телефона (`device` = `ios` | `android`) → 200 `{ok: true}`: группы передаются участникам, данные удаляются, все ключи
+человека (и других устройств) перестают пускать. Клиент забывает ключ и показывает вход; запрос со старым ключом — 401
+(тот же «вышли»). С ключом компьютера (`mac`, `web`) — по-прежнему 403 `telegram_only`: ключ компьютера живёт долго,
+необратимое ему не доверяем. Связанный аккаунт — 403 `linked_account`, как из Telegram. Тесты —
+`worker/telegramLogin.int.test.ts` («удаление аккаунта с телефона»), `worker/desktop.int.test.ts`.
 
 ### Для разработки и тестов: подменённый Telegram
 
@@ -162,7 +165,7 @@ Telegram принимает своё имя схемы в `redirect_uri` (SDK т
 | --- | --- | --- |
 | POST `/session` | `{timezone?}` → `{user: UserSettings, start_param, is_new}` | 401 `no_session` |
 | PATCH `/settings` | частично `{language_code, timezone, day_start_hour 0–12, remind_morning, remind_evening ("HH:MM"\|null)}` → `UserSettings` | неверные поля молча пропускаются |
-| DELETE `/account` | → `{ok}` | 403 `linked_account`, 403 `telegram_only` (ключ устройства, см. выше) |
+| DELETE `/account` | → `{ok}` — из Telegram и с ключом телефона (ios, android) | 403 `linked_account`, 403 `telegram_only` (ключ компьютера: mac, web; см. выше) |
 
 ### Привычки
 | Метод и путь | Тело → ответ | Ошибки |

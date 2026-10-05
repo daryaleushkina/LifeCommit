@@ -82,6 +82,8 @@ export interface DesktopSession {
   user_id: number;
   /** Аккаунт Telegram, который подтвердил вход (основной или связанный, users.telegram_aliases). */
   telegram_id: number;
+  /** Где вошли: компьютер (mac, web) или приложение на телефоне (ios, android). */
+  device: SessionDevice;
 }
 
 /**
@@ -92,7 +94,7 @@ export async function desktopSession(env: Env, token: string, ctx: { waitUntil: 
   if (!SECRET_RE.test(token)) return null;
   const sb = db(env);
   const row = must(
-    await sb.from('desktop_sessions').select('id, user_id, telegram_id, last_used_at').eq('token_hash', await tokenHash(token)).maybeSingle<DesktopSession & { last_used_at: string }>(),
+    await sb.from('desktop_sessions').select('id, user_id, telegram_id, device, last_used_at').eq('token_hash', await tokenHash(token)).maybeSingle<DesktopSession & { last_used_at: string }>(),
   );
   if (!row) return null;
   const idle = Date.now() - new Date(row.last_used_at).getTime();
@@ -107,7 +109,7 @@ export async function desktopSession(env: Env, token: string, ctx: { waitUntil: 
       }),
     );
   }
-  return { id: row.id, user_id: row.user_id, telegram_id: row.telegram_id };
+  return { id: row.id, user_id: row.user_id, telegram_id: row.telegram_id, device: row.device };
 }
 
 // ── Без подписи Telegram: компьютер начинает вход и забирает ключ ──

@@ -1,7 +1,7 @@
 import { parse, validate } from '@tma.js/init-data-node/web';
 import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
-import { desktopSession } from './desktop';
+import { desktopSession, type SessionDevice } from './desktop';
 import type { Env } from './env';
 
 export interface TgUser {
@@ -14,7 +14,7 @@ export interface TgUser {
 }
 
 /** desktop — сессия компьютера (её id и пользователь LifeCommit), если вошли ключом компьютера, а не из Telegram. */
-export type AuthVars = { tgUser: TgUser; startParam: string | undefined; desktop: { id: number; userId: number } | undefined };
+export type AuthVars = { tgUser: TgUser; startParam: string | undefined; desktop: { id: number; userId: number; device: SessionDevice } | undefined };
 
 const MOCK_HASH = 'mock-hash-not-valid-for-backend';
 
@@ -33,7 +33,7 @@ export const requireTelegram = createMiddleware<{ Bindings: Env; Variables: Auth
     // общий аккаунт так не удалить). Профиля Telegram у ключа нет — /session его и не пишет.
     c.set('tgUser', { id: session.telegram_id, first_name: '' });
     c.set('startParam', undefined);
-    c.set('desktop', { id: session.id, userId: session.user_id });
+    c.set('desktop', { id: session.id, userId: session.user_id, device: session.device });
     await next();
     return;
   }
