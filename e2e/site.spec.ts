@@ -223,10 +223,18 @@ test.describe('компьютер', () => {
   });
 });
 
-test('кнопка стора пока никуда не ведёт, «Скачать» ведёт к кнопкам внизу', async ({ page, tgPlatform }) => {
+test('кнопка стора пока неактивна и видно, что неактивна; Telegram работает; «Скачать» ведёт к кнопкам внизу', async ({ page, tgPlatform }) => {
   await page.goto('/');
   const store = page.locator('#download').getByRole('link', { name: tgPlatform === 'ios' ? /App Store/ : /Google Play/ });
-  await store.click();
+  // решение владелицы 05.10: пока приложений нет, кнопки сторов серые и неактивные, Telegram — как был
+  await expect(store).toHaveAttribute('aria-disabled', 'true');
+  await expect(store).toHaveAttribute('tabindex', '-1');
+  expect(Number(await store.evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(0.6);
+  const tg = page.locator('#download').getByRole('link', { name: /Telegram/ });
+  await expect(tg).not.toHaveAttribute('aria-disabled', 'true');
+  expect(Number(await tg.evaluate((el) => getComputedStyle(el).opacity))).toBe(1);
+  // неактивную кнопку Playwright сам не нажимает — жмём, как человек, который всё равно ткнул в серую кнопку
+  await store.click({ force: true });
   await expect.poll(() => path(page)).toBe('/');
   await page.locator('.site-top').getByRole('link', { name: 'Скачать' }).click();
   await expect(page.getByRole('heading', { name: 'Скачайте LifeCommit' })).toBeInViewport();
