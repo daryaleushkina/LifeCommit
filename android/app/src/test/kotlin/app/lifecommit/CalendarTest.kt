@@ -208,4 +208,59 @@ class CalendarTest : AppTest() {
         compose.waitText(t.calendar).performClick()
         compose.waitLabel(t.cal.refresh)
     }
+
+    @Test fun `возврат из Google, пока приложение ещё загружается, - ключ не теряется, шторка после загрузки`() {
+        seed()
+        server.sessionDelayMs = 1000
+        launch()
+        // Приложение выгрузили, пока был открыт вход Google: возврат приходит сразу после запуска.
+        compose.runOnUiThread { model.handleLink("lifecommit://calendars?status=again") }
+        compose.waitText(t.cal.sheetTitle, timeout = 8_000)
+        assertTrue(server.calls("GET", "/api/calendars").none { it.auth == null })
+        assertEquals("session-key", kotlinx.coroutines.runBlocking { tokens.load() })
+    }
+
+    @Test fun `после выхода календарь чистый - чужие дела и календари не видны`() {
+        seed()
+        server.accounts = listOf(CalendarAccount(8, TodoSource.Apple, "d@icloud.com", "ok", collections = emptyList()))
+        launch()
+        compose.waitText(t.calendar).performClick()
+        compose.waitText("Позвонить в банк")
+        compose.waitFor { model.calendar.accounts != null }
+        compose.runOnUiThread { model.signOutLocally() }
+        compose.waitText(t.signIn)
+        assertEquals(null, model.calendar.accounts)
+        assertEquals(null, model.calendar.todos)
+    }
+
+    @Test fun `ответ календаря, начатый до отметки, отметку не затирает`() {
+        seed()
+        launch()
+        openCalendar()
+        compose.waitText("Позвонить в банк")
+        server.calendarDelayMs = 1500
+        compose.runOnUiThread {
+            model.calendar.load()
+            model.calendarTodos.toggle(model.calendar.ofDay("2026-10-05").first { it.id == 10L })
+        }
+        compose.waitFor { server.calls("PATCH", "/api/todos/10").isNotEmpty() }
+        // Медленный ответ, начатый до отметки, дошёл — и отметка на месте.
+        compose.waitFor(8_000) { model.calendar.inFlight == 0 }
+        assertTrue(model.calendar.ofDay("2026-10-05").first { it.id == 10L }.done)
+        compose.waitLabel(t.todo.uncheck("Позвонить в банк"))
+    }
+
+    @Test fun `обновить во время синхронизации - вторая синхронизация не теряется`() {
+        seed()
+        server.accounts = listOf(CalendarAccount(8, TodoSource.Apple, "d@icloud.com", "ok", collections = listOf(CalendarCollection("home", "Дом", null, false, true))))
+        server.syncDelayMs = 800
+        launch()
+        compose.waitText(t.calendar).performClick()
+        compose.waitLabel(t.cal.refresh)
+        compose.runOnUiThread {
+            model.calendar.syncNow()
+            model.calendar.syncNow()
+        }
+        compose.waitFor(8_000) { server.calls("POST", "/api/calendars/sync").size == 2 }
+    }
 }

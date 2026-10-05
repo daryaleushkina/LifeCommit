@@ -56,6 +56,15 @@ class FakeServer {
     /** Адрес входа Google; null — Google на сервере не настроен (503 calendar_unavailable). */
     @Volatile var googleUrl: String? = "https://accounts.google.com/o/oauth2/v2/auth?state=s"
 
+    /** Задержать ответ GET /calendar (мс): ответ собран в момент запроса — «устаревший». */
+    @Volatile var calendarDelayMs = 0L
+
+    /** Задержать POST /calendars/sync (мс): синхронизация идёт. */
+    @Volatile var syncDelayMs = 0L
+
+    /** Задержать POST /session (мс): приложение ещё загружается. */
+    @Volatile var sessionDelayMs = 0L
+
     /** Дела «на потом» — GET /todos/later. */
     @Volatile var later: List<Todo> = emptyList()
 
@@ -74,6 +83,8 @@ class FakeServer {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 // Медленная отметка: сервер применяет её не сразу (как настоящий, пока идёт запись в базу).
                 if (request.method == "PUT" && request.url.encodedPath == "/api/logs" && logDelayMs > 0) Thread.sleep(logDelayMs)
+                if (request.method == "POST" && request.url.encodedPath == "/api/calendars/sync" && syncDelayMs > 0) Thread.sleep(syncDelayMs)
+                if (request.method == "POST" && request.url.encodedPath == "/api/session" && sessionDelayMs > 0) Thread.sleep(sessionDelayMs)
                 return synchronized(this@FakeServer) { handle(request) }
             }
         }
@@ -153,9 +164,11 @@ class FakeServer {
                 val from = r.url.queryParameter("from")!!
                 val to = r.url.queryParameter("to")!!
                 val all = (today.todos + calendarTodos).filter { it.day in from..to }
-                ok(enc(app.lifecommit.core.CalendarRange(today.day, all)))
+                ok(enc(app.lifecommit.core.CalendarRange(today.day, all))).let { resp ->
+                    if (calendarDelayMs > 0) resp.newBuilder().headersDelay(calendarDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS).build() else resp
+                }
             }
-            call.method == "GET" && api == "calendars" -> ok(enc(accounts))
+            call.method == "GET" && api == "calendars" -> if (call.auth == null) error(401, "no_session") else ok(enc(accounts))
             call.method == "GET" && api == "calendars/google/url" -> {
                 if (r.url.queryParameter("client") != "app") error(400, "bad_client")
                 else googleUrl?.let { ok("""{"url":"$it"}""") } ?: error(503, "calendar_unavailable")

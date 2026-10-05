@@ -54,7 +54,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this, MainViewModel.Factory(Config.from(intent)))[MainViewModel::class.java].model
-        intent?.data?.let { model.handleLink(it.toString()) }
+        // Только при первом создании: пересоздание экрана (тема, язык, возврат из «Недавних») приносит тот же intent,
+        // и ссылка разобралась бы ещё раз (/code-review 05.10).
+        if (savedInstanceState == null) intent?.data?.let { model.handleLink(it.toString()) }
 
         lifecycle.addObserver(LifecycleEventObserver { _, event ->
             when (event) {

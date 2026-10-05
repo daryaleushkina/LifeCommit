@@ -84,6 +84,31 @@ class CalendarModel(
     /** Сервер не сохранил правку в шторке календарей — строка ошибки в шторке. */
     var sheetFailed by mutableStateOf(false)
 
+    /** Сколько запросов дел ещё в пути — тесты ждут их, а не паузу. */
+    internal var inFlight by mutableStateOf(0)
+        private set
+
+    /** Номер правки дел на экране: ответ, начатый раньше правки, её не затирает (как change в AppModel). */
+    private var version = 0
+
+    /** Повторить синхронизацию, когда закончится текущая: её попросили, пока шла другая (правка календарей). */
+    private var syncAgain = false
+
+    /** Выход из аккаунта: всё прошлого человека забываем, ответы, что ещё в пути, выбрасываем. */
+    fun reset() {
+        version++
+        ranges.clear()
+        accounts = null
+        googleUrl = null
+        selected = ""
+        mode = CalMode.Day
+        sheetOpen = false
+        sheetFailed = false
+        googleReturn = null
+        error = null
+        syncAgain = false
+    }
+
     val days: List<String> get() = CalendarDays.range(mode, selected.ifEmpty { today() })
     private val key: String get() = days.let { "${it.first()}:${it.last()}" }
 
@@ -126,20 +151,29 @@ class CalendarModel(
 
     private fun fetch(mode: CalMode, anchor: String) {
         val d = CalendarDays.range(mode, anchor)
+        val seq = version
+        inFlight++
         scope.launch {
             try {
-                ranges["${d.first()}:${d.last()}"] = api.calendar(d.first(), d.last()).todos
+                val todos = api.calendar(d.first(), d.last()).todos
+                if (seq == version) ranges["${d.first()}:${d.last()}"] = todos
             } catch (e: ApiError) {
                 if (e.isSignedOut) onSignedOut() else log.info("calendar ${d.first()}..${d.last()} failed: $e")
+            } finally {
+                inFlight--
             }
         }
     }
 
     /** После правки на сервере: все промежутки устарели, перечитываем то, что на экране. */
     private suspend fun reload() {
+        version++
         ranges.keys.filter { it != key }.forEach { ranges.remove(it) }
+        val seq = version
+        val k = key
         try {
-            ranges[key] = api.calendar(days.first(), days.last()).todos
+            val todos = api.calendar(days.first(), days.last()).todos
+            if (seq == version) ranges[k] = todos
         } catch (e: ApiError) {
             if (e.isSignedOut) onSignedOut() else log.info("calendar reload failed: $e")
         }
@@ -147,6 +181,7 @@ class CalendarModel(
     }
 
     private fun patch(transform: (List<Todo>) -> List<Todo>) {
+        version++
         val k = key
         ranges[k]?.let { ranges[k] = transform(it) }
     }
@@ -266,8 +301,12 @@ class CalendarModel(
 
     /** «Обновить»: синхронизация на сервере, свежие календари и дела. */
     fun syncNow() {
-        if (syncing) return
+        if (syncing) {
+            syncAgain = true
+            return
+        }
         syncing = true
+        syncAgain = false
         scope.launch {
             try {
                 api.syncCalendars()
@@ -281,6 +320,7 @@ class CalendarModel(
             }
             reload()
             syncing = false
+            if (syncAgain) syncNow()
         }
     }
 
