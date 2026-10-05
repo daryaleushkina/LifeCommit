@@ -92,10 +92,13 @@ class ScreensTest(private val theme: String) : AppTest() {
         server.histories[3] = app.lifecommit.core.TaskHistory("2026-10-01", emptyList(), listOf(app.lifecommit.core.HistoryLog("2026-10-03", 0.0, app.lifecommit.core.AbstainStatus.Slip)))
         start()
         compose.waitText("Пить воду").performClick()
+        // Снимать, когда пришла история: подписи «лучший день» и т. п. есть и без неё — кадр бывал раньше ответа.
+        compose.waitFor { model.histories.containsKey(2L) }
         compose.waitText(t.statBest)
         shot("detail-count")
         compose.runOnUiThread { model.backToMain() }
         compose.waitText("Не курить").performClick()
+        compose.waitFor { model.histories.containsKey(3L) }
         compose.waitText(t.statRunNow)
         shot("detail-abstain")
     }
