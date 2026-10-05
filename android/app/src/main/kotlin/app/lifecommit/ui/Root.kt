@@ -219,9 +219,9 @@ private fun Tabs(model: AppModel, links: Links) {
             Tab.Today -> if (model.onboarding) {
                 Onboarding(onPick = { model.open(Route.NewTask(it)) }, onBack = null, onSkip = model::skipOnboarding, withTabs = true)
             } else {
-                Today(model)
+                Today(model, links)
             }
-            Tab.Calendar -> PendingSection(LocalStrings.current.calendar, links)
+            Tab.Calendar -> CalendarScreen(model, links)
             Tab.Groups -> PendingSection(LocalStrings.current.groups, links)
             Tab.Me -> Me(model, links)
         }

@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this, MainViewModel.Factory(Config.from(intent)))[MainViewModel::class.java].model
-        intent?.data?.let { model.handleCallback(it.toString()) }
+        intent?.data?.let { model.handleLink(it.toString()) }
 
         lifecycle.addObserver(LifecycleEventObserver { _, event ->
             when (event) {
@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.data?.let { model.handleCallback(it.toString()) }
+        intent.data?.let { model.handleLink(it.toString()) }
     }
 
     private fun telegramInstalled(): Boolean = listOf("org.telegram.messenger", "org.telegram.messenger.web").any {

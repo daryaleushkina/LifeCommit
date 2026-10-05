@@ -65,13 +65,13 @@ fun Modifier.pressable(enabled: Boolean = true, role: Role = Role.Button, label:
 
 /** Главная кнопка — зелёная, .act.primary. Неактивная — прозрачность 0.4 (button:disabled). */
 @Composable
-fun PrimaryButton(title: String, modifier: Modifier = Modifier, wide: Boolean = false, enabled: Boolean = true, busy: Boolean = false, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+fun PrimaryButton(title: String, modifier: Modifier = Modifier, wide: Boolean = false, enabled: Boolean = true, busy: Boolean = false, small: Boolean = false, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
     val p = LocalPalette.current
     Row(
         modifier
             .alpha(if (enabled || busy) 1f else 0.4f)
             .then(if (wide) Modifier.fillMaxWidth() else Modifier.widthIn(min = 64.dp))
-            .heightIn(min = Dim.tap)
+            .heightIn(min = if (small) 40.dp else Dim.tap)
             .pressable(enabled = enabled && !busy, onClick = onClick)
             .background(p.accent, RoundedCornerShape(Dim.radiusBtn))
             .padding(horizontal = 14.dp),
@@ -82,7 +82,7 @@ fun PrimaryButton(title: String, modifier: Modifier = Modifier, wide: Boolean = 
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), color = p.accentText, strokeWidth = 2.dp)
         } else {
             leading?.invoke()
-            Text(title, style = onest(17, 700, p.accentText))
+            Text(title, style = onest(if (small) 14 else 17, 700, p.accentText))
         }
     }
 }

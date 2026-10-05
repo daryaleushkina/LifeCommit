@@ -99,9 +99,10 @@ abstract class AppTest {
         what()
     }
 
-    fun ComposeContentTestRule.waitText(text: String, timeout: Long = 5_000): SemanticsNodeInteraction {
-        waitFor(timeout) { onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty() }
-        return onNode(hasText(text))
+    /** substring — текст внутри строки побольше («Подключено · обновлено только что»). */
+    fun ComposeContentTestRule.waitText(text: String, timeout: Long = 5_000, substring: Boolean = false): SemanticsNodeInteraction {
+        waitFor(timeout) { onAllNodes(hasText(text, substring = substring)).fetchSemanticsNodes().isNotEmpty() }
+        return onNode(hasText(text, substring = substring))
     }
 
     fun ComposeContentTestRule.waitLabel(label: String, timeout: Long = 5_000): SemanticsNodeInteraction {
