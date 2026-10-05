@@ -376,6 +376,28 @@ describe('возврат из входа Google с кодом подключен
     await expect.poll(() => vi.mocked(api.finishGoogle).mock.calls.length).toBe(2);
   });
 
+  it('подключили, а список календарей не перечитался — «Что-то пошло не так», касание убирает строку', async () => {
+    caches.accounts = [];
+    vi.mocked(api.calendars).mockRejectedValue(new ApiError(502, 'internal'));
+    vi.mocked(api.finishGoogle).mockResolvedValue({ account_id: 1, fresh: true });
+    await open(code('h'));
+    const error = page.getByText('Что-то пошло не так. Попробуй ещё раз.');
+    await expect.element(error).toBeVisible();
+    await error.click();
+    await expect.element(error).not.toBeInTheDocument();
+  });
+
+  it('код не принят и список не перечитался — решаем по тому, что уже знали; касание убирает строку', async () => {
+    caches.accounts = [];
+    vi.mocked(api.calendars).mockRejectedValue(new ApiError(502, 'internal'));
+    vi.mocked(api.finishGoogle).mockRejectedValue(new ApiError(404, 'pending_not_found'));
+    await open(code('i'));
+    const error = page.getByText('Ссылка устарела — нажмите «Подключить» ещё раз.');
+    await expect.element(error).toBeVisible();
+    await error.click();
+    await expect.element(error).not.toBeInTheDocument();
+  });
+
   it('сервер не ответил — «Не достучался до Google», можно снова', async () => {
     caches.accounts = [];
     vi.mocked(api.finishGoogle).mockRejectedValueOnce(new ApiError(502, 'internal'));
