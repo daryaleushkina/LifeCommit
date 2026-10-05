@@ -795,8 +795,9 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .host-main:disabled { opacity: 0.4; }
 .host-main.busy { opacity: 1; color: transparent !important; }
 .host-main.busy::after { content: ''; position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--accent-text); border-right-color: transparent; animation: spin-once 0.8s linear infinite; }
-/* «Назад» в браузере (в приложении для Mac он в заголовке окна). Место под ним — отступом сверху, как у Telegram. */
-.host-top { position: fixed; inset: 0 0 auto 0; z-index: 45; height: 52px; padding: 0 8px; display: flex; align-items: center; background: var(--bg); }
+/* «Назад» в браузере (в приложении для Mac он в заголовке окна). Место под ним — отступом сверху, как у Telegram.
+   Слой — над полноэкранными экранами («Что показать друзьям?», 60): в Telegram шапка всегда над содержимым. */
+.host-top { position: fixed; inset: 0 0 auto 0; z-index: 65; height: 52px; padding: 0 8px; display: flex; align-items: center; background: var(--bg); }
 .host-back { height: 40px; padding: 0 12px 0 6px; border-radius: var(--radius-btn); display: flex; align-items: center; gap: 2px; color: var(--accent); font-size: 16px; font-weight: 600; transition: transform 160ms var(--ease-out); }
 .host-back:active { transform: scale(0.96); }
 /* Подтверждение (popup Telegram) — шторкой, поверх любой другой шторки. */

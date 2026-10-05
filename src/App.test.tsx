@@ -426,18 +426,18 @@ describe('вкладки', () => {
 
 describe('ссылки запуска', () => {
   it('startapp=mac_<код> (вход на Mac) — «Войти на Mac?»; «Войти» подтверждает, «На главную» — «Сегодня»', async () => {
-    const code = 'AbCdEfGhIjKlMnOpQrSt_-';
-    await boot({ start_param: `mac_${code}` });
+    const ticket = 'AbCdEfGhIjKlMnOpQrSt_-0t4k2xqZz-_0123456789abcdefgh';
+    await boot({ start_param: `mac_${ticket}` });
     await expect.element(heading('Войти на Mac?')).toBeVisible();
     await page.getByRole('button', { name: 'Войти', exact: true }).click();
     await expect.element(heading('Готово')).toBeVisible();
-    expect(m.api.desktopApprove).toHaveBeenCalledWith(code, 'mac');
+    expect(m.api.desktopApprove).toHaveBeenCalledWith(ticket, 'mac');
     await page.getByRole('button', { name: 'На главную' }).click();
     await expect.element(heading('Сегодня')).toBeVisible();
   });
 
   it('startapp=web_<код> — «Войти в браузере?»; «Не входить» — на «Сегодня»', async () => {
-    await boot({ start_param: `web_${'x'.repeat(22)}` });
+    await boot({ start_param: `web_${'x'.repeat(22)}0t4k2xq${'y'.repeat(22)}` });
     await expect.element(heading('Войти в браузере?')).toBeVisible();
     await page.getByRole('button', { name: 'Не входить' }).click();
     await expect.element(heading('Сегодня')).toBeVisible();
@@ -447,8 +447,10 @@ describe('ссылки запуска', () => {
   it('ссылка запуска открывается один раз: вторая загрузка (StrictMode в разработке) не возвращает её экран', async () => {
     // В разработке React запускает загрузку дважды; ответ второй пришёл позже, чем человек ушёл с экрана ссылки.
     let second!: () => void;
-    const answer = { user: user(), start_param: `web_${'x'.repeat(22)}`, is_new: false };
-    m.api.session.mockResolvedValueOnce(answer).mockReturnValueOnce(new Promise((r) => (second = () => r(answer))));
+    const answer = { user: user(), start_param: `web_${'x'.repeat(22)}0t4k2xq${'y'.repeat(22)}`, is_new: false };
+    // Второй ответ — по-английски: по языку страницы видно, что он пришёл и отрисовался (без пауз в тесте).
+    const english = { ...answer, user: user({ language_code: 'en' }) };
+    m.api.session.mockResolvedValueOnce(answer).mockReturnValueOnce(new Promise((r) => (second = () => r(english))));
     m.api.today.mockResolvedValue(today());
     await render(
       <StrictMode>
@@ -460,9 +462,8 @@ describe('ссылки запуска', () => {
     await page.getByRole('button', { name: 'Не входить' }).click();
     await expect.element(heading('Сегодня')).toBeVisible();
     second();
-    await expect.poll(() => m.api.today.mock.calls.length).toBeGreaterThanOrEqual(2);
-    await new Promise((r) => setTimeout(r, 50));
-    await expect.element(heading('Сегодня')).toBeVisible();
+    await expect.poll(() => document.documentElement.lang).toBe('en');
+    await expect.element(heading('Today')).toBeVisible();
   });
 
   it('испорченный код входа — просто «Сегодня»', async () => {

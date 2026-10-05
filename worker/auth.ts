@@ -13,8 +13,8 @@ export interface TgUser {
   language_code?: string;
 }
 
-/** desktop — id сессии компьютера, если вошли ключом компьютера, а не из Telegram. */
-export type AuthVars = { tgUser: TgUser; startParam: string | undefined; desktop: number | undefined };
+/** desktop — сессия компьютера (её id и пользователь LifeCommit), если вошли ключом компьютера, а не из Telegram. */
+export type AuthVars = { tgUser: TgUser; startParam: string | undefined; desktop: { id: number; userId: number } | undefined };
 
 const MOCK_HASH = 'mock-hash-not-valid-for-backend';
 
@@ -29,10 +29,11 @@ export const requireTelegram = createMiddleware<{ Bindings: Env; Variables: Auth
     const session = await desktopSession(c.env, header.slice(7), c.executionCtx);
     if (session === 'expired') throw new HTTPException(401, { message: 'session_expired' });
     if (!session) throw new HTTPException(401, { message: 'bad_session' });
-    // Профиля Telegram у ключа нет: id — пользователя LifeCommit (основного аккаунта), имя не нужно — /session его не пишет.
-    c.set('tgUser', { id: session.user_id, first_name: '' });
+    // Компьютер действует от имени аккаунта Telegram, который подтвердил вход (связанный — как связанный: например,
+    // общий аккаунт так не удалить). Профиля Telegram у ключа нет — /session его и не пишет.
+    c.set('tgUser', { id: session.telegram_id, first_name: '' });
     c.set('startParam', undefined);
-    c.set('desktop', session.id);
+    c.set('desktop', { id: session.id, userId: session.user_id });
     await next();
     return;
   }

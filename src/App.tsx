@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { mainButton, miniApp, useSignal } from '@tma.js/sdk-react';
+import { mainButton, miniApp, themeParams, useSignal } from '@tma.js/sdk-react';
 import type { TaskKind, TodayResponse, UserSettings } from '../shared/types';
 import { api } from './api';
 import { caches, load as fetchInto, logicalDayOf, warm } from './caches';
@@ -43,7 +43,7 @@ type Route =
   | { name: 'requests' }
   | { name: 'friendLink'; code: string }
   // «Войти на Mac?»: компьютер открыл t.me/…?startapp=mac_<код> (вход на компьютере, src/desktop).
-  | { name: 'desktopApprove'; code: string; device: 'mac' | 'web' }
+  | { name: 'desktopApprove'; ticket: string; device: 'mac' | 'web' }
   // Правка привычки из голосового разбора; back — вкладка, с которой открыли шторку.
   | { name: 'draft'; index: number; back: Tab };
 type Tab = 'today' | 'calendar' | 'groups' | 'me';
@@ -64,7 +64,12 @@ function savedTheme(): Theme | null {
 const guessLang = (): Lang => (navigator.language.startsWith('ru') ? 'ru' : 'en');
 
 export function App(): ReactNode {
-  const tgDark = useSignal(miniApp.isDark);
+  // Тёмная ли тема Telegram (на компьютере — системы) — по параметрам темы, а не по цвету мини-аппа: цвет фона мы
+  // сами красим в свой (paintTelegram), и тогда смена темы на ходу до приложения не доходила (05.10.2026).
+  // Параметров темы нет (вне Telegram, в тестах) — светлая: SDK тогда считает тему тёмной.
+  const tgBg = useSignal(themeParams.bgColor);
+  const tgDarkTheme = useSignal(themeParams.isDark);
+  const tgDark = tgBg !== undefined && tgDarkTheme;
   const [theme, setThemeState] = useState<Theme | null>(savedTheme);
   const isDark = theme === null ? tgDark : theme === 'dark';
   const setTheme = (next: Theme) => {
@@ -254,7 +259,7 @@ export function App(): ReactNode {
       setRoute({ name: 'group', id, back: 'groups' });
     }} onClose={home} />;
   } else if (route.name === 'desktopApprove') {
-    screen = <DesktopApprove code={route.code} device={route.device} onClose={home} />;
+    screen = <DesktopApprove ticket={route.ticket} device={route.device} onClose={home} />;
   } else if (route.name === 'friendLink') {
     screen = <FriendLink code={route.code} onClose={home} onFriends={() => setRoute({ name: 'groups', section: 'friends' })} />;
   } else if (boot.onboarding) {

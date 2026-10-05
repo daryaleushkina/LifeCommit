@@ -6,15 +6,16 @@ import { useT } from '../i18n';
 import { useBackButton } from '../telegram/hooks';
 
 interface Props {
-  code: string;
+  /** Билет из ссылки: код, время выдачи и подпись (проверяет Worker). */
+  ticket: string;
   device: 'mac' | 'web';
   onClose: () => void;
 }
 
-/** start_param «mac_<код>» / «web_<код>» → что подтверждать; другое — null. */
-export function desktopLoginParam(startParam: string | null): { code: string; device: 'mac' | 'web' } | null {
-  const m = /^(mac|web)_([A-Za-z0-9_-]{22})$/.exec(startParam ?? '');
-  return m ? { device: m[1] as 'mac' | 'web', code: m[2]! } : null;
+/** start_param «mac_<билет>» / «web_<билет>» → что подтверждать; другое — null. */
+export function desktopLoginParam(startParam: string | null): { ticket: string; device: 'mac' | 'web' } | null {
+  const m = /^(mac|web)_([A-Za-z0-9_-]{22}[0-9a-z]{7}[A-Za-z0-9_-]{22})$/.exec(startParam ?? '');
+  return m ? { device: m[1] as 'mac' | 'web', ticket: m[2]! } : null;
 }
 
 const Laptop = () => (
@@ -30,25 +31,26 @@ const Check = () => (
   </svg>
 );
 
-export function DesktopApprove({ code, device, onClose }: Props): ReactNode {
+export function DesktopApprove({ ticket, device, onClose }: Props): ReactNode {
   const d = useT().desktop;
-  const [state, setState] = useState<'ask' | 'busy' | 'done' | 'used' | 'failed'>('ask');
+  const [state, setState] = useState<'ask' | 'busy' | 'done' | 'used' | 'expired' | 'failed'>('ask');
   useBackButton(onClose);
 
   const approve = async () => {
     setState('busy');
     try {
-      await api.desktopApprove(code, device);
+      await api.desktopApprove(ticket, device);
       setState('done');
     } catch (e) {
-      setState(e instanceof ApiError && e.status === 409 ? 'used' : 'failed');
+      const status = e instanceof ApiError ? e.status : 0;
+      setState(status === 409 ? 'used' : status === 410 ? 'expired' : 'failed');
     }
   };
 
-  if (state === 'used') {
+  if (state === 'used' || state === 'expired') {
     return (
       <main className="app-shell center">
-        <p className="empty">{d.used}</p>
+        <p className="empty">{state === 'used' ? d.used : d.linkExpired}</p>
         <button className="act primary" onClick={onClose}>
           {d.toToday}
         </button>

@@ -43,6 +43,9 @@ const auth = () => {
   return token ? `Bearer ${token}` : `tma ${retrieveRawInitData() ?? ''}`;
 };
 
+/** Ответы Worker'а, после которых ключ компьютера больше не годится (worker/auth.ts, worker/api.ts). */
+const SESSION_LOST = new Set(['bad_session', 'session_expired', 'no_session']);
+
 /**
  * Тело ответа как JSON. Не JSON или оборвалось (страницу перезагрузили, связь пропала посреди ответа) — ошибка
  * даже при 200: раньше приходил {}, и экран падал на нём (data.tasks.filter, 03.10.2026).
@@ -51,8 +54,9 @@ async function read<T>(res: Response): Promise<T> {
   // «Нет содержимого» — законный успех без тела.
   if (res.status === 204) return {} as T;
   const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
-  // Ключ компьютера отозвали или он истёк — обратно на экран входа.
-  if (res.status === 401 && isDesktop() && desktopToken()) sessionLost();
+  // Ключ компьютера отозвали или он истёк — обратно на экран входа. Только эти коды: 401 бывает и по делу
+  // (неверный пароль календаря Apple — apple_auth), такая ошибка должна дойти до экрана, а не разлогинить.
+  if (res.status === 401 && SESSION_LOST.has(data?.error ?? '') && isDesktop() && desktopToken()) sessionLost();
   if (!res.ok || data === null) throw new ApiError(res.status, data?.error ?? 'network');
   return data;
 }
@@ -90,8 +94,17 @@ async function feedbackVoice(audio: Blob): Promise<string> {
   return (await read<{ text: string }>(res)).text;
 }
 
+/**
+ * Погасить ключ компьютера, который пришёл уже после «Отмена» на экране входа: сохранять его нельзя (человек передумал),
+ * а оставить — он бы висел в «Компьютерах» до 90 дней.
+ */
+async function dropDesktopKey(token: string): Promise<{ ok: true }> {
+  return read(await fetch('/api/desktop/session', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }));
+}
+
 export const api = {
   share,
+  dropDesktopKey,
   feedback,
   feedbackVoice,
   /** В чат: подготовленное сообщение для shareMessage; не вышло — картинка пришла в личку с ботом (sent). */
@@ -99,7 +112,7 @@ export const api = {
   // Вход на компьютере (worker/desktop.ts): начать и забрать ключ — без подписи; подтвердить — из Telegram.
   desktopLogin: (device: 'mac' | 'web') => call<{ secret: string; code: string; link: string }>('POST', '/desktop/login', { device }),
   desktopPoll: (secret: string) => call<{ status: 'pending' } | { status: 'ok'; token: string }>('POST', '/desktop/login/poll', { secret }),
-  desktopApprove: (code: string, device: 'mac' | 'web') => call<{ ok: true }>('POST', '/desktop/approve', { code, device }),
+  desktopApprove: (ticket: string, device: 'mac' | 'web') => call<{ ok: true }>('POST', '/desktop/approve', { ticket, device }),
   desktopSessions: () => call<DesktopSession[]>('GET', '/desktop/sessions'),
   logoutEverywhere: () => call<{ ok: true }>('DELETE', '/desktop/sessions'),
   logout: () => call<{ ok: true }>('DELETE', '/desktop/session'),

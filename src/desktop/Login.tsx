@@ -2,13 +2,15 @@
 // «Войти на Mac?», а этот экран ждёт подтверждения и сам забирает ключ (worker/desktop.ts).
 import { useEffect, useState, type ReactNode } from 'react';
 import { openTelegramLink } from '@tma.js/sdk-react';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { Logo } from '../components/Logo';
 import { useT } from '../i18n';
 import { desktopDevice, saveDesktopToken } from './session';
 
 /** Ссылка на подтверждение живёт 10 минут (как подтверждение на сервере). */
 const WAIT_MS = 10 * 60_000;
+/** Столько ответов сервера с ошибкой подряд — и честно «не получилось», а не 10 минут «ждём». */
+const MAX_SERVER_ERRORS = 3;
 
 type State = { step: 'idle'; note?: 'expired' | 'failed' } | { step: 'waiting'; secret: string; link: string; until: number };
 
@@ -43,11 +45,28 @@ export function DesktopLogin({ onDone, pollMs = 2000 }: { onDone: () => void; po
     if (!secret) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
+    let serverErrors = 0;
     const tick = async () => {
       if (Date.now() > until) return setState({ step: 'idle', note: 'expired' });
-      // Связь моргнула — спросим ещё раз; не подтвердили за 10 минут — «время вышло».
-      const res = await api.desktopPoll(secret).catch(() => null);
-      if (!alive) return;
+      // Связь моргнула — спросим ещё раз; не подтвердили за 10 минут — «время вышло». Сервер отвечает ошибкой
+      // несколько раз подряд — это не «ждём»: говорим «не получилось».
+      const res = await api.desktopPoll(secret).then(
+        (r) => {
+          serverErrors = 0;
+          return r;
+        },
+        (e: unknown) => {
+          console.warn('desktop poll failed', e);
+          if (e instanceof ApiError) serverErrors += 1;
+          return null;
+        },
+      );
+      if (!alive) {
+        // Нажали «Отмена», пока ждали ответа, а вход как раз подтвердили — ключ не сохраняем и гасим.
+        if (res?.status === 'ok') api.dropDesktopKey(res.token).catch((e: unknown) => console.warn('desktop key drop failed', e));
+        return;
+      }
+      if (serverErrors >= MAX_SERVER_ERRORS) return setState({ step: 'idle', note: 'failed' });
       if (res?.status === 'ok') {
         try {
           saveDesktopToken(res.token);

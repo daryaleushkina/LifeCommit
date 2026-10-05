@@ -9,7 +9,16 @@ final class ShellMessageTests: XCTestCase {
     XCTAssertEqual(ShellMessage(body: ["type": "back", "visible": true]), .back(visible: true))
     XCTAssertEqual(ShellMessage(body: ["type": "back", "visible": NSNumber(value: false)]), .back(visible: false))
     XCTAssertEqual(ShellMessage(body: ["type": "colors", "header": "#F6F4EE"]), .colors(header: Rgb(hex: "#F6F4EE")!))
-    XCTAssertEqual(ShellMessage(body: ["type": "open", "url": "tg://resolve?domain=LifeCommit_bot"]), .open(URL(string: "tg://resolve?domain=LifeCommit_bot")!))
+    XCTAssertEqual(ShellMessage(body: ["type": "open", "url": "tg://resolve?domain=LifeCommit_bot"]), .open(URL(string: "tg://resolve?domain=LifeCommit_bot")!, fallback: nil))
+    XCTAssertEqual(
+      ShellMessage(body: ["type": "open", "url": "tg://resolve?domain=LifeCommit_bot", "fallback": "https://t.me/LifeCommit_bot"]),
+      .open(URL(string: "tg://resolve?domain=LifeCommit_bot")!, fallback: URL(string: "https://t.me/LifeCommit_bot")!)
+    )
+    // запасной адрес — только веб
+    XCTAssertEqual(
+      ShellMessage(body: ["type": "open", "url": "tg://resolve?domain=x", "fallback": "file:///etc/passwd"]),
+      .open(URL(string: "tg://resolve?domain=x")!, fallback: nil)
+    )
     XCTAssertEqual(
       ShellMessage(body: ["type": "download", "url": "https://lifecommit.app/share/x.jpg", "name": "../../Library/evil.jpg"]),
       .download(URL(string: "https://lifecommit.app/share/x.jpg")!, name: "evil.jpg")

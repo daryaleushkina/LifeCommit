@@ -6,7 +6,8 @@ export type ShellMessage =
   | { type: 'ready' }
   | { type: 'back'; visible: boolean }
   | { type: 'colors'; header: string }
-  | { type: 'open'; url: string }
+  /** fallback — если адрес открыть нечем (tg:// без Telegram на Маке), открыть этот (t.me в браузере). */
+  | { type: 'open'; url: string; fallback?: string }
   | { type: 'download'; url: string; name: string };
 
 /** Оболочка Mac: WKWebView с обработчиком сообщений `lifecommit`. */
