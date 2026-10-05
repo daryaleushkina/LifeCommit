@@ -290,3 +290,32 @@ test('эталон первого экрана лендинга', async ({ page 
   await page.addStyleTag({ content: '#field { visibility: hidden !important }' });
   await expect(page).toHaveScreenshot('site-hero.png');
 });
+
+// Баг 05.10 (владелица, телефон): долистала до низа, коснулась экрана — клетки пропали, остался голый фон. Касание
+// внизу раскрывает панели браузера, окно становится ниже, холст пересоздаётся пустым, а у подвала анимация стояла —
+// перерисовать было некому. Здесь то же самое: низ страницы, окно ниже — клетки на холсте должны остаться.
+test.describe('поле клеток внизу страницы', () => {
+  test.use({ reducedMotion: 'no-preference' });
+  test('касание внизу (окно браузера стало ниже) не гасит клетки', async ({ page }) => {
+    await page.goto('/');
+    const foot = page.locator('.site-foot');
+    await foot.scrollIntoViewIfNeeded();
+    await expect(foot).toBeInViewport();
+    // сколько точек холста закрашено (альфа > 0)
+    const lit = () =>
+      page.evaluate(() => {
+        const c = document.querySelector<HTMLCanvasElement>('#field');
+        const d = c?.getContext('2d')?.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        if (d) for (let i = 3; i < d.length; i += 4) if (d[i]) n++;
+        return n;
+      });
+    await expect.poll(lit).toBeGreaterThan(0);
+    const size = page.viewportSize();
+    if (!size) throw new Error('нет размера окна');
+    await page.setViewportSize({ width: size.width, height: size.height - 80 });
+    await expect.poll(lit).toBeGreaterThan(0);
+    await page.setViewportSize(size);
+    await expect.poll(lit).toBeGreaterThan(0);
+  });
+});
