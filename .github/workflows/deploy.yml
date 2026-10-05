@@ -58,11 +58,53 @@ jobs:
           xcodebuild build -project LifeCommit.xcodeproj -scheme LifeCommit -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO | xcbeautify --quieter
           xcodebuild build -project LifeCommit.xcodeproj -scheme LifeCommit -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO | xcbeautify --quieter
 
+  # Приложение для Android (android/, docs/mobile.md) — если в пуше есть оно само или сервер, с которым оно говорит.
+  # Как в scripts/hooks/pre-push, только без сверки снимков экранов: эталоны сняты Robolectric на Mac, на Linux шрифты
+  # рисуются иначе (как с эталонами e2e). Логика core, сценарии на Robolectric, значки, сборка APK.
+  android:
+    if: github.event_name == 'workflow_dispatch' || vars.LOCAL_DEPLOYED_SHA != github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Есть ли правки android/ или сервера
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || sh scripts/android-changed.sh "${{ github.event.before }}" "${{ github.sha }}"; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "android/ и сервер не менялись — проверка Android пропущена"
+          fi
+      - if: steps.changed.outputs.run == 'yes'
+        uses: pnpm/action-setup@v4
+      - if: steps.changed.outputs.run == 'yes'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.changed.outputs.run == 'yes'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - if: steps.changed.outputs.run == 'yes'
+        run: pnpm install --frozen-lockfile
+      - if: steps.changed.outputs.run == 'yes'
+        name: Значки совпадают с мини-аппом
+        run: node android/scripts/icons.mjs --check
+      - if: steps.changed.outputs.run == 'yes'
+        name: Тесты core и app, сборка APK
+        working-directory: android
+        run: ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug --console=plain
+
   deploy:
     # Пуш с машины, где включён scripts/hooks/pre-push, уже задеплоен оттуда — задачу пропускаем
     # (пропущенная задача не тратит минуты). Ручной запуск деплоит всегда.
     if: github.event_name == 'workflow_dispatch' || vars.LOCAL_DEPLOYED_SHA != github.sha
-    needs: apple
+    needs: [apple, android]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

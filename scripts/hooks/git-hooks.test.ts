@@ -161,3 +161,36 @@ describe('apple-changed.sh: нужна ли перед пушем проверк
     expect(needed(dir, 'f'.repeat(40), head)).toBe(true);
   });
 });
+
+describe('android-changed.sh: нужна ли перед пушем проверка Android', () => {
+  const SCRIPT = path.join(HOOKS, '..', 'android-changed.sh');
+  const needed = (dir: string, remote: string, sha: string) => spawnSync('sh', [SCRIPT, remote, sha], { cwd: dir, encoding: 'utf8', env: env() }).status === 0;
+
+  it('правки android/ или сервера — нужна; только сайт и документы — нет; новая ветка или неизвестный коммит — нужна', () => {
+    const { dir, git, write } = repo();
+    write('README.md');
+    git('add', '.');
+    git('commit', '-q', '--no-verify', '-m', 'база');
+    const base = git('rev-parse', 'HEAD').stdout.trim();
+    const commit = (file: string) => {
+      write(file, String(Math.random()));
+      git('add', '.');
+      git('commit', '-q', '--no-verify', '-m', file);
+      return git('rev-parse', 'HEAD').stdout.trim();
+    };
+    const site = commit('site/index.html');
+    expect(needed(dir, base, site)).toBe(false);
+    expect(needed(dir, site, commit('docs/landing.md'))).toBe(false);
+    // apple/ — не повод проверять Android.
+    const apple = git('rev-parse', 'HEAD').stdout.trim();
+    expect(needed(dir, apple, commit('apple/App/X.swift'))).toBe(false);
+    for (const file of ['android/app/X.kt', 'worker/api.ts', 'shared/types.ts', 'supabase/migrations/x.sql']) {
+      const before = git('rev-parse', 'HEAD').stdout.trim();
+      expect({ file, needed: needed(dir, before, commit(file)) }).toEqual({ file, needed: true });
+    }
+    const head = git('rev-parse', 'HEAD').stdout.trim();
+    expect(needed(dir, '0000000000000000000000000000000000000000', head)).toBe(true);
+    expect(needed(dir, '', head)).toBe(true);
+    expect(needed(dir, 'f'.repeat(40), head)).toBe(true);
+  });
+});

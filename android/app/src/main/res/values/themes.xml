@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Окно до первого кадра Compose — цвет фона мини-аппа (var bg), системная заставка — знак на нём. -->
+    <style name="Theme.LifeCommit" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31" xmlns:tools="http://schemas.android.com/tools">@color/bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31" xmlns:tools="http://schemas.android.com/tools">@drawable/ic_logo</item>
+    </style>
+</resources>

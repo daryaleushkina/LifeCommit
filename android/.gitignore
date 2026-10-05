@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+.kotlin/
+*.iml
+.idea/
+captures/
+
+# Эталоны снимков экранов — в git (корневой .gitignore прячет папки screenshots/).
+!/app/src/test/screenshots/

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Знак из аватарки бота (design/avatar/lifecommit-avatar.svg, вариант 26F): клетки 3×3 кружками, самые тёмные — галочка. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#D2E6D7" android:pathData="M26.60,34.60a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#9FD5B0" android:pathData="M46.00,34.60a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#237A46" android:pathData="M65.40,34.60a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#9FD5B0" android:pathData="M26.60,54.00a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#237A46" android:pathData="M46.00,54.00a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#5DBB7E" android:pathData="M65.40,54.00a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#237A46" android:pathData="M26.60,73.40a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#5DBB7E" android:pathData="M46.00,73.40a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#D2E6D7" android:pathData="M65.40,73.40a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+</vector>
