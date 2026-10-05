@@ -292,43 +292,6 @@ private fun TabButton(label: String, active: Boolean, modifier: Modifier, icon: 
     }
 }
 
-/** Раздела ещё нет в приложении (docs/parity.md «ждёт»): он есть в мини-аппе — с теми же данными. */
-@Composable
-fun PendingSection(title: String, links: Links, extra: (@Composable () -> Unit)? = null) {
-    val p = LocalPalette.current
-    val t = LocalStrings.current
-    Screen(withTabs = true) {
-        item { PageHead(title) }
-        item {
-            Card(Modifier.padding(top = 16.dp), padding = PaddingValues(18.dp)) {
-                Text(t.pendingSection, style = onest(16, color = p.text))
-                Spacer(Modifier.height(14.dp))
-                PrimaryButton(t.openInTelegram, wide = true) { links.open(BOT_APP, false) }
-            }
-        }
-        if (extra != null) item { extra() }
-    }
-}
-
-/** «Я»: пока — имя, ссылка на мини-апп и «Выйти на этом устройстве» (нужно магазинам приложений уже сейчас). */
-@Composable
-fun Me(model: AppModel, links: Links) {
-    val p = LocalPalette.current
-    val t = LocalStrings.current
-    var confirm by remember { mutableStateOf(false) }
-    PendingSection(model.user?.firstName ?: t.me, links) {
-        Box(Modifier.fillMaxWidth().padding(top = 20.dp), contentAlignment = Alignment.Center) {
-            QuietLink(t.logoutDevice, p.warn) { confirm = true }
-        }
-    }
-    if (confirm) {
-        Confirm(t.logoutDeviceConfirm, t.logoutOk, onConfirm = {
-            confirm = false
-            model.logout()
-        }, onDismiss = { confirm = false })
-    }
-}
-
 /** Микрофон, пока голоса нет в приложении: шторка с ссылкой на чат с ботом (он понимает голосовые). */
 @Composable
 fun VoiceSoon(links: Links, onClose: () -> Unit) {

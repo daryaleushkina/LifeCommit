@@ -45,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.lifecommit.AppModel
+import app.lifecommit.GroupNote
 import app.lifecommit.TogetherModel
 import app.lifecommit.core.ApiError
 import app.lifecommit.core.Days
@@ -81,9 +82,10 @@ fun GroupScreen(model: AppModel, id: Long, links: Links) {
     var editing by remember { mutableStateOf<GroupDayItem?>(null) }
     var creating by remember { mutableStateOf(false) }
     var putting by remember { mutableStateOf<GroupDayItem?>(null) }
-    // Подсказка поверх, сама уходит через 3,5 с.
+    // Подсказка поверх, сама уходит через 3,5 с; подсказка другой группы здесь не всплывает.
+    LaunchedEffect(id) { if (tg.note?.groupId != id) tg.note = null }
     LaunchedEffect(tg.note) {
-        if (tg.note != null) {
+        if (tg.note?.groupId == id) {
             delay(3_500)
             tg.note = null
         }
@@ -135,7 +137,7 @@ fun GroupScreen(model: AppModel, id: Long, links: Links) {
                         items.forEachIndexed { i, it ->
                             androidx.compose.runtime.key(it.id) {
                                 if (i > 0) RowDivider()
-                                GroupItemRow(model, group.id, it, group.members, today, onToggle = { model.toggleGroupItem(group.id, it, today) }, onOpen = { editing = it })
+                                GroupItemRow(model, group.id, it, group.members, today, onToggle = { model.toggleGroupItem(group.id, it, today, onGroupScreen = true) }, onOpen = { editing = it })
                             }
                         }
                     }
@@ -181,9 +183,9 @@ fun GroupScreen(model: AppModel, id: Long, links: Links) {
                             try {
                                 val link = tg.inviteLink(group.id)
                                 links.open(telegramShare(link, "${group.title} · LifeCommit"), false)
-                                tg.note = TogetherModel.INVITE_SENT
+                                tg.note = GroupNote(id, TogetherModel.INVITE_SENT)
                             } catch (e: ApiError) {
-                                if (e.isSignedOut) model.signOutLocally() else tg.note = TogetherModel.ERROR
+                                if (e.isSignedOut) model.signOutLocally() else tg.note = GroupNote(id, TogetherModel.ERROR)
                             }
                         }
                     }
@@ -191,8 +193,8 @@ fun GroupScreen(model: AppModel, id: Long, links: Links) {
                 }
             }
         }
-        tg.note?.let { key ->
-            val text = when (key) {
+        tg.note?.takeIf { it.groupId == id }?.let { note ->
+            val text = when (note.key) {
                 TogetherModel.TAKEN -> g.taken
                 TogetherModel.NOT_YOURS -> g.notYours
                 TogetherModel.INVITE_SENT -> g.inviteSent
@@ -233,7 +235,7 @@ private fun PutSheet(model: AppModel, groupId: Long, item: GroupDayItem, onClose
                 try {
                     model.together.put(groupId, item.id, n)
                 } catch (e: ApiError) {
-                    if (e.isSignedOut) model.signOutLocally() else model.together.note = TogetherModel.ERROR
+                    if (e.isSignedOut) model.signOutLocally() else model.together.note = GroupNote(groupId, TogetherModel.ERROR)
                 }
                 onClose()
             }
@@ -262,7 +264,7 @@ private fun GroupSettingsSheet(model: AppModel, group: GroupToday, links: Links,
             } catch (e: ApiError) {
                 if (e.isSignedOut) model.signOutLocally()
                 error = true
-                tg.note = TogetherModel.ERROR
+                tg.note = GroupNote(group.id, TogetherModel.ERROR)
             }
         }
     }
@@ -338,7 +340,7 @@ private fun GroupSettingsSheet(model: AppModel, group: GroupToday, links: Links,
                     // Сервер не выпустил — остаёмся на экране группы, подсказка поверх.
                     if (e.isSignedOut) model.signOutLocally()
                     onClose()
-                    tg.note = TogetherModel.ERROR
+                    tg.note = GroupNote(group.id, TogetherModel.ERROR)
                 }
             }
         }, onDismiss = { confirmLeave = null })

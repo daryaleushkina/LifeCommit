@@ -126,14 +126,10 @@ class HabitsTest : AppTest() {
         compose.waitText(t.limitReached(5))
     }
 
-    @Test fun `разделов, которых ещё нет, - ссылка в мини-апп, микрофон - чат с ботом`() {
+    @Test fun `микрофон - чат с ботом`() {
         server.today = TodayResponse("2026-10-05", tasks = listOf(reading))
         launch()
-        // «Календарь» и «Вместе» уже есть в приложении — раздел, которого ещё нет, это «Я».
-        compose.waitText(t.me).performClick()
-        compose.waitText(t.pendingSection)
-        compose.waitText(t.openInTelegram).performClick()
-        assertEquals("https://t.me/LifeCommit_bot?startapp" to false, opened.last())
+        // Все четыре раздела уже в приложении (Ядро, Календарь, Вместе, Я); голоса ещё нет — бот понимает голосовые.
         compose.waitLabel(t.voiceMic).performClick()
         compose.waitText(t.openBot).performClick()
         assertEquals("https://t.me/LifeCommit_bot" to false, opened.last())

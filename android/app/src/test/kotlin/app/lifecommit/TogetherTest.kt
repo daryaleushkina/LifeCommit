@@ -2,6 +2,7 @@
 // вступление по ссылке, друзья (позвать, заявки, экран друга, убрать), блоки групп на «Сегодня».
 package app.lifecommit
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
@@ -11,6 +12,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import app.lifecommit.core.FoundPerson
+import app.lifecommit.core.GroupDayBlock
+import app.lifecommit.core.GroupRef
+import app.lifecommit.core.Todo
 import app.lifecommit.core.FriendCard
 import app.lifecommit.core.FriendHabit
 import app.lifecommit.core.FriendProfile
@@ -30,6 +34,7 @@ import app.lifecommit.core.PersonStatus
 import app.lifecommit.core.TaskKind
 import app.lifecommit.core.TodayResponse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -68,6 +73,126 @@ class TogetherTest : AppTest() {
         compose.waitLabel(t.todo.check("Вынести мусор")).performClick()
         compose.waitFor { server.calls("PUT", "/api/groups/50/items/61/mark").isNotEmpty() }
         assertEquals("true", server.calls("PUT", "/api/groups/50/items/61/mark").single().json["done"].toString())
+    }
+
+    @Test fun `перечитывание Сегодня ждёт отметку группового дела, которая ещё идёт на сервер`() {
+        seed()
+        server.today = TodayResponse("2026-10-05", todos = listOf(Todo(10, "Позвонить в банк", "2026-10-05")))
+        launch(undoMillis = 200)
+        compose.waitText("Вынести мусор")
+        val before = server.calls.size
+        // Отметка уходит медленно; тут же истекает «Вернуть» у удалённого дела — и «Сегодня» перечитывается.
+        server.markDelayMs = 1500
+        compose.waitLabel(t.todo.check("Вынести мусор")).performClick()
+        compose.waitText("Позвонить в банк").performTouchInput { swipeLeft(startX = right, endX = left - 900f) }
+        compose.waitFor(8_000) { server.calls("DELETE", "/api/todos/10").size == 1 && server.calls("PUT", "/api/groups/50/items/61/mark").size == 1 }
+        compose.waitFor { server.calls.drop(before).count { it.method == "GET" && it.path == "/api/today" } >= 2 }
+        val calls = server.calls.drop(before)
+        val put = calls.indexOfFirst { it.method == "PUT" }
+        val get = calls.indexOfFirst { it.method == "GET" && it.path == "/api/today" }
+        // Записи — в порядке, в каком сервер их обработал: ни одно перечитывание не ушло раньше отметки.
+        assertTrue("PUT $put, первый GET $get", get > put)
+        compose.waitLabel(t.todo.uncheck("Вынести мусор"))
+    }
+
+    private fun item61(done: Boolean = false) = GroupDayItem(61, "Вынести мусор", GroupMode.Assign, people = listOf(me), forMe = true, canMark = true, done = done, doneBy = if (done) listOf(me) else emptyList())
+
+    /** Календарь с делами группы в эти дни; открыт на первом из них. */
+    private fun openCalendarWithGroup(vararg days: String) {
+        server.calendarGroups = days.map { GroupDayBlock(it, GroupRef(50, "Семья", members = listOf(GroupMember(me, "Даша"), masha)), listOf(item61(), GroupDayItem(62, "Купить продукты", GroupMode.One, forMe = true, canMark = true, recurring = true, rrule = "FREQ=DAILY"))) }
+        compose.waitText(t.calendar).performClick()
+        if (days.first() != "2026-10-05") compose.waitLabel(t.nextDay).performClick()
+        compose.waitFor { model.calendar.groupsOfDay(days.first()).isNotEmpty() }
+        // Соседние дни и месяц подгружаются заранее — дождаться, чтобы их запросы не смешались с проверяемыми.
+        compose.waitFor { model.calendar.inFlight == 0 }
+    }
+
+    @Test fun `отметка в Календаре - календарь перечитывается после отметки`() {
+        seed()
+        launch()
+        openCalendarWithGroup("2026-10-05")
+        val before = server.calls.size
+        server.markDelayMs = 1500
+        compose.waitLabel(t.todo.check("Вынести мусор")).performClick()
+        compose.waitFor(8_000) { server.calls("PUT", "/api/groups/50/items/61/mark").size == 1 }
+        compose.waitFor { server.calls.drop(before).any { it.method == "GET" && it.path == "/api/calendar" } }
+        val calls = server.calls.drop(before)
+        val put = calls.indexOfFirst { it.method == "PUT" }
+        val get = calls.indexOfFirst { it.method == "GET" && it.path == "/api/calendar" }
+        assertTrue("PUT $put, первый GET /calendar $get", get > put)
+    }
+
+    @Test fun `отметка группового дела в другой день не трогает его копию на Сегодня`() {
+        seed()
+        launch()
+        openCalendarWithGroup("2026-10-06")
+        compose.runOnUiThread {
+            model.toggleGroupItem(50, model.calendar.groupsOfDay("2026-10-06").single().items.first { it.id == 61L }, "2026-10-06")
+            assertFalse(model.today.groups.single().items.first { it.id == 61L }.done)
+            assertTrue(model.calendar.groupsOfDay("2026-10-06").single().items.first { it.id == 61L }.done)
+        }
+        compose.waitFor { server.calls("PUT", "/api/groups/50/items/61/mark").size == 1 }
+        assertEquals("\"2026-10-06\"", server.calls("PUT", "/api/groups/50/items/61/mark").single().json["day"].toString())
+    }
+
+    @Test fun `убрать повторяющееся только в этот день - в другой день оно на месте`() {
+        seed()
+        launch(undoMillis = 3_000)
+        openCalendarWithGroup("2026-10-05", "2026-10-06")
+        compose.onAllNodes(hasText("Купить продукты"))[0].performTouchInput { swipeLeft(startX = right, endX = left - 900f) }
+        compose.waitText(t.swipe.onlyToday).performClick()
+        compose.waitText(t.swipe.undo)
+        // «Вернуть» ещё на экране — а завтра дело есть.
+        compose.waitLabel(t.nextDay).performClick()
+        compose.waitText("Вторник, 6 октября")
+        compose.waitText("Купить продукты")
+    }
+
+    @Test fun `подсказка после отметки на Сегодня не всплывает потом на экране группы`() {
+        seed()
+        server.groups = listOf(family(listOf(GroupDayItem(62, "Купить продукты", GroupMode.One, forMe = true, canMark = true))))
+        launch()
+        compose.waitText("Купить продукты")
+        // Маша успела раньше — сервер скажет «уже сделали»; на «Сегодня» подсказки нет (как в мини-аппе).
+        server.groups = listOf(family(listOf(GroupDayItem(62, "Купить продукты", GroupMode.One, forMe = true, canMark = true, doneBy = listOf(2)))))
+        val before = server.calls.size
+        compose.waitLabel(t.todo.check("Купить продукты")).performClick()
+        compose.waitFor { server.calls.drop(before).let { c -> c.any { it.method == "PUT" } && c.any { it.method == "GET" && it.path == "/api/today" } } }
+        openTogether()
+        compose.waitText("Семья").performClick()
+        compose.waitText(t.gr.todayLabel.uppercase())
+        compose.waitFor { server.calls("GET", "/api/groups/50").isNotEmpty() }
+        compose.waitForIdle()
+        compose.onAllNodes(hasText(t.gr.taken)).assertCountEquals(0)
+    }
+
+    @Test fun `список групп не загрузился - группы из Сегодня, а не «нет групп»`() {
+        seed()
+        server.failures["GET /api/groups"] = 500 to "server_error"
+        launch()
+        compose.waitText("Семья")
+        openTogether()
+        compose.waitFor { server.calls("GET", "/api/groups").isNotEmpty() }
+        compose.waitForIdle()
+        compose.onAllNodes(hasText(t.gr.empty)).assertCountEquals(0)
+        compose.waitText("Семья")
+    }
+
+    @Test fun `аватарки - фото из Telegram по https, иначе буква`() {
+        val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
+        app.lifecommit.ui.Photos.loader = app.lifecommit.ui.PhotoLoader { url ->
+            asked += url
+            androidx.compose.ui.graphics.ImageBitmap(4, 4)
+        }
+        seed()
+        server.groups = listOf(family().copy(members = listOf(GroupMember(me, "Даша", "http://example.com/d.jpg"), GroupMember(2, "Маша", "https://t.me/i/userpic/320/masha.jpg"))))
+        launch()
+        openTogether()
+        compose.waitText("Семья")
+        // Фото просят только по https (аватарки скрыты от TalkBack — проверяем по загрузчику; вид — на снимке экрана).
+        compose.waitFor { asked.isNotEmpty() }
+        compose.waitForIdle()
+        assertEquals(listOf("https://t.me/i/userpic/320/masha.jpg"), asked.distinct())
     }
 
     @Test fun `список групп, новая группа - сразу её экран`() {
@@ -236,6 +361,18 @@ class TogetherTest : AppTest() {
         compose.waitText(t.fr.accept).performClick()
         compose.waitFor { server.calls("POST", "/api/friends/requests/3/accept").size == 1 }
         compose.waitText(t.fr.nothingFound)
+    }
+
+    @Test fun `друзья не загрузились - ошибка, касание - ещё раз`() {
+        seedFriends()
+        server.failures["GET /api/friends"] = 500 to "server_error"
+        launch()
+        openFriends()
+        compose.waitText(t.error)
+        compose.onAllNodes(hasText(t.fr.empty)).assertCountEquals(0)
+        server.failures.remove("GET /api/friends")
+        compose.waitText(t.error).performClick()
+        compose.waitText("Маша")
     }
 
     @Test fun `экран друга - карта и открытые привычки, убрать из друзей`() {

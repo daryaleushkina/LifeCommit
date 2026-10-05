@@ -65,7 +65,13 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
-            all { it.systemProperty("robolectric.pixelCopyRenderMode", "hardware") }
+            all {
+                it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+                // Тесты — на Java 21 (код по-прежнему под 17): Java 17.0.9 на Apple Silicon падает целиком посреди
+                // прогона («Field too big for insn» в C1 на большом методе Compose Recomposer), а с ней и все
+                // оставшиеся тесты.
+                it.javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
+            }
         }
     }
 

@@ -65,10 +65,14 @@ class TogetherModel(
     var friendsData by mutableStateOf<FriendsResponse?>(null)
         private set
 
+    /** Друзей не удалось загрузить, а показать нечего — экран предлагает ещё раз. */
+    var friendsFailed by mutableStateOf(false)
+        private set
+
     val profiles = mutableStateMapOf<Long, FriendProfile>()
 
-    /** Подсказка после действия на экране группы («Уже кто-то сделал», «Ссылка готова…»). */
-    var note by mutableStateOf<String?>(null)
+    /** Подсказка после действия на экране группы («Уже кто-то сделал», «Ссылка готова…») — только на экране этой группы. */
+    var note by mutableStateOf<GroupNote?>(null)
 
     /** Номер правки: ответ, начатый раньше, правку не затирает. */
     private var version = 0
@@ -81,6 +85,7 @@ class TogetherModel(
         details.clear()
         missing.clear()
         friendsData = null
+        friendsFailed = false
         profiles.clear()
         note = null
     }
@@ -98,8 +103,8 @@ class TogetherModel(
                 val fresh = api.groups()
                 if (seq == version) list = fresh
             } catch (e: ApiError) {
+                // Как в мини-аппе: не вышло — остаётся то, что было (на экране — группы из «Сегодня»), не «нет групп».
                 handle(e)
-                if (list == null) list = emptyList()
             }
         }
     }
@@ -127,25 +132,25 @@ class TogetherModel(
         return id
     }
 
-    /** Отметка группового дела: на экране сразу, потом счётчики и чужие отметки — с сервера. */
-    /** Отметка (day — задним числом в «Календаре»); rollback — вернуть на других экранах, если не вышло. */
-    fun toggle(groupId: Long, it: GroupDayItem, day: String? = null, rollback: () -> Unit = {}) {
+    /**
+     * Отметка группового дела на сервере. day == null — сегодня: экран группы меняется сразу, не вышло — назад.
+     * Перечитать экраны — дело вызывающего (после отметки, а не во время).
+     */
+    suspend fun mark(groupId: Long, it: GroupDayItem, day: String?): Marked {
         val done = !it.done
         version++
-        patchItem(groupId) { x -> if (x.id == it.id) Groups.marked(x, done, me()) else x }
-        scope.launch {
-            try {
-                val res = api.markItem(groupId, it.id, done, day)
-                if (res.taken) note = TAKEN
-            } catch (e: ApiError) {
-                patchItem(groupId) { x -> if (x.id == it.id) it else x }
-                rollback()
-                if (e.isSignedOut) return@launch onSignedOut()
-                note = if (e.code == "not_yours") NOT_YOURS else ERROR
+        if (day == null) patchItem(groupId) { x -> if (x.id == it.id) Groups.marked(x, done, me()) else x }
+        return try {
+            Marked(ok = true, note = if (api.markItem(groupId, it.id, done, day).taken) TAKEN else null)
+        } catch (e: ApiError) {
+            if (day == null) patchItem(groupId) { x -> if (x.id == it.id) it else x }
+            if (e.isSignedOut) {
+                onSignedOut()
+                Marked(ok = false, signedOut = true)
+            } else {
+                log.info("group mark: $e")
+                Marked(ok = false, note = if (e.code == "not_yours") NOT_YOURS else ERROR)
             }
-            // Счётчики «5 из 8» и чужие отметки — с сервера.
-            onChanged()
-            loadGroup(groupId)
         }
     }
 
@@ -261,11 +266,13 @@ class TogetherModel(
                 val d = api.friends()
                 if (seq == friendsSeq) {
                     friendsData = d
+                    friendsFailed = false
                     after(d)
                 }
             } catch (e: ApiError) {
+                // Нет сети — остаётся то, что было; не было ничего — ошибка, а не «пока нет друзей».
                 handle(e)
-                if (friendsData == null) friendsData = FriendsResponse()
+                if (seq == friendsSeq && friendsData == null) friendsFailed = true
             }
         }
     }
@@ -286,6 +293,12 @@ class TogetherModel(
         const val INVITE_SENT = "invite_sent"
     }
 }
+
+/** Итог отметки группового дела: ok — сервер принял; note — подсказка для экрана группы. */
+data class Marked(val ok: Boolean, val note: String? = null, val signedOut: Boolean = false)
+
+/** Подсказка на экране группы groupId; key — TogetherModel.TAKEN и др. */
+data class GroupNote(val groupId: Long, val key: String)
 
 /** Человек как участник (аватарка): из друга, заявки, найденного. */
 fun Person.asMember() = app.lifecommit.core.GroupMember(id, firstName, photoUrl)

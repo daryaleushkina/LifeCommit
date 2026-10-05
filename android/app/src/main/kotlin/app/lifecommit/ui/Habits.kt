@@ -386,7 +386,7 @@ private fun StepButton(sign: String, onClick: () -> Unit) {
 
 /** Варианты в шторке (.options): выбранный — зелёный с галочкой. */
 @Composable
-private fun <T> Options(options: List<Pair<T, String>>, value: T, onPick: (T) -> Unit) {
+internal fun <T> Options(options: List<Pair<T, String>>, value: T, onPick: (T) -> Unit) {
     val p = LocalPalette.current
     Column {
         options.forEachIndexed { i, (v, label) ->

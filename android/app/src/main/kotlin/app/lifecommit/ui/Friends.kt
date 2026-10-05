@@ -102,7 +102,10 @@ fun FriendsPanel(model: AppModel, links: Links) {
             }
         }
     }
-    val data = tg.friendsData ?: return
+    val data = tg.friendsData ?: run {
+        if (tg.friendsFailed) ErrorNote(LocalStrings.current.error, Modifier.padding(top = 14.dp).testTag("friendsError")) { tg.reloadFriends() }
+        return
+    }
     val query = rememberTextFieldState()
     val q = query.text.toString().trim().lowercase()
     val shown = if (q.isEmpty()) data.friends else data.friends.filter { it.firstName.lowercase().contains(q) || it.username?.lowercase()?.contains(q.removePrefix("@")) == true }

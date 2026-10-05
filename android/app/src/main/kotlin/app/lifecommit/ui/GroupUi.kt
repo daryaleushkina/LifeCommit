@@ -2,6 +2,7 @@
 // дела (галочка, кто делает, кто сделал; у цели — полоса и «+ Положить»), удаление свайпом, блоки групп на «Сегодня».
 package app.lifecommit.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -21,12 +22,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -49,6 +53,16 @@ import app.lifecommit.core.Tints
 @Composable
 fun Avatar(member: GroupMember, size: Dp = 28.dp) {
     val (bg, fg) = Tints.avatar(member.id)
+    val loader = Photos.loader
+    // Только https: фото с http (или чужой схемой) не грузим — буква.
+    val url = member.photo?.takeIf { it.startsWith("https://") }
+    val photo by produceState(url?.let(loader::cached), url) {
+        if (value == null) value = url?.let { loader.load(it) }
+    }
+    photo?.let {
+        Image(it, null, Modifier.size(size).clip(CircleShape).clearAndSetSemantics {}.testTag("avatarPhoto"), contentScale = ContentScale.Crop)
+        return
+    }
     Box(Modifier.size(size).background(Color(bg), CircleShape).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
         Text(Tints.initial(member.name), style = onest((size.value * 0.42f).toInt().coerceAtLeast(9), 700, Color(fg)))
     }
@@ -94,8 +108,7 @@ fun GroupItemRow(model: AppModel, groupId: Long, it: GroupDayItem, members: List
     val g = t.gr
     val me = model.user?.id ?: 0
     var ask by remember { mutableStateOf(false) }
-    val key = "gi:$groupId:${it.id}"
-    if (model.isRemoved(key)) return
+    if (model.isGroupItemRemoved(groupId, it.id, day)) return
     val removeAll = { model.removeGroupItem(groupId, it, null) }
     val actions = listOf(SwipeAction(t.swipe.remove, danger = true) {
         if (it.recurring && it.mode != GroupMode.Goal) ask = true else removeAll()

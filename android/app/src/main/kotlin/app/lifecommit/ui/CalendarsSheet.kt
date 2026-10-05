@@ -71,7 +71,11 @@ fun CalendarsSheet(cal: CalendarModel, links: Links, onClose: () -> Unit) {
         Text(t.cal.sheetHint, style = onest(14, color = p.muted), modifier = Modifier.padding(horizontal = 4.dp))
         if (cal.sheetFailed) ErrorNote(t.error, Modifier.padding(top = 10.dp)) { cal.sheetFailed = false }
         // Вернулись из входа Google ни с чем: что случилось и что делать (тексты страницы возврата, worker/google.ts).
-        cal.googleReturn?.let { key -> if (key == "link") t.cal.googleLinkExpired else t.cal.googleReturn[key]?.let { (title, hint) -> "$title. $hint" } }?.let { text ->
+        if (cal.googleReturn == CalendarModel.RETRY) {
+            ErrorNote(t.error, Modifier.padding(top = 10.dp))
+            Box(Modifier.testTag("googleRetry")) { LinkButton(t.retry) { cal.retryGoogle() } }
+        }
+        cal.googleReturn?.takeIf { it != CalendarModel.RETRY }?.let { key -> if (key == "link") t.cal.googleLinkExpired else t.cal.googleReturn[key]?.let { (title, hint) -> "$title. $hint" } }?.let { text ->
             ErrorNote(text, Modifier.padding(top = 10.dp).testTag("googleReturn")) { cal.googleReturn = null }
         }
 
