@@ -207,6 +207,9 @@ describe.skipIf(!ready)('вход на компьютере', () => {
     // и с основного аккаунта — только из Telegram: ключом компьютера аккаунт не удалить
     const own = await login(main);
     expect(await asDesktop(own, 'DELETE', '/account')).toEqual({ status: 403, body: { error: 'telegram_only' } });
+    // и ключом браузера тоже: удалять с ключом устройства можно только телефону (ios, android)
+    const web = await login(main, 'web');
+    expect(await asDesktop(web, 'DELETE', '/account')).toEqual({ status: 403, body: { error: 'telegram_only' } });
     expect((await main.call('DELETE', '/account')).status).toBe(200);
   });
 

@@ -426,6 +426,17 @@ describe.skipIf(!ready)('вход через Telegram: удаление акка
     expect(await asPhone(mac, 'DELETE', '/account')).toEqual({ status: 403, body: { error: 'telegram_only' } });
     expect((await sb.from('users').select('id').eq('id', id)).data).toEqual([{ id }]);
   });
+
+  it('ключ телефона со связанного аккаунта — как из Telegram: 403 linked_account, общий аккаунт цел', async () => {
+    const main = freshId();
+    const alias = freshId();
+    madeHere.push(main, alias);
+    expect((await signIn({ id_token: await idToken({ id: main }), device: 'ios' })).status).toBe(200);
+    await sb.from('users').update({ telegram_aliases: [alias] }).eq('id', main);
+    const phone = (await signIn({ id_token: await idToken({ id: alias }), device: 'ios' })).body.token as string;
+    expect(await asPhone(phone, 'DELETE', '/account')).toEqual({ status: 403, body: { error: 'linked_account' } });
+    expect((await sb.from('users').select('id').eq('id', main)).data).toEqual([{ id: main }]);
+  });
 });
 
 describe.skipIf(!ready)('вход через Telegram: ключи Telegram со временем', () => {
