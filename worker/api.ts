@@ -39,6 +39,7 @@ import { toTodayTasks, type ScreenLog, type TaskRow, type TodayRow } from './hab
 import { friends } from './friends';
 import { removeUserFeedbackFiles } from './feedback';
 import { feedbackApi } from './feedbackApi';
+import { desktopApi } from './desktop';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -103,8 +104,9 @@ api.post('/session', async (c) => {
   const existing = must(await sb.from('users').select(USER_COLS).or(byTelegram(tgUser.id)).limit(1).maybeSingle<UserRow>());
   // Часовой пояс — всегда пояс телефона: человек уехал — дни и время дел живут по-новому.
   const tz = body.timezone && isValidTimeZone(body.timezone) ? body.timezone : undefined;
-  // Вошли со связанного аккаунта (другой Telegram того же человека): профиль остаётся от основного.
-  if (existing && existing.id !== tgUser.id) {
+  // Вошли со связанного аккаунта (другой Telegram того же человека) или на компьютере (профиля Telegram там нет):
+  // профиль остаётся как есть.
+  if (existing && (existing.id !== tgUser.id || c.get('desktop') !== undefined)) {
     const user = must(await sb.from('users').update({ last_seen_at: new Date().toISOString(), ...(tz && { timezone: tz }) }).eq('id', existing.id).select(USER_COLS).single<UserRow>());
     if (tz && tz !== existing.timezone) await retimeCalendars(sb, user.id);
     return c.json({ user: toSettings(user), start_param: c.get('startParam') ?? null, is_new: false });
@@ -860,3 +862,4 @@ api.route('/', friends);
 api.route('/', shareApi);
 // Жалобы из приложения (worker/feedbackApi.ts, docs/feedback.md).
 api.route('/', feedbackApi);
+api.route('/', desktopApi);

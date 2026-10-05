@@ -104,7 +104,9 @@ describe.skipIf(!ready)('вход: подпись Telegram', () => {
   });
 
   it('без схемы tma, с пустой initData и без пользователя — 401', async () => {
-    expect(await request('/api/me', { headers: { Authorization: 'Bearer abc' } })).toMatchObject({ status: 401, body: { error: 'no_init_data' } });
+    expect(await request('/api/me', { headers: { Authorization: 'Basic abc' } })).toMatchObject({ status: 401, body: { error: 'no_init_data' } });
+    // Bearer — ключ входа на компьютере (worker/desktop.ts): неизвестный ключ — свой отказ.
+    expect(await request('/api/me', { headers: { Authorization: 'Bearer abc' } })).toMatchObject({ status: 401, body: { error: 'bad_session' } });
     expect(await request('/api/me', { headers: { Authorization: 'tma ' } })).toMatchObject({ status: 401, body: { error: 'no_init_data' } });
     expect(await as(initData(null), 'GET', '/me')).toMatchObject({ status: 401, body: { error: 'no_user' } });
   });

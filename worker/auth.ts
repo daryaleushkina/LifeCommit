@@ -1,6 +1,7 @@
 import { parse, validate } from '@tma.js/init-data-node/web';
 import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
+import { desktopSession } from './desktop';
 import type { Env } from './env';
 
 export interface TgUser {
@@ -12,16 +13,29 @@ export interface TgUser {
   language_code?: string;
 }
 
-export type AuthVars = { tgUser: TgUser; startParam: string | undefined };
+/** desktop — id сессии компьютера, если вошли ключом компьютера, а не из Telegram. */
+export type AuthVars = { tgUser: TgUser; startParam: string | undefined; desktop: number | undefined };
 
 const MOCK_HASH = 'mock-hash-not-valid-for-backend';
 
 /**
- * Проверяет подпись initData (заголовок `Authorization: tma <сырая строка>`).
+ * Проверяет подпись initData (заголовок `Authorization: tma <сырая строка>`) или ключ компьютера
+ * (`Authorization: Bearer <ключ>`, вход на Mac и в браузере — worker/desktop.ts).
  * Права дальше решаются только по проверенному user.id.
  */
 export const requireTelegram = createMiddleware<{ Bindings: Env; Variables: AuthVars }>(async (c, next) => {
   const header = c.req.header('authorization') ?? '';
+  if (header.startsWith('Bearer ')) {
+    const session = await desktopSession(c.env, header.slice(7), c.executionCtx);
+    if (session === 'expired') throw new HTTPException(401, { message: 'session_expired' });
+    if (!session) throw new HTTPException(401, { message: 'bad_session' });
+    // Профиля Telegram у ключа нет: id — пользователя LifeCommit (основного аккаунта), имя не нужно — /session его не пишет.
+    c.set('tgUser', { id: session.user_id, first_name: '' });
+    c.set('startParam', undefined);
+    c.set('desktop', session.id);
+    await next();
+    return;
+  }
   const [scheme, raw] = [header.slice(0, 4), header.slice(4)];
   if (scheme !== 'tma ' || !raw) throw new HTTPException(401, { message: 'no_init_data' });
 
@@ -47,5 +61,6 @@ export const requireTelegram = createMiddleware<{ Bindings: Env; Variables: Auth
   if (!data.user) throw new HTTPException(401, { message: 'no_user' });
   c.set('tgUser', data.user as TgUser);
   c.set('startParam', data.start_param);
+  c.set('desktop', undefined);
   await next();
 });
