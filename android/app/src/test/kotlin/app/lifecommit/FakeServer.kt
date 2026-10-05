@@ -38,6 +38,9 @@ class FakeServer {
     /** Ответить ошибкой на «МЕТОД /путь»: статус и код. */
     val failures = mutableMapOf<String, Pair<Int, String>>()
 
+    /** Задержать ответ GET /today (мс): ответ собран в момент запроса, приходит позже — «устаревший». */
+    @Volatile var todayDelayMs = 0L
+
     /** Дела «на потом» — GET /todos/later. */
     @Volatile var later: List<Todo> = emptyList()
 
@@ -82,7 +85,9 @@ class FakeServer {
             call.method == "GET" && api == "auth/telegram/config" -> ok("""{"client_id":"7000000001"}""")
             call.method == "POST" && api == "auth/telegram" -> ok("""{"token":"session-key","is_new":false}""")
             call.method == "POST" && api == "session" -> ok(enc(SessionResponse(user = user, isNew = false)))
-            call.method == "GET" && api == "today" -> ok(enc(today))
+            call.method == "GET" && api == "today" -> ok(enc(today)).let { r ->
+                if (todayDelayMs > 0) r.newBuilder().headersDelay(todayDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS).build() else r
+            }
             call.method == "GET" && api == "heatmap" -> ok(enc(HeatmapResponse(today.day, emptyList())))
             call.method == "GET" && api == "todos/later" -> ok(enc(later))
             call.method == "GET" && api.matches(Regex("tasks/\\d+/history")) -> {

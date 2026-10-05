@@ -33,6 +33,9 @@ abstract class AppTest {
     val prefs = MemoryPrefs()
     val opened = mutableListOf<Pair<String, Boolean>>()
     var telegramInstalled = false
+
+    /** false — на телефоне нечем открыть ссылку (нет браузера). */
+    var linksWork = true
     var dark = false
     lateinit var model: AppModel
     // Главный поток, как у viewModelScope в приложении; не Dispatchers.Main — его тестовое правило Compose подменяет
@@ -65,7 +68,10 @@ abstract class AppTest {
         )
         compose.setContent {
             LifeCommitTheme(dark, model.strings) {
-                Root(model, Links { url, inBrowser -> opened += url to inBrowser }, telegramInstalled = { telegramInstalled })
+                Root(model, Links { url, inBrowser ->
+                    opened += url to inBrowser
+                    linksWork
+                }, telegramInstalled = { telegramInstalled })
             }
         }
         model.start()

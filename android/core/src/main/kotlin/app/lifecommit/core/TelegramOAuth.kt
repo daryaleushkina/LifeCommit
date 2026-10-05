@@ -125,8 +125,8 @@ object TelegramOAuth {
         // Запасной путь задуман: не вышло — входим через страницу Telegram, а почему — в лог.
         val request = Request.Builder().url(crossAppUrl(clientId, pkce, base)).build()
         return try {
-            http.newCall(request).await().use { response ->
-                val body = response.body.string()
+            http.newCall(request).await().let { response ->
+                val body = response.body
                 val link = if (response.code == 200) json.decodeFromString(CrossApp.serializer(), body).url else null
                 if (link.isNullOrEmpty()) {
                     log.info("telegram crossapp fallback: status ${response.code}")
@@ -155,7 +155,7 @@ object TelegramOAuth {
             .build()
         val request = Request.Builder().url("$base/token").post(form).build()
         val (status, body) = try {
-            http.newCall(request).await().use { it.code to it.body.string() }
+            http.newCall(request).await().let { it.code to it.body }
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {

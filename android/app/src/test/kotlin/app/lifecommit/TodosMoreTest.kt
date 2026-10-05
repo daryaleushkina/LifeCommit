@@ -134,4 +134,41 @@ class TodosMoreTest : AppTest() {
         compose.waitLabel("Зарядка — ${t.markDone.lowercase()}")
         compose.waitFor { model.today.tasks.single().value == 1.0 }
     }
+
+    @Test fun `перечитывание после удаления, начатое до отметки, отметку не затирает`() {
+        server.today = TodayResponse(
+            "2026-10-05",
+            tasks = listOf(TodayTask(id = 1, title = "Зарядка", kind = TaskKind.Check)),
+            todos = listOf(Todo(10, "Позвонить в банк", "2026-10-05")),
+        )
+        launch(undoMillis = 200)
+        compose.waitText("Позвонить в банк").performTouchInput { swipeLeft(startX = right, endX = left - 900f) }
+        // Удаление ушло, «Сегодня» перечитывается — сервер отвечает медленно и состоянием до отметки.
+        server.todayDelayMs = 1500
+        compose.waitFor { server.calls("DELETE", "/api/todos/10").size == 1 && server.calls("GET", "/api/today").size >= 2 }
+        compose.waitLabel("Зарядка — ${t.markDone.lowercase()}").performClick()
+        compose.waitFor(8_000) { server.calls("PUT", "/api/logs").isNotEmpty() }
+        server.todayDelayMs = 0
+        // Ждём, пока медленный ответ дойдёт, и проверяем: отметка на месте.
+        compose.waitFor(8_000) { compose.onAllNodes(hasText("Позвонить в банк")).fetchSemanticsNodes().isEmpty() }
+        compose.waitFor(8_000) { model.today.todos.isEmpty() }
+        assertTrue(model.today.tasks.single().value == 1.0)
+    }
+
+    @Test fun `приоткрытое Удалить остаётся у своего дела, когда список переставился`() {
+        server.today = TodayResponse(
+            "2026-10-05",
+            todos = listOf(Todo(10, "Первое дело", "2026-10-05"), Todo(11, "Второе дело", "2026-10-05")),
+        )
+        launch()
+        // Приоткрыть «Удалить» у второго дела (короткий свайп), потом отметить первое — оно уедет вниз.
+        compose.waitText("Второе дело").performTouchInput { swipeLeft(startX = right, endX = right - 150f) }
+        compose.waitLabel(t.todo.check("Первое дело")).performClick()
+        compose.waitFor { server.calls("PATCH", "/api/todos/10").isNotEmpty() }
+        compose.waitForIdle()
+        // Сдвинута влево (открыта) строка «Второе дело», а не та, что встала на её место.
+        val second = compose.onNode(hasText("Второе дело"), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
+        val first = compose.onNode(hasText("Первое дело"), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
+        assertTrue("второе ${'$'}second, первое ${'$'}first", second < first - 20)
+    }
 }

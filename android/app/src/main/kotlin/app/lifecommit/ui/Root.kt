@@ -64,7 +64,8 @@ import app.lifecommit.Tab
 
 /** Что умеет делать снаружи: открыть ссылку (Telegram, Custom Tab). У Activity — настоящее, в тестах — запись. */
 fun interface Links {
-    fun open(url: String, inBrowser: Boolean)
+    /** false — открыть нечем (нет браузера и приложения для ссылки). */
+    fun open(url: String, inBrowser: Boolean): Boolean
 }
 
 const val BOT_APP = "https://t.me/LifeCommit_bot?startapp"
@@ -157,7 +158,7 @@ fun SignIn(model: AppModel, links: Links, telegramInstalled: () -> Boolean) {
             wide = true,
             busy = model.signingIn,
             leading = { StrokeGlyph(Glyph.TELEGRAM, p.accentText, 20.dp, 2.2f) },
-        ) { model.beginSignIn(telegramInstalled(), links::open) }
+        ) { model.beginSignIn(telegramInstalled()) { url, inBrowser -> links.open(url, inBrowser) } }
     }
 }
 

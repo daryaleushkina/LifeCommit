@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -347,12 +348,16 @@ private fun TodoBlock(model: AppModel) {
         }
         Card {
             todos.forEachIndexed { i, d ->
+                // Ключ — само дело (у повторяющегося — и его день): открытый свайп и поле ввода остаются у своей строки,
+                // когда список переставился (отметили — ушло вниз; /code-review 05.10).
+                key(d.id, d.day) {
                 if (i > 0) RowDivider()
                 // Только что добавленное ещё без номера с сервера (id < 0): смахнуть и отметить его пока нельзя.
                 SwipeRow(
                     if (d.id < 0) emptyList() else listOf(SwipeAction(t.swipe.remove, danger = true) { model.removeTodo(d) }),
                     radius = Dim.radius,
                 ) { TodoRow(d, data.day) { model.toggle(d) } }
+                }
             }
             if (todos.isNotEmpty()) RowDivider()
             AddTodo { model.addTodo(it) }
@@ -383,6 +388,7 @@ private fun LaterSheet(model: AppModel, today: String, onClose: () -> Unit) {
             Text(Todos.whenLabel(day, today, t) ?: t.today, style = onest(15, 600, p.muted), modifier = Modifier.padding(start = 4.dp, top = 14.dp, bottom = 6.dp))
             Column(Modifier.fillMaxWidth().background(p.bg, RoundedCornerShape(Dim.radius))) {
                 items.forEachIndexed { i, d ->
+                    key(d.id) {
                     if (i > 0) RowDivider()
                     // Строку прячет model.isRemoved, пока идут 5 секунд «Вернуть»; после удаления список перечитывается.
                     SwipeRow(listOf(SwipeAction(t.swipe.remove, danger = true) {
@@ -398,6 +404,7 @@ private fun LaterSheet(model: AppModel, today: String, onClose: () -> Unit) {
                             if (d.time != null) Text(d.time!!, style = onest(15, 600, p.text), modifier = Modifier.padding(end = 10.dp))
                             Text(d.title, style = onest(16, color = p.text))
                         }
+                    }
                     }
                 }
             }

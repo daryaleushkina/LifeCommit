@@ -16,7 +16,9 @@ class ConfigTest {
 
     @Test fun `адрес стенда для разработки - только локальный, чужой хост игнорируется`() {
         assertEquals("http://10.0.2.2:5173/api", Config.from(intent("http://10.0.2.2:5173/api")).apiBase)
-        assertEquals("http://localhost:5181/api", Config.from(intent("http://localhost:5181/api")).apiBase)
+        // localhost и 127.0.0.1 на телефоне — сам телефон: там может слушать чужое приложение (/code-review 05.10).
+        assertEquals(BuildConfig.API_BASE, Config.from(intent("http://localhost:5181/api")).apiBase)
+        assertEquals(BuildConfig.API_BASE, Config.from(intent("http://127.0.0.1:5181/api")).apiBase)
         // Любое приложение на телефоне может запустить нашу Activity с extras: ключ сессии не должен уйти на его сервер.
         assertEquals(BuildConfig.API_BASE, Config.from(intent("https://evil.example/api")).apiBase)
         assertEquals(BuildConfig.API_BASE, Config.from(intent("http://10.0.2.2.evil.example/api")).apiBase)
