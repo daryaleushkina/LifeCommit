@@ -92,18 +92,30 @@ palette(currentTheme());
 
 let W = 0, H = 0, S = 26, CS = 20, RAD = 5, cols = 0, rows = 0, ox = 0, oy = 0;
 let phase = new Float32Array(0);
+let DPR = 0;
 function resize() {
   if (!cv || !ctx) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  W = window.innerWidth; H = window.innerHeight;
+  // Размер — по самому холсту (100lvh): панели браузера на телефоне его не меняют, и тогда трогать нечего —
+  // новая ширина/высота холста стирает нарисованное (баг 05.10: внизу страницы клетки пропадали от касания).
+  const w = cv.clientWidth || window.innerWidth;
+  const h = cv.clientHeight || window.innerHeight;
+  if (w === W && h === H && dpr === DPR) return;
+  W = w; H = h; DPR = dpr;
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   S = W < 700 ? 22 : 26; CS = S - (W < 700 ? 5 : 6); RAD = W < 700 ? 4 : 5;
   cols = Math.ceil(W / S) + 1; rows = Math.ceil(H / S) + 1;
   ox = (W - cols * S + (S - CS)) / 2; oy = (H - rows * S + (S - CS)) / 2;
-  phase = new Float32Array(cols * rows);
-  for (let i = 0; i < phase.length; i++) phase[i] = Math.random() * 6.283;
-  if (reduced) draw(performance.now());
+  // узор не перемешиваем заново: фазы, что уже были, остаются на месте
+  if (phase.length !== cols * rows) {
+    const next = new Float32Array(cols * rows);
+    next.set(phase.subarray(0, Math.min(phase.length, next.length)));
+    for (let i = phase.length; i < next.length; i++) next[i] = Math.random() * 6.283;
+    phase = next;
+  }
+  // холст после смены размера пустой — рисуем сразу, не дожидаясь следующего кадра
+  draw(performance.now());
 }
 
 const spot = { x: -999, y: -999, tx: -999, ty: -999, last: -1e9 };
@@ -193,9 +205,8 @@ function draw(now: number) {
 }
 
 let raf = 0;
-let fieldVisible = true;
 const frame = (now: number) => {
-  if (fieldVisible) draw(now);
+  draw(now);
   raf = requestAnimationFrame(frame);
 };
 window.addEventListener('resize', resize);
@@ -400,9 +411,6 @@ function start() {
   // яркость поля по разделам
   const dimFor: [string, number, number][] = [['#hero', 1, 1], ['#voice', 0.7, 0.55], ['#habits', 0.45, 0.45], ['#calendar', 0.45, 0.45], ['#together', 0.45, 0.45], ['#download', 0.9, 0.9]];
   dimFor.forEach(([sel, d, s]) => ScrollTrigger.create({ trigger: sel, start: 'top center', end: 'bottom center', onToggle: (st) => { if (st.isActive) { F.dimT = d; F.spot = s; } } }));
-
-  // поле не рисуем, когда вкладка в фоне или страница прокручена в подвал
-  ScrollTrigger.create({ trigger: '.site-foot', start: 'top bottom', onToggle: (st) => { fieldVisible = !st.isActive; } });
 }
 
 // шрифт нужен до разбивки заголовка на строки; если шрифт не пришёл за 1,5 с — начинаем без него
