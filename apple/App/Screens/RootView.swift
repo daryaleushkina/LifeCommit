@@ -35,6 +35,11 @@ struct RootView: View {
             if !Config.isUnitTestHost { await model.start() }
         }
         .onChange(of: scenePhase) { _, phase in model.scenePhaseChanged(phase) }
+        // Возврат из входа Google ссылкой lifecommit://calendars (если система отдала её приложению, а не окну входа).
+        // Адресу не доверяем: модель только перечитает календари и отправит код своим ключом.
+        .onOpenURL { url in
+            if let result = GoogleReturn(url: url) { Task { await model.googleReturned(result) } }
+        }
     }
 }
 

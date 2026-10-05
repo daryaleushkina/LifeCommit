@@ -82,7 +82,8 @@ final class TodayUITests: XCTestCase {
         eventually("оба дела на сервере") {
             Set(try self.stand.todos().compactMap { $0["title"] as? String }).isSuperset(of: ["Купить молоко", "Позвонить маме"])
         }
-        XCTAssertTrue(app.staticTexts["Купить молоко"].exists)
+        // Строка дела — кнопка (нажатие открывает шторку дела), её текст — подпись кнопки.
+        XCTAssertTrue(app.buttons["todo-Купить молоко"].exists)
     }
 
     func testSwipeDeleteWithUndo() throws {

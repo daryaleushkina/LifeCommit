@@ -1,10 +1,25 @@
-// Блок «Дела» на «Сегодня» — как TodoList.tsx: свои дела с кружком-галочкой (сделанное зачёркивается и опускается),
-// события из календаря — синей полоской без галочки, строка «+ Дело на сегодня» превращается в поле (Enter добавляет
-// и оставляет поле открытым), «Все · Осталось» в шапке, «Потом · N».
+// Список дел — как TodoList.tsx: свои дела с кружком-галочкой (сделанное зачёркивается и опускается), события из
+// календаря — синей полоской без галочки, строка «+ Дело…» превращается в поле (Enter добавляет и оставляет поле
+// открытым), «Все · Осталось» в шапке (только на «Сегодня»), «Потом · N». Нажали дело — шторка дела (TodoSheet).
+// Один и тот же список — на «Сегодня» и во вкладке «Календарь» (выбранный день).
 import LifeCommitKit
 import SwiftUI
 
 struct TodoListView: View {
+    let todos: [Todo]
+    /// Сколько дел на потом; 0 — строки «Потом» нет (во вкладке «Календарь»).
+    var later = 0
+    /// Заголовок блока; во вкладке «Календарь» в режиме «Месяц» — выбранный день.
+    var heading: String?
+    /// Подпись строки добавления.
+    var addLabel: String?
+    /// Подписи «со вчера» — только на «Сегодня»: в календаре дело и так стоит в свой день.
+    var showCarry = true
+    /// В прошедший день календаря добавлять нельзя.
+    var canAdd = true
+    /// Переключатель «Все · Осталось» — только на «Сегодня».
+    var filterable = false
+    let onAdd: (String) -> Void
     @Environment(AppModel.self) private var model
     @Environment(\.strings) private var t
     @Environment(\.palette) private var palette
@@ -12,17 +27,19 @@ struct TodoListView: View {
     @AppStorage("lc-todos-left") private var onlyLeft = false
     @State private var adding = false
     @State private var draft = ""
+    @State private var editing: Todo?
+    @State private var laterOpen = false
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
-        let listed = model.today.todos.filter { !model.isRemoved("todo:\($0.id)") }
-        let canFilter = listed.contains { $0.source == nil || $0.time != nil }
+        let listed = todos.filter { !model.isRemoved("todo:\($0.id)") }
+        let canFilter = filterable && listed.contains { $0.source == nil || $0.time != nil }
         let now = Date()
         let shown = canFilter && onlyLeft ? listed.filter { !$0.done && !Todos.eventOver($0, now: now) } : listed
 
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
-                SectionLabel(text: heading(listed))
+                SectionLabel(text: heading ?? blockTitle(listed))
                 Spacer(minLength: 0)
                 if canFilter { filter }
             }
@@ -38,19 +55,30 @@ struct TodoListView: View {
                         row(todo)
                     }
                 }
-                if !shown.isEmpty { Divider().overlay(palette.line) }
-                addRow
+                if !canAdd && shown.isEmpty {
+                    Text(t.cal.empty).font(.onest(14)).foregroundStyle(palette.muted).frame(maxWidth: .infinity, minHeight: 52)
+                }
+                if canAdd {
+                    if !shown.isEmpty { Divider().overlay(palette.line) }
+                    addRow
+                }
             }
             .glassCard()
 
-            if model.today.todosLater > 0 {
-                Text(t.todo.later(model.today.todosLater))
+            if later > 0 {
+                Button(t.todo.later(later)) { laterOpen = true }
                     .font(.onest(15, .medium))
                     .foregroundStyle(palette.muted)
                     .frame(minHeight: 48)
                     .padding(.horizontal, 8)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("laterLink")
             }
         }
+        .sheet(item: $editing) { todo in
+            TodoSheet(todo: todo, today: model.today.day, onSave: { edit in Task { await model.updateTodo(todo, edit) } }, onDelete: { model.removeTodo(todo) })
+        }
+        .sheet(isPresented: $laterOpen) { LaterSheet() }
     }
 
     /// «Удалить»; у события календаря крайняя — «Скрыть» (Todos.swipe).
@@ -63,7 +91,7 @@ struct TodoListView: View {
         }
     }
 
-    private func heading(_ listed: [Todo]) -> String {
+    private func blockTitle(_ listed: [Todo]) -> String {
         if !listed.isEmpty && listed.allSatisfy({ $0.source != nil }) { return t.todo.blockEvents }
         if listed.contains(where: { $0.source != nil }) { return t.todo.blockMixed }
         return t.todo.block
@@ -95,7 +123,7 @@ struct TodoListView: View {
     }
 
     private func row(_ todo: Todo) -> some View {
-        let when = todo.recurring ? nil : Todos.when(todo.day, today: model.today.day, strings: t)
+        let when = !showCarry || todo.recurring ? nil : Todos.when(todo.day, today: model.today.day, strings: t)
         let end = todo.time.flatMap { time in todo.durationMin.flatMap { Todos.endTime(time, minutes: $0) } }
         let note = [when, end.map(t.todo.until)].compactMap { $0 }.joined(separator: " · ")
 
@@ -123,6 +151,15 @@ struct TodoListView: View {
                 .accessibilityLabel(todo.done ? t.todo.uncheck(todo.title) : t.todo.check(todo.title))
                 .accessibilityAddTraits(todo.done ? .isSelected : [])
             }
+            Button { if todo.id > 0 { editing = todo } } label: { rowText(todo, note: note) }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("todo-\(todo.title)")
+        }
+        .padding(.leading, 8)
+        .contentShape(Rectangle())
+    }
+
+    private func rowText(_ todo: Todo, note: String) -> some View {
             HStack(spacing: 10) {
                 if let time = todo.time {
                     Text(time).font(.onest(14, .semibold)).foregroundStyle(todo.done ? palette.muted : palette.accent).frame(minWidth: 40, alignment: .leading)
@@ -150,9 +187,7 @@ struct TodoListView: View {
             .padding(.leading, 4)
             .padding(.trailing, 14)
             .frame(minHeight: 52)
-        }
-        .padding(.leading, 8)
-        .contentShape(Rectangle())
+            .contentShape(Rectangle())
     }
 
     @ViewBuilder private var addRow: some View {
@@ -175,7 +210,7 @@ struct TodoListView: View {
                 }
                 .frame(minHeight: 52)
                 .padding(.horizontal, 20)
-                .accessibilityLabel(t.todo.add)
+                .accessibilityLabel(addLabel ?? t.todo.add)
                 .accessibilityIdentifier("todoField")
         } else {
             Button {
@@ -184,7 +219,7 @@ struct TodoListView: View {
             } label: {
                 HStack(spacing: 10) {
                     StrokeGlyph(d: Glyph.plus, lineWidth: 2.2).frame(width: 18, height: 18)
-                    Text(t.todo.add).font(.onest(15, .medium))
+                    Text(addLabel ?? t.todo.add).font(.onest(15, .medium))
                 }
                 .foregroundStyle(palette.muted)
                 .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
@@ -199,7 +234,7 @@ struct TodoListView: View {
         let title = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         draft = ""
         guard !title.isEmpty else { return }
-        Task { await model.addTodo(String(title.prefix(120))) }
+        onAdd(String(title.prefix(120)))
     }
 }
 

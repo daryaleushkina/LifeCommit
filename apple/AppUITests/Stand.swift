@@ -20,7 +20,11 @@ struct Stand {
     /// Запрос к API от имени этого человека; ответ — JSON (или nil у пустого).
     @discardableResult
     func call(_ method: String, _ path: String, _ body: Any? = nil) throws -> Any? {
-        var request = URLRequest(url: base.appending(path: path))
+        // «calendar?from=…»: путь и параметры — по отдельности (appending(path:) закодировал бы «?» в %3F).
+        let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
+        var components = URLComponents(url: base.appending(path: parts[0]), resolvingAgainstBaseURL: false)!
+        if parts.count > 1 { components.query = parts[1] }
+        var request = URLRequest(url: components.url!)
         request.httpMethod = method
         request.setValue("tma \(initData)", forHTTPHeaderField: "Authorization")
         if let body {

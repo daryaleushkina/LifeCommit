@@ -50,7 +50,7 @@ struct MainView: View {
         return ZStack {
             switch model.tab {
             case .today: TodayView()
-            case .calendar: PendingTabView(title: model.strings.calendar)
+            case .calendar: CalendarView()
             case .groups: PendingTabView(title: model.strings.groups)
             case .me: ProfilePendingView()
             }

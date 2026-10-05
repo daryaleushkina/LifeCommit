@@ -35,7 +35,8 @@ struct ScreenSnapshotTests {
     )
 
     func model(onboarding: Bool = false, today: TodayResponse = Self.today) -> AppModel {
-        let m = AppModel(api: APIClient(base: URL(string: "https://lifecommit.test/api")!), tokens: MemoryTokenStore())
+        // Подменённый сервер: экраны, которые подгружают своё при открытии (календарь), в сеть не ходят.
+        let m = AppModel(api: FakeServer(today: today).api, tokens: MemoryTokenStore())
         m.showForTests(user: Self.user, today: today, onboarding: onboarding)
         return m
     }
@@ -87,11 +88,94 @@ struct ScreenSnapshotTests {
         check(SignInView(), model: m, scheme: scheme, named: "sign-in")
     }
 
+    // MARK: Календарь
+
+    static let calendarTodos = [
+        Todo(id: 21, title: "Планёрка", day: "2026-10-05", time: "10:00", durationMin: 30, recurring: true, source: .google),
+        Todo(id: 22, title: "Забрать посылку", day: "2026-10-05", time: "15:30"),
+        Todo(id: 23, title: "Врач", day: "2026-10-05", source: .apple),
+        Todo(id: 24, title: "Купить корм Тесле", day: "2026-10-05", done: true),
+        Todo(id: 25, title: "Сдать отчёт", day: "2026-10-08"),
+        Todo(id: 26, title: "День рождения мамы", day: "2026-10-14", source: .apple),
+        Todo(id: 27, title: "Йога", day: "2026-10-20", time: "08:00"),
+    ]
+
+    static let googleAccount = CalendarAccount(
+        id: 1, provider: .google, login: "dasha@gmail.com", status: .ok, lastSyncAt: ISO8601DateFormatter().string(from: Date()),
+        defaultUrl: "g1",
+        collections: [
+            CalendarCollection(url: "g1", name: "Личный", color: "#E67C73"),
+            CalendarCollection(url: "g2", name: "Работа", color: "#33B679"),
+            CalendarCollection(url: "g3", name: "Праздники", enabled: false, writable: false),
+        ]
+    )
+
+    static let appleAccount = CalendarAccount(
+        id: 2, provider: .apple, login: "dasha@icloud.com", status: .authFailed, lastSyncAt: nil, defaultUrl: "a1",
+        collections: [CalendarCollection(url: "a1", name: "Дом", color: "#34C759")]
+    )
+
+    func calendarModel(accounts: [CalendarAccount]? = [googleAccount, appleAccount]) -> AppModel {
+        let m = model()
+        let day = CalendarDays.bounds(.day, anchor: "2026-10-05")
+        let month = CalendarDays.bounds(.month, anchor: "2026-10-05")
+        m.setCalendarForTests(ranges: [(day.from, day.to, Self.calendarTodos.filter { $0.day == "2026-10-05" }), (month.from, month.to, Self.calendarTodos)], accounts: accounts)
+        return m
+    }
+
+    @Test("«Календарь»: день — метки календарей, дела и события дня", arguments: [ColorScheme.light, .dark])
+    func calendarDay(scheme: ColorScheme) {
+        check(CalendarView(), model: calendarModel(), scheme: scheme, named: "calendar-day")
+    }
+
+    @Test("«Календарь»: месяц — точки, выбранный день; ничего не подключено — плашка «Подключите календарь»", arguments: [ColorScheme.light])
+    func calendarMonth(scheme: ColorScheme) {
+        check(CalendarView(mode: .month), model: calendarModel(accounts: []), scheme: scheme, named: "calendar-month")
+    }
+
+    @Test("Шторка дела: своё (день, время, место) и событие календаря (место, созвон, участники, описание)", arguments: [ColorScheme.light, .dark])
+    func todoSheet(scheme: ColorScheme) {
+        let own = Todo(id: 22, title: "Забрать посылку", day: "2026-10-06", time: "15:30", details: TodoDetails(location: "Почта на Тверской"))
+        check(TodoSheet(todo: own, today: "2026-10-05", onSave: { _ in }, onDelete: {}), model: model(), scheme: scheme, named: "todo-sheet", sheet: true)
+        let event = Todo(id: 21, title: "Планёрка", day: "2026-10-05", time: "10:00", durationMin: 30, recurring: true, source: .google, details: TodoDetails(
+            location: "Офис, переговорная 3", link: "https://meet.google.com/abc-defg-hij", peopleCount: 6, people: ["Аня", "Борис", "Вика", "Гоша"],
+            notes: "Повестка: итоги недели, планы на следующую. Каждый — по две минуты.", openUrl: "https://calendar.google.com/event?eid=1"))
+        check(TodoSheet(todo: event, today: "2026-10-05", onSave: { _ in }, onDelete: {}), model: model(), scheme: scheme, named: "event-sheet", sheet: true)
+    }
+
+    @Test("«Календари»: подключены Google и Apple (Apple перестал пускать); ничего не подключено; Google — выбрать календари", arguments: [ColorScheme.light, .dark])
+    func calendarsSheet(scheme: ColorScheme) {
+        check(CalendarsSheet(), model: calendarModel(), scheme: scheme, named: "calendars-connected", sheet: true)
+        if scheme == .light {
+            check(CalendarsSheet(), model: calendarModel(accounts: []), scheme: scheme, named: "calendars-empty", sheet: true)
+            var setup = Self.googleAccount
+            setup.status = .setup
+            check(CalendarsSheet(), model: calendarModel(accounts: [setup]), scheme: scheme, named: "calendars-google-setup", sheet: true)
+        }
+    }
+
+    @Test("Подключение Apple: шаги, сайт Apple ID, почта и пароль приложения", arguments: [ColorScheme.light])
+    func appleForm(scheme: ColorScheme) {
+        check(AppleForm(login: ""), model: model(), scheme: scheme, named: "apple-form", sheet: true)
+    }
+
+    @Test("«Потом»: дела на следующие дни, по дням", arguments: [ColorScheme.light])
+    func laterSheet(scheme: ColorScheme) {
+        let m = model()
+        m.setCalendarForTests(later: [
+            Todo(id: 31, title: "Забрать посылку", day: "2026-10-06", time: "15:30"),
+            Todo(id: 32, title: "Сдать отчёт", day: "2026-10-08"),
+            Todo(id: 33, title: "Купить подарок", day: "2026-10-08"),
+        ])
+        check(LaterSheet(), model: m, scheme: scheme, named: "later", sheet: true)
+    }
+
     // MARK: Снимок
 
-    private func check(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String) {
+    /// sheet — шторка: в приложении она на своей подложке (presentationBackground — palette.surface), а не на фоне экрана.
+    private func check(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String, sheet: Bool = false) {
         let screen = ZStack {
-            GlowBackground()
+            if sheet { Palette.of(scheme).surface } else { GlowBackground() }
             view
         }
         .environment(model)
