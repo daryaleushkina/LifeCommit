@@ -10,10 +10,59 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Приложение для iPhone и Mac (apple/, docs/mobile.md) — если в пуше есть оно само или сервер, с которым оно говорит.
+  # Как в scripts/hooks/pre-push, только без сценариев XCUITest (им нужен стенд с Supabase в Docker — на macOS-машинах
+  # GitHub его нет) и без снимков экранов (эталоны сняты на симуляторе iPhone 17 Pro / iOS 26.5 этого Mac — как эталоны
+  # e2e, которые на Linux тоже не сравниваются): логика пакета, значки, сборка под iPhone и Mac. Минуты macOS дорогие
+  # (×10), поэтому без правок apple/ и сервера задача сразу заканчивается.
+  apple:
+    if: github.event_name == 'workflow_dispatch' || vars.LOCAL_DEPLOYED_SHA != github.sha
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Есть ли правки apple/ или сервера
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || sh scripts/apple-changed.sh "${{ github.event.before }}" "${{ github.sha }}"; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "apple/ и сервер не менялись — проверка iOS/Mac пропущена"
+          fi
+      - if: steps.changed.outputs.run == 'yes'
+        uses: pnpm/action-setup@v4
+      - if: steps.changed.outputs.run == 'yes'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.changed.outputs.run == 'yes'
+        run: pnpm install --frozen-lockfile && brew install xcodegen xcbeautify
+      # iOS 26 SDK и Swift 6.2 — Xcode 26.5 (есть на образе macos-26, по умолчанию там 26.4.1).
+      - if: steps.changed.outputs.run == 'yes'
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+      - if: steps.changed.outputs.run == 'yes'
+        name: LifeCommitKit — swift test
+        run: swift test --package-path apple/Kit
+      - if: steps.changed.outputs.run == 'yes'
+        name: Значки совпадают с мини-аппом
+        run: node apple/scripts/icons.mjs --check
+      - if: steps.changed.outputs.run == 'yes'
+        name: Сборка под iPhone и Mac
+        working-directory: apple
+        run: |
+          set -o pipefail
+          xcodegen generate --quiet
+          xcodebuild build -project LifeCommit.xcodeproj -scheme LifeCommit -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO | xcbeautify --quieter
+          xcodebuild build -project LifeCommit.xcodeproj -scheme LifeCommit -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO | xcbeautify --quieter
+
   deploy:
     # Пуш с машины, где включён scripts/hooks/pre-push, уже задеплоен оттуда — задачу пропускаем
     # (пропущенная задача не тратит минуты). Ручной запуск деплоит всегда.
     if: github.event_name == 'workflow_dispatch' || vars.LOCAL_DEPLOYED_SHA != github.sha
+    needs: apple
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

@@ -131,3 +131,33 @@ describe('временный репозиторий изолирован от о
     expect(spawnSync('git', ['--git-dir', real, 'rev-list', '--all'], { encoding: 'utf8', env: { PATH: process.env.PATH } }).stdout).toBe('');
   });
 });
+
+describe('apple-changed.sh: нужна ли перед пушем проверка iOS/Mac', () => {
+  const SCRIPT = path.join(HOOKS, '..', 'apple-changed.sh');
+  const needed = (dir: string, remote: string, sha: string) => spawnSync('sh', [SCRIPT, remote, sha], { cwd: dir, encoding: 'utf8', env: env() }).status === 0;
+
+  it('правки apple/ или сервера — нужна; только сайт и документы — нет; новая ветка или неизвестный коммит — нужна', () => {
+    const { dir, git, write } = repo();
+    write('README.md');
+    git('add', '.');
+    git('commit', '-q', '--no-verify', '-m', 'база');
+    const base = git('rev-parse', 'HEAD').stdout.trim();
+    const commit = (file: string) => {
+      write(file, String(Math.random()));
+      git('add', '.');
+      git('commit', '-q', '--no-verify', '-m', file);
+      return git('rev-parse', 'HEAD').stdout.trim();
+    };
+    const site = commit('site/index.html');
+    expect(needed(dir, base, site)).toBe(false);
+    expect(needed(dir, site, commit('docs/landing.md'))).toBe(false);
+    for (const file of ['apple/App/X.swift', 'worker/api.ts', 'shared/types.ts', 'supabase/migrations/x.sql']) {
+      const before = git('rev-parse', 'HEAD').stdout.trim();
+      expect({ file, needed: needed(dir, before, commit(file)) }).toEqual({ file, needed: true });
+    }
+    const head = git('rev-parse', 'HEAD').stdout.trim();
+    expect(needed(dir, '0000000000000000000000000000000000000000', head)).toBe(true);
+    expect(needed(dir, '', head)).toBe(true);
+    expect(needed(dir, 'f'.repeat(40), head)).toBe(true);
+  });
+});
