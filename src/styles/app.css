@@ -773,7 +773,8 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 
 /* Жалоба: «Сообщить о проблеме» (src/components/FeedbackSheet.tsx) */
 .feedback-field { position: relative; }
-.sheet-input.feedback-text { display: block; height: auto; min-height: 132px; padding: 14px 52px 14px 16px; line-height: 22px; resize: none; }
+/* Справа — место под микрофон: его ширина, отступ 8px от края и 8px зазора, чтобы текст не уходил под кнопку. */
+.sheet-input.feedback-text { display: block; height: auto; min-height: 132px; padding: 14px calc(var(--tap) + 16px) 14px 16px; line-height: 22px; resize: none; }
 .feedback-mic { position: absolute; top: 8px; right: 8px; width: var(--tap); height: var(--tap); border-radius: 50%; display: grid; place-items: center; color: var(--accent); background: var(--accent-soft); transition: transform 160ms var(--ease-out); }
 .feedback-mic:active { transform: scale(0.96); }
 .feedback-mic.on { background: var(--accent); color: var(--accent-text); }
