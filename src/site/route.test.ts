@@ -1,43 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { landingPath, type Launch } from './route';
+import { appPath, type Launch } from './route';
 
-const browser: Launch = { pathname: '/', search: '', hash: '', language: 'ru-RU', inFrame: false, hasProxy: false, stored: false, dev: false };
+const browser: Launch = { pathname: '/', search: '', hash: '', stored: false, dev: false };
 
-describe('landingPath', () => {
-  it('браузер без Telegram на корне — лендинг на языке браузера', () => {
-    expect(landingPath(browser)).toBe('/ru/');
-    expect(landingPath({ ...browser, language: 'en-US' })).toBe('/en/');
-    expect(landingPath({ ...browser, language: 'de' })).toBe('/en/');
-    expect(landingPath({ ...browser, language: 'uk-UA' })).toBe('/ru/');
-    expect(landingPath({ ...browser, language: 'KK' })).toBe('/ru/');
+describe('appPath', () => {
+  it('браузер без Telegram на корне — остаётся на лендинге', () => {
+    expect(appPath(browser)).toBeNull();
+    expect(appPath({ ...browser, search: '?utm_source=threads' })).toBeNull();
   });
 
-  it('параметры адреса (метки рекламы) переезжают на лендинг', () => {
-    expect(landingPath({ ...browser, search: '?utm_source=threads' })).toBe('/ru/?utm_source=threads');
+  it('параметры запуска Telegram в «#» — в мини-апп, адрес и «#» целиком переезжают', () => {
+    const hash = '#tgWebAppData=query_id%3D1&tgWebAppVersion=8.0&tgWebAppPlatform=ios';
+    expect(appPath({ ...browser, hash })).toBe(`/app/${hash}`);
+    // старые кнопки бота: /?join=…#tgWebApp…
+    expect(appPath({ ...browser, search: '?join=abc', hash })).toBe(`/app/?join=abc${hash}`);
   });
 
-  it('не корень — не трогаем (документы, лендинг, API)', () => {
-    expect(landingPath({ ...browser, pathname: '/ru/' })).toBeNull();
-    expect(landingPath({ ...browser, pathname: '/en/privacy/' })).toBeNull();
+  it('параметры запуска в адресе — в мини-апп', () => {
+    expect(appPath({ ...browser, search: '?tgWebAppStartParam=g_abc' })).toBe('/app/?tgWebAppStartParam=g_abc');
   });
 
-  it('параметры запуска Telegram в «#» или в адресе — мини-апп', () => {
-    expect(landingPath({ ...browser, hash: '#tgWebAppData=query_id%3D1&tgWebAppVersion=8.0&tgWebAppPlatform=ios' })).toBeNull();
-    expect(landingPath({ ...browser, search: '?tgWebAppStartParam=g_abc' })).toBeNull();
+  it('сохранённые SDK параметры после перезагрузки — в мини-апп', () => {
+    expect(appPath({ ...browser, stored: true })).toBe('/app/');
   });
 
-  it('мост Telegram, фрейм веб-клиента или сохранённые параметры после перезагрузки — мини-апп', () => {
-    expect(landingPath({ ...browser, hasProxy: true })).toBeNull();
-    expect(landingPath({ ...browser, inFrame: true })).toBeNull();
-    expect(landingPath({ ...browser, stored: true })).toBeNull();
+  it('не корень — не трогаем (документы, API)', () => {
+    expect(appPath({ ...browser, pathname: '/privacy/', hash: '#tgWebAppData=x' })).toBeNull();
   });
 
   it('параметры подмены Telegram — мини-апп только в разработке', () => {
     for (const p of ['tgUserId=8', 'tgTheme=dark', 'tgPlatform=ios', 'tgStart=f_x']) {
-      expect(landingPath({ ...browser, dev: true, search: `?${p}` })).toBeNull();
-      expect(landingPath({ ...browser, dev: true, search: `?a=1&${p}` })).toBeNull();
-      expect(landingPath({ ...browser, dev: false, search: `?${p}` })).toBe(`/ru/?${p}`);
+      expect(appPath({ ...browser, dev: true, search: `?${p}` })).toBe(`/app/?${p}`);
+      expect(appPath({ ...browser, dev: true, search: `?a=1&${p}` })).toBe(`/app/?a=1&${p}`);
+      expect(appPath({ ...browser, dev: false, search: `?${p}` })).toBeNull();
     }
-    expect(landingPath({ ...browser, dev: true })).toBe('/ru/');
+    expect(appPath({ ...browser, dev: true })).toBeNull();
   });
 });

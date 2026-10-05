@@ -194,7 +194,9 @@ describe('настройки', () => {
     await setup();
     await page.getByRole('button', { name: /День заканчивается/ }).click();
     const hours = page.getByRole('listbox', { name: 'Часы' });
-    await hours.getByRole('option', { name: '06' }).click();
+    // Прямо по элементу: «06» за краем барабана, клик Playwright сам докручивает список, барабан с scroll-snap сдвигается,
+    // и под нагрузкой клик по координатам попадал в соседнюю строку (тот же случай, что в Picker.test).
+    (hours.getByRole('option', { name: '06' }).element() as HTMLElement).click();
     await expect.element(hours.getByRole('option', { name: '06' })).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('dialog').getByRole('button', { name: 'Готово' }).click();
     expect(m.api.settings).toHaveBeenCalledWith({ day_start_hour: 6 });

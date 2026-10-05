@@ -45,10 +45,12 @@ function once<T>(key: string, run: () => Promise<T>): Promise<T> {
 
 export const googleUrlFresh = () => (caches.googleUrl && Date.now() - caches.googleUrl.at < GOOGLE_URL_TTL ? caches.googleUrl.url : null);
 
-// Правки экрана группы, которые ещё идут на сервер (отметка, имя, «только админы»).
+// Правки, которые ещё идут на сервер: на экране группы (отметка, имя, «только админы») и с делами (useTodos.ts).
 const edits = new Set<Promise<unknown>>();
-/** Правка на экране группы: перечитки, начатые раньше или во время неё, её не затрут — дождутся и спросят заново. */
-export function trackEdit<T>(p: Promise<T>): Promise<T> {
+/** Правка, которая ушла на сервер: перечитки группы и дней, начатые раньше или во время неё, её не затрут — дождутся и спросят заново. */
+export function trackEdit<T>(edit: Promise<T>): Promise<T> {
+  // Обещание у API всегда; Promise.resolve — чтобы и не-обещание (подмена в тестах) не застряло в edits навсегда.
+  const p = Promise.resolve(edit);
   bumpChange();
   edits.add(p);
   const done = () => {
@@ -76,12 +78,15 @@ export const load = {
       // Пока шёл запрос, дело добавили, отметили или удалили — ответ уже устарел и затёр бы правку на экране
       // (02.10.2026: открыла следующий день, сразу добавила дело — оно пропадало). Тогда спрашиваем ещё раз:
       // в кэш попадает только ответ, за время которого ничего не менялось.
+      // Правка ещё у сервера — сначала дождаться её (05.10.2026: повторный вопрос ушёл, пока дело создавалось,
+      // вернулся без него и лёг поверх — строка пропала насовсем).
       let seq: number;
       let res: Awaited<ReturnType<typeof api.calendar>>;
       let tries = 0;
       do {
         seq = currentChange();
         res = await api.calendar(from, to);
+        if (edits.size) await Promise.allSettled([...edits]);
       } while (seq !== currentChange() && ++tries < 4);
       const v = { todos: res.todos, groups: res.groups ?? [] };
       caches.days.set(`${from}:${to}`, v);

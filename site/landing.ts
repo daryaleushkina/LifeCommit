@@ -11,6 +11,9 @@ import { currentTheme, initCommon, onTheme, type Theme } from './common';
 import { render, setState, loop, T, type GroupKind, type Lang, type Screen } from './screens';
 
 gsap.registerPlugin(ScrollTrigger, SplitText);
+// Без «сглаживания лага»: на медленном кадре анимация догоняет настоящее время, а не тянется в замедленной съёмке —
+// иначе на слабом устройстве (и в WebKit на GitHub Actions, где кадр — раз в секунды) появление шло бы минуты.
+gsap.ticker.lagSmoothing(0);
 
 const lang: Lang = document.documentElement.lang === 'en' ? 'en' : 'ru';
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -289,16 +292,21 @@ function start() {
   }
   tl.from('.hero .line', { y: 16, opacity: 0, duration: 1.1 }, 0.9).from('.site-top > *', { y: -16, opacity: 0, duration: 1, stagger: 0.08 }, 0.6);
 
-  // заголовки сцен выезжают строками из-под маски, остальное в блоке — следом; один раз
+  // заголовки сцен выезжают строками из-под маски, остальное в блоке — следом; один раз. Разбиваем и прячем только в
+  // момент появления (блок дошёл до низа экрана): если появление почему-то не сработает, заголовок и текст остаются
+  // обычными и видимыми, а не спрятанными навсегда (так было в WebKit на GitHub Actions)
   $$('.copy, .final').forEach((box) => {
     const h2 = $('h2', box);
     if (!h2) return;
-    const split = SplitText.create(h2, { type: 'lines', mask: 'lines', linesClass: 'ln' });
-    const rest = $$(':scope > :not(h2)', box);
-    gsap.timeline({ defaults: { ease: 'expo.out' }, scrollTrigger: { trigger: box, start: 'top 82%', once: true } })
-      .from(split.lines, { yPercent: 112, duration: 1.1, stagger: 0.08 })
-      .from(rest, { y: 18, opacity: 0, duration: 0.9, stagger: 0.06 }, 0.15)
-      .add(() => split.revert());
+    ScrollTrigger.create({
+      trigger: box, start: 'top bottom-=40', once: true,
+      onEnter: () => {
+        const split = SplitText.create(h2, { type: 'lines', mask: 'lines', linesClass: 'ln' });
+        gsap.timeline({ defaults: { ease: 'expo.out' }, onComplete: () => split.revert() })
+          .from(split.lines, { yPercent: 112, duration: 1.1, stagger: 0.08 })
+          .from($$(':scope > :not(h2)', box), { y: 18, opacity: 0, duration: 0.9, stagger: 0.06 }, 0.15);
+      },
+    });
   });
 
   const mm = gsap.matchMedia();

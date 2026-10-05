@@ -10,6 +10,7 @@ import { acceptRequest, blockPerson, declineRequest } from './friends';
 import { handleGroupUpdate, type GroupUpdate } from './groupBot';
 import { parseGroupItems } from './groupVoice';
 import { parseHabits, transcribe } from './voice';
+import { miniAppUrl } from './site';
 
 interface TgFrom {
   id: number;
@@ -117,7 +118,7 @@ bot.post('/webhook', async (c) => {
     return c.text('forbidden', 403);
   }
   const update = await c.req.json<Update>();
-  const appUrl = new URL(c.req.url).origin;
+  const appUrl = miniAppUrl(new URL(c.req.url).origin);
   // Отвечаем Telegram сразу, работу доделываем в фоне: иначе при таймауте он повторит апдейт.
   c.executionCtx.waitUntil(handle(c.env, update, appUrl).catch((e) => console.error('bot update failed', e)));
   return c.text('ok');
@@ -153,10 +154,10 @@ async function handle(env: Env, update: Update, appUrl: string): Promise<void> {
     // Из чата группы без LifeCommit: одной кнопкой — в приложение, на экран «Вступить».
     if (param?.startsWith('g_') && /^g_[a-z0-9]{6,20}$/.test(param)) {
       const g = msg.from.language_code?.startsWith('ru') ? 'Откройте LifeCommit — и дела группы появятся у вас на «Сегодня».' : "Open LifeCommit — the group's to-dos will show up on your Today.";
-      await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: g, reply_markup: { inline_keyboard: [[{ text: t.open, web_app: { url: `${appUrl}/?join=${param.slice(2)}` } }]] } });
+      await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: g, reply_markup: { inline_keyboard: [[{ text: t.open, web_app: { url: `${appUrl}?join=${param.slice(2)}` } }]] } });
       return;
     }
-    const url = param && /^[\w-]{1,64}$/.test(param) ? `${appUrl}/?ref=${param}` : appUrl;
+    const url = param && /^[\w-]{1,64}$/.test(param) ? `${appUrl}?ref=${param}` : appUrl;
     await tg(env, 'sendMessage', {
       chat_id: msg.chat.id,
       text: t.welcome(msg.from.first_name),

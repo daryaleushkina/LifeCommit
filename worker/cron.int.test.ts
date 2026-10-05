@@ -68,7 +68,7 @@ describe.skipIf(!ready)('напоминания', () => {
     const [msg] = toChat(u.id);
     expect(lines(u.id).slice(0, 2)).toEqual(['Доброе утро ☀️ План на сегодня:', '']);
     expect(lines(u.id).slice(2).sort()).toEqual(['• Читать', '🏋️ Спортзал']);
-    expect(msg!.body.reply_markup).toEqual({ inline_keyboard: [[{ text: 'Отметить', web_app: { url: env.APP_URL } }]] });
+    expect(msg!.body.reply_markup).toEqual({ inline_keyboard: [[{ text: 'Отметить', web_app: { url: `${env.APP_URL}/app/` } }]] });
     expect(await userRow(u.id)).toMatchObject({ last_morning_reminder: today(), last_evening_reminder: null });
 
     await remind();

@@ -42,8 +42,8 @@
 
 ```bash
 pnpm db:start     # локальная Supabase в Docker (порты 554xx), накатывает supabase/migrations
-pnpm dev          # http://localhost:5173/?tgUserId=1 — мини-апп + Worker с подменённым Telegram, база — локальная
-                  # (голый http://localhost:5173/ — как прод: браузер без Telegram уходит на лендинг /ru/)
+pnpm dev          # http://localhost:5173/app/?tgUserId=1 — мини-апп + Worker с подменённым Telegram, база — локальная
+                  # (http://localhost:5173/ — лендинг, как на проде; /?tgUserId=1 тоже уйдёт в /app/)
 pnpm load         # k6 по локальному стенду (VUS=100 по умолчанию; не-localhost адрес скрипт не примет)
 pnpm db:reset     # снести локальную базу и накатить миграции заново; db:stop — остановить
 pnpm dev:prod     # то же, но с БОЕВОЙ базой (.dev.vars.prod) — только когда правда нужно
@@ -324,8 +324,10 @@ pnpm bot:setup    # webhook, кнопка меню, команды и описа
 
 ## Лендинг lifecommit.app (04.10.2026)
 
-Сайт для браузера: `/ru/`, `/en/`, политика и условия (`/ru|en/privacy/`, `/ru|en/terms/`). Корень `/` остаётся мини-аппом:
-встроенный в `index.html` скрипт (`src/site/route.ts`) уводит на лендинг только браузер без признаков Telegram.
+Сайт без языка в адресе (с 04.10.2026): корень `/` — лендинг, `/privacy/` и `/terms/` — документы, мини-апп — `/app/`.
+Язык выбирает Worker (`worker/site.ts`): кука `lc-lang` от переключателя RU · EN, иначе язык браузера, иначе русский;
+старые `/ru/…` и `/en/…` переадресуются туда же. Запуск из Telegram на корне (BotFather, старые кнопки, `?startapp`)
+встроенный в лендинг скрипт (`src/site/route.ts`) уводит в `/app/` с адресом и «#» целиком.
 Выбран вариант B «Ночь» из живого каталога (https://claude.ai/artifact/9va9cCXPAHw5NuT4ycBsAP), сделан в двух темах.
 Код — `site/`, страницы — `ru/`, `en/` (входы Vite в `vite.config.ts`), тесты — `e2e/site.spec.ts`. Подробно, что
 решено и что ждёт владелицу (ссылки сторов и соцсетей, почта для связи, вычитка документов), — `docs/landing.md`.
