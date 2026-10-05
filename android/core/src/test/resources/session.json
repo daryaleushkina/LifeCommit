@@ -1,0 +1,17 @@
+{
+  "user": {
+    "id": 777,
+    "first_name": "Даша",
+    "username": "u777",
+    "photo_url": null,
+    "language_code": "ru",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "day_start_hour": 4,
+    "remind_morning": null,
+    "remind_evening": null,
+    "bot_chat_ok": false,
+    "premium": false
+  },
+  "start_param": null,
+  "is_new": true
+}

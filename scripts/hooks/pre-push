@@ -64,10 +64,25 @@ apple_check() {
   pnpm apple:test
 }
 
+# Приложение для Android (android/, docs/mobile.md): проверяем, если в пуше есть оно само или сервер, с которым оно говорит
+# (решение владелицы 05.10.2026: фича — сразу во всех клиентах, с тестами на каждом). Тесты core на JVM, сценарии и
+# сверка снимков экранов на Robolectric (без эмулятора), значки — те же, что в мини-аппе. Нет Java — пуш останавливается.
+android_check() {
+  if ! sh scripts/android-changed.sh "$remote_sha" "$sha"; then
+    echo "pre-push: android/ и сервер не менялись — проверка Android пропущена" >&2
+    return 0
+  fi
+  if ! command -v java >/dev/null 2>&1; then
+    echo "pre-push: нужна проверка Android, а Java не найдена (JDK 17+) — пуш отменён." >&2
+    return 1
+  fi
+  node android/scripts/icons.mjs --check && pnpm android:test
+}
+
 echo "pre-push: проверка и деплой $sha с этой машины…" >&2
 # pnpm lint — правила хуков React и потерянные промисы (.oxlintrc.json): то, чего не ловит typecheck.
 # pnpm coverage — те же тесты vitest, что pnpm test, плюс порог покрытия (vitest.config.ts → thresholds).
-{ pnpm typecheck && pnpm lint && pnpm coverage && pnpm e2e && apple_check && pnpm build && pnpm exec wrangler deploy; } >&2 || {
+{ pnpm typecheck && pnpm lint && pnpm coverage && pnpm e2e && apple_check && android_check && pnpm build && pnpm exec wrangler deploy; } >&2 || {
   echo "pre-push: проверка или деплой не прошли — пуш отменён (отчёт сквозных тестов: test-results/)" >&2
   exit 1
 }

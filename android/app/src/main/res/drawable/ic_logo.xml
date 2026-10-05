@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Системная заставка (Android 12+): знак на мятном круге, как аватарка бота. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp" android:height="240dp" android:viewportWidth="240" android:viewportHeight="240">
+    <path android:fillColor="#E8F4EB" android:pathData="M40,120a80,80 0 1,0 160,0a80,80 0 1,0 -160,0" />
+    <path android:fillColor="#D2E6D7" android:pathData="M92.60,100.60a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#9FD5B0" android:pathData="M112.00,100.60a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#237A46" android:pathData="M131.40,100.60a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#9FD5B0" android:pathData="M92.60,120.00a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#237A46" android:pathData="M112.00,120.00a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#5DBB7E" android:pathData="M131.40,120.00a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#237A46" android:pathData="M92.60,139.40a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#5DBB7E" android:pathData="M112.00,139.40a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+    <path android:fillColor="#D2E6D7" android:pathData="M131.40,139.40a8.00,8.00 0 1,0 16.00,0a8.00,8.00 0 1,0 -16.00,0" />
+</vector>
