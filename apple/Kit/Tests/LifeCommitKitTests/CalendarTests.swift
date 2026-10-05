@@ -63,11 +63,43 @@ struct CalendarDaysTests {
         #expect(TodoEdit(title: "Врач", day: "2026-10-05", time: nil, location: "").patch(for: placed) == ["location": .string("")])
     }
 
-    @Test("шторка дела: переехавшее со вчера открывается сегодняшним, повторяющееся — своим днём")
+    @Test("шторка дела: на «Сегодня» переехавшее со вчера открывается сегодняшним; в календаре прошлый день остаётся своим")
     func initialDay() {
-        #expect(TodoEdit.initialDay(of: Todo(id: 1, title: "x", day: "2026-10-03"), today: "2026-10-05") == "2026-10-05")
-        #expect(TodoEdit.initialDay(of: Todo(id: 1, title: "x", day: "2026-10-09"), today: "2026-10-05") == "2026-10-09")
-        #expect(TodoEdit.initialDay(of: Todo(id: 1, title: "x", day: "2026-10-03", recurring: true), today: "2026-10-05") == "2026-10-03")
+        #expect(TodoEdit.initialDay(of: Todo(id: 1, title: "x", day: "2026-10-03"), today: "2026-10-05", carried: true) == "2026-10-05")
+        #expect(TodoEdit.initialDay(of: Todo(id: 1, title: "x", day: "2026-10-09"), today: "2026-10-05", carried: true) == "2026-10-09")
+        #expect(TodoEdit.initialDay(of: Todo(id: 1, title: "x", day: "2026-10-03", recurring: true), today: "2026-10-05", carried: true) == "2026-10-03")
+        // Открыли дело прошлого понедельника во вкладке «Календарь» и поправили букву — оно не уезжает на сегодня.
+        let past = Todo(id: 2, title: "Отчёт", day: "2026-09-28", done: true)
+        let day = TodoEdit.initialDay(of: past, today: "2026-10-05", carried: false)
+        #expect(day == "2026-09-28")
+        #expect(TodoEdit(title: "Отчёт!", day: day, time: nil).patch(for: past) == ["title": .string("Отчёт!")])
+    }
+
+    @Test("ссылки из событий — чужой ввод: открываем только http(s) с хостом")
+    func externalLinks() {
+        for good in ["https://meet.google.com/abc-defg-hij", "HTTP://zoom.us/j/9", " https://x.y "] {
+            #expect(Links.external(good) != nil, "\(good)")
+        }
+        for bad in ["javascript:alert(1)", "tg://resolve?domain=x", "file:///etc/passwd", "https://", "mailto:a@b.c", "", "short", "ftp://x.y/z"] {
+            #expect(Links.external(bad) == nil, "\(bad)")
+        }
+        #expect(Links.short(Links.external("https://www.meet.google.com/abc-defg-hij")!) == "meet.google.com/abc-defg-hij")
+        #expect(Links.short(Links.external("https://zoom.us/")!) == "zoom.us")
+        #expect(Links.short(Links.external("https://example.com/\(String(repeating: "a", count: 60))")!).count == 40)
+    }
+
+    @Test("место — в Картах: адрес с запросом; пустое — нет ссылки")
+    func mapLinks() {
+        #expect(Links.map("  ") == nil)
+        #expect(Links.map("Офис, переговорная 3")?.absoluteString == "https://maps.apple.com/?q=%D0%9E%D1%84%D0%B8%D1%81,%20%D0%BF%D0%B5%D1%80%D0%B5%D0%B3%D0%BE%D0%B2%D0%BE%D1%80%D0%BD%D0%B0%D1%8F%203")
+        #expect(Links.map("a&b=c")?.query() == "q=a%26b%3Dc")
+    }
+
+    @Test("цвет календаря из CSS: #rrggbb; другое — нет цвета")
+    func cssColor() {
+        #expect(Links.cssColor("#0b8043") == 0x0B8043)
+        #expect(Links.cssColor("#FFFFFF") == 0xFFFFFF)
+        for bad in ["0b8043", "#0b80", "#0b80431", "#zzzzzz", "", "red"] { #expect(Links.cssColor(bad) == nil, "\(bad)") }
     }
 
     @Test("возврат из Google: итог и одноразовый код подключения; чужая ссылка, неизвестный итог, испорченный код — нет")

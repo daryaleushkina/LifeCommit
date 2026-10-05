@@ -76,7 +76,7 @@ struct TodoListView: View {
             }
         }
         .sheet(item: $editing) { todo in
-            TodoSheet(todo: todo, today: model.today.day, onSave: { edit in Task { await model.updateTodo(todo, edit) } }, onDelete: { model.removeTodo(todo) })
+            TodoSheet(todo: todo, today: model.today.day, carried: showCarry, onSave: { edit in Task { await model.updateTodo(todo, edit) } }, onDelete: { model.removeTodo(todo) })
         }
         .sheet(isPresented: $laterOpen) { LaterSheet() }
     }

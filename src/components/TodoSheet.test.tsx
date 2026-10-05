@@ -86,6 +86,15 @@ describe('своё дело', () => {
     expect(onSave).toHaveBeenCalledWith({ title: 'Купить молоко', day: TODAY, time: '09:00', location: '' });
   });
 
+  it('во вкладке «Календарь» прошлый день остаётся своим: поправили букву — дело не уехало на сегодня', async () => {
+    const { r, onSave } = sheet({ day: '2026-09-28', carried: false });
+    await r;
+    await expect.element(radio('Сегодня')).toHaveAttribute('aria-checked', 'false');
+    await title().fill('Купить молоко!');
+    await done().click();
+    expect(onSave).toHaveBeenCalledWith({ title: 'Купить молоко!', day: '2026-09-28', time: null, location: '' });
+  });
+
   it('пустое название не сохранить; место открывается на карте; «Удалить дело»', async () => {
     const { r, onSave, onDelete, onClose } = sheet();
     await r;

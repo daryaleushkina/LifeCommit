@@ -43,7 +43,7 @@ struct LaterSheet: View {
         }
         .task { await model.loadLater() }
         .sheet(item: $editing) { todo in
-            TodoSheet(todo: todo, today: model.today.day, onSave: { edit in Task { await model.updateTodo(todo, edit) } }, onDelete: { model.removeTodo(todo) })
+            TodoSheet(todo: todo, today: model.today.day, carried: false, onSave: { edit in Task { await model.updateTodo(todo, edit) } }, onDelete: { model.removeTodo(todo) })
         }
     }
 }

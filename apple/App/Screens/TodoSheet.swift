@@ -20,13 +20,14 @@ struct TodoSheet: View {
     @State private var dayOpen = false
     @State private var timeOpen = false
 
-    init(todo: Todo, today: String, onSave: @escaping (TodoEdit) -> Void, onDelete: (() -> Void)? = nil) {
+    /// carried — открыли с «Сегодня» (переехавшее со вчера дело открывается сегодняшним); в календаре — false.
+    init(todo: Todo, today: String, carried: Bool, onSave: @escaping (TodoEdit) -> Void, onDelete: (() -> Void)? = nil) {
         self.todo = todo
         self.today = today
         self.onSave = onSave
         self.onDelete = onDelete
         _title = State(initialValue: todo.title)
-        _day = State(initialValue: TodoEdit.initialDay(of: todo, today: today))
+        _day = State(initialValue: TodoEdit.initialDay(of: todo, today: today, carried: carried))
         _time = State(initialValue: todo.time)
         _place = State(initialValue: todo.details?.location ?? "")
     }
@@ -72,7 +73,7 @@ struct TodoSheet: View {
                             .multilineTextAlignment(.trailing)
                             .onChange(of: place) { _, v in if v.count > 200 { place = String(v.prefix(200)) } }
                             .accessibilityLabel(s.place)
-                        if let map = MapLink.url(place) {
+                        if let map = Links.map(place) {
                             Link(destination: map) {
                                 StrokeGlyph(d: Glyph.pin).frame(width: 18, height: 18).foregroundStyle(palette.muted).frame(width: 36, height: 36)
                             }
@@ -88,7 +89,7 @@ struct TodoSheet: View {
             .padding(.top, 10)
 
             if let source = todo.source {
-                if let open = todo.details?.openUrl.flatMap(ExternalLink.url) {
+                if let open = todo.details?.openUrl.flatMap(Links.external) {
                     Link(destination: open) {
                         Text("\(s.openGoogle) ↗").font(.onest(15, .medium)).foregroundStyle(palette.accent)
                             .frame(maxWidth: .infinity, minHeight: 44)
@@ -144,15 +145,15 @@ struct EventDetailsView: View {
     var body: some View {
         let s = t.todoSheet
         VStack(spacing: 0) {
-            if let location = details.location, let map = MapLink.url(location) {
+            if let location = details.location, let map = Links.map(location) {
                 Link(destination: map) { row(Glyph.pin, Text(location), chevron: true) }
                     .accessibilityLabel("\(s.onMap): \(location)")
             }
-            if let raw = details.link, let link = ExternalLink.url(raw) {
+            if let raw = details.link, let link = Links.external(raw) {
                 Link(destination: link) {
                     row(Glyph.video, VStack(alignment: .leading, spacing: 2) {
                         Text(raw.contains(Self.callHosts) ? s.join : s.openLink).font(.onest(15, .semibold))
-                        Text(ExternalLink.short(link)).font(.onest(13)).foregroundStyle(palette.muted)
+                        Text(Links.short(link)).font(.onest(13)).foregroundStyle(palette.muted)
                     }, chevron: true)
                 }
             }
@@ -201,33 +202,6 @@ struct EventDetailsView: View {
         .padding(.horizontal, 14)
         .frame(minHeight: 52)
         .contentShape(Rectangle())
-    }
-}
-
-/// Ссылки из событий календаря — чужой ввод: открываем только http(s).
-enum ExternalLink {
-    static func url(_ raw: String) -> URL? {
-        guard let url = URL(string: raw.trimmingCharacters(in: .whitespaces)), let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http", url.host() != nil else { return nil }
-        return url
-    }
-
-    /// «meet.google.com/abc-defg» — хост и путь, не длиннее 40 знаков.
-    static func short(_ url: URL) -> String {
-        let host = (url.host() ?? "").replacingOccurrences(of: #"^www\."#, with: "", options: .regularExpression)
-        let path = url.path().count > 1 ? url.path() : ""
-        return String((host + path).prefix(40))
-    }
-}
-
-/// Место — в Картах (на iPhone и Mac открывается приложение «Карты»).
-enum MapLink {
-    static func url(_ place: String) -> URL? {
-        let q = place.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return nil }
-        var c = URLComponents(string: "https://maps.apple.com/")!
-        c.queryItems = [URLQueryItem(name: "q", value: q)]
-        return c.url
     }
 }
 

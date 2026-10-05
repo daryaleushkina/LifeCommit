@@ -83,6 +83,7 @@ struct CalendarView: View {
             }
         }
         .task { await model.loadAccounts() }
+        .onDisappear { model.hideRange() }
         .sheet(isPresented: $model.calendarsSheetOpen) { CalendarsSheet() }
     }
 
