@@ -23,6 +23,13 @@ const screens: [string, (page: import('@playwright/test').Page) => Promise<void>
     await p.getByText('Семья').first().click();
   }],
   ['шторка дела', async (p) => p.locator('.todo-list li', { hasText: 'Купить корм Тесле' }).locator('.todo-main').click()],
+  ['«Войти на Mac?»', async (p) => {
+    const { link } = (await (await p.request.post('/api/desktop/login', { data: { device: 'mac' } })).json()) as { link: string };
+    const url = new URL(p.url());
+    url.searchParams.set('tgStart', new URL(link).searchParams.get('startapp')!);
+    await p.goto(url.toString());
+    await expect(p.getByRole('heading', { name: 'Войти на Mac?' })).toBeVisible();
+  }],
   ['друзья и заявки', async (p) => {
     await goTab(p, 'Вместе');
     await p.getByRole('radio', { name: 'Друзья' }).click();

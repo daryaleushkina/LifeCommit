@@ -19,6 +19,9 @@ const sdk = vi.hoisted(() => {
   };
 });
 vi.mock('@tma.js/sdk-react', () => sdk);
+// На компьютере (приложение для Mac, браузер) сторис и отправки в чат нет — только «Сохранить».
+const desk = vi.hoisted(() => ({ desktop: false }));
+vi.mock('../desktop/session', () => ({ isDesktop: () => desk.desktop }));
 
 vi.mock('../api', () => {
   class ApiError extends Error {
@@ -73,6 +76,9 @@ async function open(templates = TEMPLATES, onClose = () => {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Отрисовке — снова настоящая реализация: тест «картинка не собралась» ломает её до конца файла.
+  for (const f of [draw, fontsReady, render]) vi.mocked(f).mockReset();
+  desk.desktop = false;
   for (const f of [sdk.shareStory, sdk.shareMessage, sdk.downloadFile, sdk.requestWriteAccess]) f.isAvailable.mockReturnValue(true);
   sdk.requestWriteAccess.mockResolvedValue('allowed');
   sdk.initData.user.mockReturnValue({ is_premium: false });
@@ -348,5 +354,17 @@ describe('бот не может писать (403)', () => {
     await save.click();
     await expect.element(page.getByText('Не получилось. Попробуйте ещё раз.')).toBeVisible();
     expect(m.share).not.toHaveBeenCalled();
+  });
+});
+
+describe('на компьютере', () => {
+  it('только «Сохранить» — крупной кнопкой; сторис и чата нет', async () => {
+    desk.desktop = true;
+    await open();
+    await expect.element(save).toHaveClass(/primary/);
+    await expect.element(story).not.toBeInTheDocument();
+    await expect.element(chat).not.toBeInTheDocument();
+    await save.click();
+    expect(sdk.downloadFile).toHaveBeenCalledWith('https://cdn/0.jpg', 'lifecommit.jpg');
   });
 });
