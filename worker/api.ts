@@ -520,11 +520,14 @@ api.get('/calendars', async (c) => {
 });
 
 // Адрес входа Google — заранее, пока открыта шторка: ссылку надо открыть прямо из нажатия,
-// иначе Telegram на iOS не считает её ответом на жест и не откроет.
+// иначе Telegram на iOS не считает её ответом на жест и не откроет. ?client=app — вход из приложения для iPhone,
+// Android или Mac: state помечен, и после Google человек вернётся в приложение (lifecommit://calendars?status=…).
 api.get('/calendars/google/url', async (c) => {
+  const client = c.req.query('client');
+  if (client !== undefined && client !== 'app') throw new HTTPException(400, { message: 'bad_client' });
   if (!c.env.CALENDAR_KEY || !c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) throw new HTTPException(503, { message: 'calendar_unavailable' });
   const redirect = `${new URL(c.req.url).origin}/google/callback`;
-  return c.json({ url: authUrl(c.env, redirect, await signState(c.env.CALENDAR_KEY, c.get('user').id)) });
+  return c.json({ url: authUrl(c.env, redirect, await signState(c.env.CALENDAR_KEY, c.get('user').id, undefined, client)) });
 });
 
 // Google подключён, человек выбрал календари — забираем события.

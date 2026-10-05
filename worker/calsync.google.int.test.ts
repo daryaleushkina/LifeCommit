@@ -6,7 +6,7 @@ import { addDays, logicalDay } from './day';
 import type { Env } from './env';
 import { GOOGLE_SCOPES, type GoogleEvent } from './gcal';
 import worker from './index';
-import { readState, signState } from './secret';
+import { readState, signState, verifyState } from './secret';
 import { APPLE_ID, GMAIL, gcal, gcalUrl, geventUrl, icloud, type Gcal } from './test/calendars';
 import { ctx, dbReady, env, net, sb, user, type TestUser } from './test/harness';
 
@@ -236,8 +236,18 @@ describe.skipIf(!ready)('Google: подключение', () => {
       prompt: 'consent',
     });
     expect(await readState(env.CALENDAR_KEY, url.searchParams.get('state')!)).toBe(u.id);
+    expect((await verifyState(env.CALENDAR_KEY, url.searchParams.get('state')!))?.app).toBe(false);
     expect(await callWith(u, { GOOGLE_CLIENT_ID: '' }, 'GET', '/calendars/google/url')).toMatchObject({ status: 503, body: { error: 'calendar_unavailable' } });
     expect(await callWith(u, { CALENDAR_KEY: '' }, 'GET', '/calendars/google/url')).toMatchObject({ status: 503 });
+
+    // Из приложения (iPhone, Android, Mac): тот же адрес, state помечен — Google вернёт человека в приложение.
+    const app = await u.call('GET', '/calendars/google/url?client=app');
+    expect(app.status).toBe(200);
+    const appUrl = new URL(app.body.url);
+    expect(appUrl.searchParams.get('redirect_uri')).toBe('https://lifecommit.test/google/callback');
+    expect(await verifyState(env.CALENDAR_KEY, appUrl.searchParams.get('state')!)).toEqual({ userId: u.id, app: true, expired: false });
+    expect(await u.call('GET', '/calendars/google/url?client=ios')).toMatchObject({ status: 400, body: { error: 'bad_client' } });
+    expect(await u.call('GET', '/calendars/google/url?client=')).toMatchObject({ status: 400, body: { error: 'bad_client' } });
 
     // Google не отдал refresh token — без него синхронизировать нечем.
     vi.spyOn(console, 'error').mockImplementation(() => {});

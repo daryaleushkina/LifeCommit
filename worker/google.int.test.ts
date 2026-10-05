@@ -1,5 +1,6 @@
-// Возврат из входа Google: подписанный state, обмен кода на токены, страницы «подключён», «снова», «не дали», «устарела», «не вышло».
-import { describe, expect, it } from 'vitest';
+// Возврат из входа Google: подписанный state, обмен кода на токены, страницы «подключён», «снова», «не дали», «устарела», «не вышло»;
+// вход, начатый в приложении, — переход обратно в приложение.
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from './env';
 import { GOOGLE_SCOPES } from './gcal';
 import worker from './index';
@@ -33,6 +34,13 @@ const calendars = () =>
   );
 
 const title = (html: string) => /<h1>(.*?)<\/h1>/.exec(html)?.[1];
+/** Вход начали в приложении для iPhone, Android или Mac (GET /api/calendars/google/url?client=app). */
+const appState = (id: number, ttlMs?: number) => signState(env.CALENDAR_KEY, id, ttlMs, 'app');
+const harnessFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = harnessFetch;
+  vi.restoreAllMocks();
+});
 
 describe.skipIf(!ready)('GET /google/callback', () => {
   it('первое подключение: код меняем на токены, календари сохраняем, страница «подключён»', async () => {
@@ -128,10 +136,78 @@ describe.skipIf(!ready)('GET /google/callback', () => {
     expect(net.calls).toEqual([]);
   });
 
+  it('база не ответила, чей это state, — 502 «не получилось», а не «ссылка устарела»', async () => {
+    const u = await user();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      if (req.url.startsWith(`${env.SUPABASE_URL}/rest/v1/users`)) return Response.json({ code: 'XX000', message: 'база недоступна' }, { status: 500 });
+      return harnessFetch(req);
+    }) as typeof fetch;
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await callback({ state: await signState(env.CALENDAR_KEY, u.id), code: 'code-1' });
+    expect(res.status).toBe(502);
+    expect(title(res.html)).toBe('Не получилось подключить');
+    expect(errors).toHaveBeenCalled();
+    const app = await callback({ state: await appState(u.id), code: 'code-1' });
+    expect(app.status).toBe(302);
+    expect(app.headers.get('location')).toBe('lifecommit://calendars?status=failed');
+    expect(net.calls).toEqual([]);
+  });
+
   it('без ключа календарей state не проверить — 400', async () => {
     const u = await user();
     const res = await callback({ state: await signState(env.CALENDAR_KEY, u.id), code: 'code-1' }, { CALENDAR_KEY: '' });
     expect(res.status).toBe(400);
     expect(title(res.html)).toBe('Ссылка устарела');
+  });
+});
+
+// Вход Google из приложения (iPhone, Android, Mac): тот же обмен кода и та же запись календарей, но вместо страницы с
+// кнопкой «Вернуться в Telegram» — переход в приложение lifecommit://calendars?status=… (docs/mobile.md). Метка «из
+// приложения» подписана вместе с id и сроком — подделать её нельзя.
+describe.skipIf(!ready)('GET /google/callback — вход начат в приложении', () => {
+  const back = (res: { status: number; headers: Headers }) => (res.status === 302 ? res.headers.get('location') : `HTTP ${res.status}`);
+
+  it('подключили — 302 на lifecommit://calendars?status=ok, календари сохранены, страницы нет', async () => {
+    const u = await user();
+    tokens();
+    calendars();
+    const res = await callback({ state: await appState(u.id), code: 'code-1' });
+    expect(back(res)).toBe('lifecommit://calendars?status=ok');
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(res.html).toBe('');
+    const { data: acc } = await sb.from('calendar_accounts').select('provider, login, status').eq('user_id', u.id).single();
+    expect(acc).toMatchObject({ provider: 'google', login: 'dasha@gmail.com', status: 'setup' });
+  });
+
+  it('снова подключили — again; отказали — denied; сняли галочку событий — denied; Google сломался — failed', async () => {
+    const u = await user();
+    tokens();
+    calendars();
+    await callback({ state: await appState(u.id), code: 'code-1' });
+    await sb.from('calendar_accounts').update({ status: 'ok' }).eq('user_id', u.id);
+    expect(back(await callback({ state: await appState(u.id), code: 'code-2' }))).toBe('lifecommit://calendars?status=again');
+
+    const v = await user();
+    expect(back(await callback({ state: await appState(v.id), error: 'access_denied' }))).toBe('lifecommit://calendars?status=denied');
+    tokens({ scope: GOOGLE_SCOPES[1] });
+    expect(back(await callback({ state: await appState(v.id), code: 'code-1' }))).toBe('lifecommit://calendars?status=denied');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    net.on(TOKEN, () => Response.json({ error: 'server_error' }, { status: 500 }));
+    expect(back(await callback({ state: await appState(v.id), code: 'code-1' }))).toBe('lifecommit://calendars?status=failed');
+    expect((await sb.from('calendar_accounts').select('id').eq('user_id', v.id)).data).toEqual([]);
+  });
+
+  it('ссылка устарела — status=expired; метку приложения к чужой подписи не приписать — страница 400, в приложение не ведём', async () => {
+    const u = await user();
+    expect(back(await callback({ state: await appState(u.id, -1000), code: 'code-1' }))).toBe('lifecommit://calendars?status=expired');
+    const [id, exp, sig] = (await signState(env.CALENDAR_KEY, u.id)).split('.');
+    const forged = await callback({ state: `${id}.${exp}.app.${sig}`, code: 'code-1' });
+    expect(forged.status).toBe(400);
+    expect(title(forged.html)).toBe('Ссылка устарела');
+    // подписан верно, но такого человека нет
+    expect(back(await callback({ state: await appState(8_999_999_999_999), code: 'code-1' }))).toBe('lifecommit://calendars?status=expired');
+    expect(net.calls).toEqual([]);
   });
 });
