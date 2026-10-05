@@ -137,6 +137,12 @@ class ApiClientTest {
         expectApiError(ApiError.Kind.Network) { api.today() }
     }
 
+    @Test fun `обрыв посреди тела ответа - ошибка сети, а не вечное ожидание`() = kotlinx.coroutines.runBlocking {
+        server.enqueue(MockResponse.Builder().code(200).body(fixture("today")).onResponseBody(mockwebserver3.SocketEffect.ShutdownConnection).build())
+        server.enqueue(MockResponse.Builder().code(200).body(fixture("today")).onResponseBody(mockwebserver3.SocketEffect.ShutdownConnection).build())
+        kotlinx.coroutines.withTimeout(10_000) { expectApiError(ApiError.Kind.Network) { api.today() } }
+    }
+
     @Test fun `ответ без тела - успех для вызовов без результата`() = runTest {
         server.enqueue(MockResponse.Builder().code(204).build())
         api.deleteTask(3)

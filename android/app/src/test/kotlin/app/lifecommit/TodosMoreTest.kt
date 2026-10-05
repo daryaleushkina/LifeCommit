@@ -171,4 +171,26 @@ class TodosMoreTest : AppTest() {
         val first = compose.onNode(hasText("Первое дело"), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.left
         assertTrue("второе ${'$'}second, первое ${'$'}first", second < first - 20)
     }
+
+    @Test fun `перечитывание ждёт отметку, которая ещё идёт на сервер`() {
+        server.today = TodayResponse(
+            "2026-10-05",
+            tasks = listOf(TodayTask(id = 1, title = "Зарядка", kind = TaskKind.Check)),
+            todos = listOf(Todo(10, "Позвонить в банк", "2026-10-05")),
+        )
+        launch(undoMillis = 200)
+        compose.waitText("Зарядка")
+        // Отметка уходит медленно; тут же истекает «Вернуть» у удалённого дела — и «Сегодня» перечитывается.
+        server.logDelayMs = 1500
+        compose.waitLabel("Зарядка — ${t.markDone.lowercase()}").performClick()
+        compose.waitText("Позвонить в банк").performTouchInput { swipeLeft(startX = right, endX = left - 900f) }
+        compose.waitFor(8_000) { server.calls("DELETE", "/api/todos/10").size == 1 && model.today.todos.isEmpty() }
+        // GET /today ушёл только после того, как сервер принял отметку, — и отметка на экране осталась.
+        val calls = server.calls.toList()
+        val put = calls.indexOfFirst { it.method == "PUT" && it.path == "/api/logs" }
+        val get = calls.indexOfLast { it.method == "GET" && it.path == "/api/today" }
+        // Записи — в порядке, в каком сервер их обработал: PUT записан после задержки, GET перечитывания — после него.
+        assertTrue("PUT $put, GET $get", get > put)
+        assertTrue(model.today.tasks.single().value == 1.0)
+    }
 }
