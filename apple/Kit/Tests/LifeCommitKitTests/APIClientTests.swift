@@ -21,6 +21,14 @@ struct APIClientTests {
         #expect(today.limits.maxTasks == nil)
     }
 
+    @Test("человек только в группах (своих привычек и дел нет) — не «Чего я хочу?»: группы считаются, как в App.tsx")
+    func groupsAreNotEmpty() throws {
+        let json = #"{"day":"2026-10-05","tasks":[],"archived":[],"limits":{"max_tasks":5,"active":0},"todos":[],"todos_later":0,"groups":[{"id":3,"title":"Семья","kind":"chores","color":null,"role":"member","members":[],"items":[],"planned":2,"done":0}]}"#
+        let r = try APIClient.decoder.decode(TodayResponse.self, from: Data(json.utf8))
+        #expect(r.groups.map(\.id) == [3])
+        #expect(!r.isEmpty)
+    }
+
     @Test("настоящий ответ /session и /heatmap")
     func decodeSessionAndHeat() throws {
         let s = try APIClient.decoder.decode(SessionResponse.self, from: fixture("session"))

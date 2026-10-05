@@ -439,8 +439,8 @@ final class AppModel {
         }
     }
 
-    /// Отметка за прошлый день (yes == nil — убрать отметку): на экране сразу, потом свежие «Сегодня» и карта.
-    /// Сегодня — обычная отметка. Не вышло — история перечитывается, ошибка — плашкой.
+    /// Отметка за прошлый день (yes == nil — убрать отметку): на экране сразу, потом свежее «Сегодня».
+    /// Сегодня — обычная отметка. Не вышло — история как до правки (и перечитывается), ошибка — плашкой.
     func markDay(_ task: TodayTask, day: String, yes: Bool?) async {
         if day == today.day {
             if task.kind == .abstain {
@@ -456,13 +456,16 @@ final class AppModel {
         // До приложения после «последнего раза» день и так чистый — «получилось» там просто убирает отметку.
         let implicit = task.kind == .abstain && (task.lastSlipOn.map { day > $0 && day < start } ?? false)
         let keep = yes != nil && !(implicit && yes == true) && (task.kind == .abstain || yes == true)
-        var history = histories[task.id] ?? TaskHistory(start: start, goals: [HistoryGoal(effectiveFrom: today.day, target: task.target)], logs: [])
+        let before = histories[task.id]
+        var history = before ?? TaskHistory(start: start, goals: [HistoryGoal(effectiveFrom: today.day, target: task.target)], logs: [])
         history.logs = history.logs.filter { $0.day != day }
         if keep { history.logs = (history.logs + [HistoryLog(day: day, value: value ?? 0, status: status)]).sorted { $0.day < $1.day } }
         histories[task.id] = history
         do {
             try await track { try await api.log(taskId: task.id, value: task.kind == .abstain ? nil : (yes == true ? task.target : nil), status: status, day: day) }
         } catch {
+            // Экран — как был до правки; связь есть — заодно свежая история с сервера (без связи она тоже не придёт).
+            histories[task.id] = before
             await loadHistory(task.id)
             fail(error)
             return
