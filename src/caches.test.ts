@@ -16,7 +16,7 @@ vi.mock('./api', () => ({
 }));
 
 import { api } from './api';
-import { caches, googleUrlFresh, load, logicalDayOf, warm } from './caches';
+import { caches, googleUrlFresh, load, logicalDayOf, trackEdit, warm } from './caches';
 import { bumpChange } from './useTaskLog';
 
 const m = vi.mocked(api);
@@ -145,6 +145,23 @@ describe('дни календаря', () => {
     const v = await load.range('a', 'b');
     expect(m.calendar).toHaveBeenCalledTimes(2);
     expect(v).toEqual({ todos: [{ id: 1, title: 'новое' }], groups: [{ id: 9 }] });
+  });
+
+  // 05.10.2026 (хук перед пушем, под нагрузкой): дело добавили, пока день перечитывался; перечитка спросила ещё раз,
+  // пока дело ещё создавалось, получила день без него и легла поверх — дело на сервере, а на экране его нет.
+  it('правка ещё у сервера — перечитка дня её дожидается и кладёт ответ уже с ней', async () => {
+    const first = deferred<ReturnType<typeof res>>();
+    const post = deferred<{ id: number }>();
+    let server = res('без нового');
+    m.calendar.mockReturnValueOnce(first.promise).mockImplementation(async () => server);
+    const reading = load.range('a', 'd');
+    void trackEdit(post.promise); // дело ушло на сервер, ответа ещё нет
+    first.resolve(res('без нового'));
+    await new Promise((r) => setTimeout(r, 0)); // все ответы, что уже пришли, разобраны
+    server = res('с новым');
+    post.resolve({ id: 9 });
+    await reading;
+    expect(caches.days.get('a:d')!.todos[0]!.title).toBe('с новым');
   });
 
   it('меняют без остановки — не больше четырёх попыток, кладём последний ответ', async () => {
