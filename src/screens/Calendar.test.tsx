@@ -157,6 +157,35 @@ describe('день', () => {
     await expect.element(page.getByText('В этот день ничего')).toBeVisible();
   });
 
+  // 05.10.2026 (хук перед пушем, под нагрузкой): перешла на завтра и сразу добавила дело, пока день перечитывался, —
+  // перечитка спросила ещё раз, пока дело создавалось, получила день без него, и строка пропала насовсем.
+  it('дело, добавленное, пока день перечитывается, не пропадает', async () => {
+    await setup();
+    await expect.poll(() => caches.days.has('2026-10-04:2026-10-04')).toBe(true); // завтра подтянуто заранее
+    const base = m.api.calendar.getMockImplementation()!;
+    let reread: ((v: unknown) => void) | null = null;
+    m.api.calendar.mockImplementation((from: string, to: string) =>
+      from === '2026-10-04' && to === '2026-10-04' && !reread ? new Promise((r) => (reread = r)) : base(from, to),
+    );
+    let created!: (v: { id: number }) => void;
+    m.api.createTodo.mockReturnValue(new Promise((r) => (created = r)));
+
+    await page.getByRole('button', { name: 'Следующий день' }).click();
+    await expect.poll(() => reread).not.toBeNull(); // перечитка завтрашнего дня ушла и висит
+    await page.getByRole('button', { name: 'Дело на этот день' }).click();
+    const input = page.getByRole('textbox', { name: 'Дело на этот день' });
+    await input.fill('Отвезти документы');
+    input.element().closest('form')!.requestSubmit();
+    await expect.element(title('Отвезти документы')).toBeVisible();
+
+    reread!(await base('2026-10-04', '2026-10-04')); // перечитка вернулась — дела там ещё нет
+    await new Promise((r) => setTimeout(r, 0)); // и всё, что за ней последовало, уже случилось
+    todos.push(todo({ id: 99, title: 'Отвезти документы', day: '2026-10-04' }));
+    created({ id: 99 });
+    await expect.element(title('Отвезти документы')).toBeVisible();
+    await expect.poll(() => caches.days.get('2026-10-04:2026-10-04')!.todos.map((d) => d.id)).toContain(99);
+  });
+
   it('галочка дела — на сервер; не прошла — сообщение, тап убирает', async () => {
     m.api.updateTodo.mockRejectedValueOnce(new Error('сеть'));
     await setup();
@@ -177,10 +206,12 @@ describe('день', () => {
     await expect.element(title('Завтрашнее')).toBeVisible();
     await page.getByRole('button', { name: 'Календари' }).click();
     await page.getByRole('button', { name: 'Календарь подключён' }).click();
-    await expect.poll(() => onChanged.mock.calls.length).toBe(1);
-    expect(caches.days.has(`${TODAY}:${TODAY}`)).toBe(false);
+    // Виденные дни забыты сразу; перечитка завтрашнего ждёт отметку, которая ещё у сервера (caches.ts).
+    await expect.poll(() => caches.days.has(`${TODAY}:${TODAY}`)).toBe(false);
+    expect(onChanged).not.toHaveBeenCalled();
     fail(new Error('сеть'));
     await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.poll(() => onChanged.mock.calls.length).toBe(1);
     await expect.element(title('Завтрашнее')).toBeVisible();
   });
 
