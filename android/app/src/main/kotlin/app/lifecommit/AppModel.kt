@@ -20,6 +20,8 @@ import app.lifecommit.core.TaskInput
 import app.lifecommit.core.TaskKind
 import app.lifecommit.core.TelegramOAuth
 import app.lifecommit.core.Todo
+import app.lifecommit.core.TodoEdit
+import app.lifecommit.core.TodoEdits
 import app.lifecommit.core.TodayResponse
 import app.lifecommit.core.TodayTask
 import app.lifecommit.core.Todos
@@ -153,6 +155,16 @@ class AppModel(
         private set
     var signingIn by mutableStateOf(false)
         private set
+
+    /** Вкладка «Календарь»: дни, дела, подключённые календари (CalendarModel). */
+    val calendar = CalendarModel(
+        api = api,
+        scope = scope,
+        today = { today.day },
+        onChanged = { refresh() },
+        onSignedOut = ::signOutLocally,
+        errorText = { strings.error },
+    )
 
     /** Хаптика — у Activity (системная, View.performHapticFeedback); в тестах — пусто. */
     var haptics: (Haptic) -> Unit = {}
@@ -502,6 +514,61 @@ class AppModel(
                 patchTodos { list -> list.filter { it.id != temp.id } }
                 fail(e)
             }
+        }
+    }
+
+    /** Правка дела в шторке: на экране сразу, только изменённые поля на сервер, потом «Сегодня» целиком (день мог смениться). */
+    fun updateTodo(todo: Todo, edit: TodoEdit) {
+        val body = TodoEdits.patch(todo, edit)
+        if (body.isEmpty()) return
+        change++
+        patchTodos { list -> list.map { if (it.id == todo.id) TodoEdits.applied(it, edit) else it } }
+        scope.launch {
+            try {
+                write { api.updateTodo(todo.id, body) }
+            } catch (e: ApiError) {
+                fail(e)
+            }
+            refresh()
+        }
+    }
+
+    /** Скрыть событие из календаря у нас (в календаре оно остаётся) — с «Вернуть», как удаление. */
+    fun hideTodo(todo: Todo) {
+        removeWithUndo("todo:${todo.id}", strings.swipe.hidden(todo.title)) {
+            try {
+                api.updateTodo(todo.id, buildJsonObject { put("hidden", true) })
+            } finally {
+                refresh()
+            }
+        }
+    }
+
+    /** Дела на «Сегодня» — те же действия, что в «Календаре» (шторка дела, свайп). */
+    val todayTodos = object : TodoActions {
+        override fun toggle(todo: Todo) = this@AppModel.toggle(todo)
+        override fun add(title: String, day: String) = addTodo(title)
+        override fun update(todo: Todo, edit: TodoEdit) = updateTodo(todo, edit)
+        override fun remove(todo: Todo) = removeTodo(todo)
+        override fun hide(todo: Todo) = hideTodo(todo)
+    }
+
+    /** Дела в «Календаре»: удалить и скрыть — тоже с «Вернуть». */
+    val calendarTodos = object : TodoActions {
+        override fun toggle(todo: Todo) = calendar.toggle(todo)
+        override fun add(title: String, day: String) = calendar.add(title, day)
+        override fun update(todo: Todo, edit: TodoEdit) = calendar.update(todo, edit)
+        override fun remove(todo: Todo) = removeWithUndo("todo:${todo.id}", strings.swipe.removed(todo.title)) { calendar.commitRemove(todo) }
+        override fun hide(todo: Todo) = removeWithUndo("todo:${todo.id}", strings.swipe.hidden(todo.title)) { calendar.commitHide(todo) }
+    }
+
+    /** Ссылка в приложение: вход Telegram или возврат после входа Google. */
+    fun handleLink(uri: String) {
+        if (TelegramOAuth.isCallback(uri)) return handleCallback(uri)
+        if (calendar.handleGoogleReturn(uri)) {
+            backToMain()
+            tab = Tab.Calendar
+            calendar.open()
         }
     }
 

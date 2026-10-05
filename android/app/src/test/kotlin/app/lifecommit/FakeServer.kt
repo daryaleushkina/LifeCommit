@@ -47,6 +47,15 @@ class FakeServer {
     /** Ссылка из /oauth/crossapp (есть приложение Telegram); null — ссылки нет. */
     @Volatile var crossAppLink: String? = null
 
+    /** Дела в календаре (кроме «Сегодня»): GET /calendar отдаёт их и дела «Сегодня» в промежутке from..to. */
+    @Volatile var calendarTodos: List<Todo> = emptyList()
+
+    /** Подключённые календари — GET /calendars. */
+    @Volatile var accounts: List<app.lifecommit.core.CalendarAccount> = emptyList()
+
+    /** Адрес входа Google; null — Google на сервере не настроен (503 calendar_unavailable). */
+    @Volatile var googleUrl: String? = "https://accounts.google.com/o/oauth2/v2/auth?state=s"
+
     /** Дела «на потом» — GET /todos/later. */
     @Volatile var later: List<Todo> = emptyList()
 
@@ -118,18 +127,74 @@ class FakeServer {
             call.method == "POST" && api == "todos" -> {
                 val id = nextId++
                 val b = call.json
-                today = today.copy(todos = today.todos + Todo(id, b.getValue("title").jsonPrimitive.content, today.day))
+                val day = b["day"]?.jsonPrimitive?.contentOrNull ?: today.day
+                val todo = Todo(id, b.getValue("title").jsonPrimitive.content, day)
+                if (day == today.day) today = today.copy(todos = today.todos + todo) else calendarTodos = calendarTodos + todo
                 ok("""{"id":$id}""", 201)
             }
             call.method == "PATCH" && api.startsWith("todos/") -> {
                 val id = api.removePrefix("todos/").toLong()
-                val done = call.json["done"]?.jsonPrimitive?.booleanOrNull
-                today = today.copy(todos = today.todos.map { if (it.id == id && done != null) it.copy(done = done) else it })
+                val b = call.json
+                fun edit(t: Todo): Todo {
+                    if (t.id != id) return t
+                    var n = t
+                    b["done"]?.jsonPrimitive?.booleanOrNull?.let { n = n.copy(done = it) }
+                    b["title"]?.jsonPrimitive?.contentOrNull?.let { n = n.copy(title = it) }
+                    b["day"]?.jsonPrimitive?.contentOrNull?.let { n = n.copy(day = it) }
+                    if (b.containsKey("time")) n = n.copy(time = b["time"]?.jsonPrimitive?.contentOrNull)
+                    return n
+                }
+                val hidden = b["hidden"]?.jsonPrimitive?.booleanOrNull == true
+                today = today.copy(todos = today.todos.map(::edit).filter { !(hidden && it.id == id) })
+                calendarTodos = calendarTodos.map(::edit).filter { !(hidden && it.id == id) }
                 ok()
             }
+            call.method == "GET" && api == "calendar" -> {
+                val from = r.url.queryParameter("from")!!
+                val to = r.url.queryParameter("to")!!
+                val all = (today.todos + calendarTodos).filter { it.day in from..to }
+                ok(enc(app.lifecommit.core.CalendarRange(today.day, all)))
+            }
+            call.method == "GET" && api == "calendars" -> ok(enc(accounts))
+            call.method == "GET" && api == "calendars/google/url" -> {
+                if (r.url.queryParameter("client") != "app") error(400, "bad_client")
+                else googleUrl?.let { ok("""{"url":"$it"}""") } ?: error(503, "calendar_unavailable")
+            }
+            call.method == "POST" && api == "calendars/apple" -> {
+                val b = call.json
+                if (b["password"]?.jsonPrimitive?.content != "abcd-efgh-ijkl-mnop") error(401, "apple_auth") else {
+                    accounts = accounts + app.lifecommit.core.CalendarAccount(nextId++, app.lifecommit.core.TodoSource.Apple, b["login"]!!.jsonPrimitive.content, "ok", "2026-10-05T10:00:00Z", "home", listOf(app.lifecommit.core.CalendarCollection("home", "Дом", "#3FA968", true, true)))
+                    ok("{}", 201)
+                }
+            }
+            call.method == "POST" && api.matches(Regex("calendars/\\d+/confirm")) -> {
+                val id = api.split('/')[1].toLong()
+                accounts = accounts.map { if (it.id == id) it.copy(status = "ok") else it }
+                ok()
+            }
+            call.method == "PATCH" && api.matches(Regex("calendars/\\d+/collections")) -> {
+                val id = api.split('/')[1].toLong()
+                val b = call.json
+                val url = b["url"]!!.jsonPrimitive.content
+                val on = b["enabled"]!!.jsonPrimitive.booleanOrNull == true
+                accounts = accounts.map { a -> if (a.id != id) a else a.copy(collections = a.collections.map { if (it.url == url) it.copy(enabled = on) else it }) }
+                ok()
+            }
+            call.method == "PATCH" && api.matches(Regex("calendars/\\d+/default")) -> {
+                val id = api.split('/')[1].toLong()
+                accounts = accounts.map { if (it.id == id) it.copy(defaultUrl = call.json["url"]!!.jsonPrimitive.content) else it }
+                ok()
+            }
+            call.method == "DELETE" && api.startsWith("calendars/") -> {
+                val provider = api.removePrefix("calendars/")
+                accounts = accounts.filter { it.provider.name.lowercase() != provider }
+                ok()
+            }
+            call.method == "POST" && api == "calendars/sync" -> ok()
             call.method == "DELETE" && api.startsWith("todos/") -> {
                 val id = api.removePrefix("todos/").toLong()
                 today = today.copy(todos = today.todos.filter { it.id != id })
+                calendarTodos = calendarTodos.filter { it.id != id }
                 later = later.filter { it.id != id }
                 ok()
             }

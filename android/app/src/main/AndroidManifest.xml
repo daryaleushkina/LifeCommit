@@ -52,6 +52,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="lifecommit" android:host="tglogin" />
             </intent-filter>
+            <!-- Возврат после входа Google (подключение календаря): lifecommit://calendars?status=ok|again|denied|expired|failed.
+                 В адресе только итог, без токенов (docs/mobile.md). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lifecommit" android:host="calendars" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

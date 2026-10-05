@@ -112,6 +112,62 @@ class ScreensTest(private val theme: String) : AppTest() {
         shot("later")
     }
 
+    private fun seedCalendar() {
+        seed()
+        server.calendarTodos = listOf(
+            Todo(30, "Записаться к врачу", "2026-10-07"),
+            Todo(31, "Созвон с командой", "2026-10-05", time = "10:00", durationMin = 30, source = app.lifecommit.core.TodoSource.Google,
+                details = app.lifecommit.core.TodoDetails(link = "https://meet.google.com/abc", peopleCount = 4, people = listOf("Маша", "Петя"), notes = "Обсудить планы на квартал")),
+        )
+    }
+
+    @Test fun calendar() {
+        seedCalendar()
+        start()
+        compose.waitText(t.calendar).performClick()
+        compose.waitText("Созвон с командой")
+        shot("calendar-day")
+        compose.waitText(t.month).performClick()
+        compose.waitText("Октябрь 2026")
+        shot("calendar-month")
+    }
+
+    @Test fun todoSheets() {
+        seedCalendar()
+        start()
+        compose.waitText(t.calendar).performClick()
+        compose.waitText("Созвон с командой").performClick()
+        compose.waitText(t.todo.join)
+        shot("sheet-event")
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitText("Позвонить в банк").performClick()
+        compose.waitText(t.todo.place)
+        shot("sheet-todo")
+    }
+
+    @Test fun calendarsSheets() {
+        seed()
+        // «обновлено 3 мин назад» считается от сейчас — время синхронизации тоже от сейчас, иначе снимок меняется сам.
+        val synced = java.time.Instant.now().minusSeconds(190).toString()
+        server.accounts = listOf(app.lifecommit.core.CalendarAccount(8, app.lifecommit.core.TodoSource.Apple, "d@icloud.com", "ok", synced, "home",
+            listOf(app.lifecommit.core.CalendarCollection("home", "Дом", "#3FA968", true, true), app.lifecommit.core.CalendarCollection("work", "Работа", "#4470CC", false, true))))
+        start()
+        compose.waitText(t.calendar).performClick()
+        compose.waitLabel(t.cal.sheetTitle).performClick()
+        compose.waitText(t.cal.whatToTake.uppercase())
+        shot("sheet-calendars")
+    }
+
+    @Test fun appleForm() {
+        seed()
+        start()
+        compose.waitText(t.calendar).performClick()
+        compose.waitText(t.cal.connect).performClick()
+        compose.onNodeWithTag("connectApple").performClick()
+        compose.waitText(t.cal.appleTitle)
+        shot("sheet-apple")
+    }
+
     @Test fun archive() {
         seed()
         start()
@@ -126,9 +182,9 @@ class ScreensTest(private val theme: String) : AppTest() {
     @Test fun pendingAndMe() {
         seed()
         start()
-        compose.waitText(t.calendar).performClick()
+        compose.waitText(t.groups).performClick()
         compose.waitText(t.pendingSection)
-        shot("calendar-pending")
+        shot("groups-pending")
         compose.waitText(t.me).performClick()
         compose.waitText(t.logoutDevice)
         shot("me")

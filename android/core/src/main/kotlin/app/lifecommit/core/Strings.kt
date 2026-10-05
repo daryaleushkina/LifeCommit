@@ -214,6 +214,8 @@ class Strings private constructor(
         val errInput: String,
         val errNet: String,
         val noCalendars: String,
+        /** Возврат после входа Google с ошибкой: denied, expired, failed → заголовок и пояснение (worker/google.ts TEXT). */
+        val googleReturn: Map<String, Pair<String, String>>,
     )
 
     class SwipeStrings(val remove: String, val undo: String, val removed: (String) -> String, val hide: String, val hidden: (String) -> String)
@@ -457,6 +459,11 @@ class Strings private constructor(
                     errInput = "Нужна почта Apple ID и пароль приложения из 16 букв.",
                     errNet = "Не достучался до Apple. Попробуйте ещё раз чуть позже.",
                     noCalendars = "В этом Apple ID не нашлось календарей.",
+                    googleReturn = mapOf(
+                        "denied" to ("Доступ не дали" to "Без доступа к событиям календарь не подключить. Попробуйте ещё раз из LifeCommit и оставьте галочки на экране Google."),
+                        "expired" to ("Ссылка устарела" to "Откройте LifeCommit и нажмите «Подключить» ещё раз."),
+                        "failed" to ("Не получилось подключить" to "Google не ответил как надо. Попробуйте ещё раз чуть позже."),
+                    ),
                 ),
             )
         }
@@ -641,6 +648,11 @@ class Strings private constructor(
                     errInput = "Enter your Apple ID email and the 16-letter app password.",
                     errNet = "Could not reach Apple. Please try again a bit later.",
                     noCalendars = "No calendars found in this Apple ID.",
+                    googleReturn = mapOf(
+                        "denied" to ("Access not granted" to "The calendar can’t be connected without access to events. Try again from LifeCommit and keep the boxes ticked on the Google screen."),
+                        "expired" to ("This link has expired" to "Open LifeCommit and tap “Connect” again."),
+                        "failed" to ("Couldn’t connect" to "Google didn’t respond as expected. Please try again a bit later."),
+                    ),
                 ),
             )
         }

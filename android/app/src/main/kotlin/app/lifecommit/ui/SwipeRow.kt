@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-data class SwipeAction(val label: String, val danger: Boolean, val run: () -> Unit)
+data class SwipeAction(val label: String, val danger: Boolean, val glyph: String = Glyph.TRASH, val run: () -> Unit)
 
 /** Ширина одной кнопки под строкой. */
 private val BUTTON = 84.dp
@@ -97,7 +97,7 @@ fun SwipeRow(actions: List<SwipeAction>, card: Boolean = false, radius: Dp = Dim
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         val ink = if (a.danger) p.dangerText else p.neutralPillText
                         if (w > 40.dp) {
-                            StrokeGlyph(Glyph.TRASH, ink, 20.dp)
+                            StrokeGlyph(a.glyph, ink, 20.dp)
                             Text(a.label, style = onest(12, 600, ink), maxLines = 1)
                         }
                     }

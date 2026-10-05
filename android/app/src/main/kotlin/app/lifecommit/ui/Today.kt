@@ -77,7 +77,7 @@ import kotlinx.coroutines.delay
 import java.time.ZonedDateTime
 
 @Composable
-fun Today(model: AppModel) {
+fun Today(model: AppModel, links: Links) {
     val t = LocalStrings.current
     val data = model.today
     val swipe = { task: TodayTask -> listOf(SwipeAction(t.swipe.remove, danger = true) { model.removeTask(task) }) }
@@ -88,7 +88,7 @@ fun Today(model: AppModel) {
         model.banner?.let { banner -> item { ErrorNote(banner, Modifier.padding(top = 12.dp)) { model.banner = null } } }
 
         // Разовые дела — над привычками: их обычно надо сделать сегодня и один раз.
-        item { TodoBlock(model) }
+        item { TodoBlock(model, links) }
 
         item { SectionLabel(t.habits, Modifier.padding(start = 4.dp, end = 4.dp, top = 24.dp, bottom = 8.dp)) }
         if (due.isEmpty()) {
@@ -298,16 +298,53 @@ private fun NotDueCard(task: TodayTask, onOpen: () -> Unit) {
 
 private const val LEFT_KEY = "lc-todos-left"
 
-/** Блок «Дела»: свои дела с кружком-галочкой, события из календаря без него, строка для нового дела, «Потом · N». */
+/** Блок «Дела» на «Сегодня»: общий список дел и «Потом · N». */
 @Composable
-private fun TodoBlock(model: AppModel) {
-    val p = LocalPalette.current
+private fun TodoBlock(model: AppModel, links: Links) {
     val t = LocalStrings.current
     val data = model.today
-    val listed = data.todos.filter { !model.isRemoved("todo:${it.id}") }
+    Column {
+        TodoListCard(
+            model = model,
+            todos = data.todos,
+            today = data.day,
+            day = data.day,
+            actions = model.todayTodos,
+            links = links,
+            filterable = true,
+        )
+        var laterOpen by remember { mutableStateOf(false) }
+        if (data.todosLater > 0) LinkButton(t.todo.later(data.todosLater)) { laterOpen = true }
+        if (laterOpen) LaterSheet(model, data.day) { laterOpen = false }
+    }
+}
+
+/**
+ * Список дел (TodoList.tsx) — на «Сегодня» и в «Календаре»: свои дела с кружком-галочкой, события из календаря без него,
+ * строка для нового дела; тап по делу — шторка дела; свайп — «Удалить» (у событий ещё «Скрыть»).
+ * heading — заголовок (в «Календаре» — выбранный день); showCarry — подписи «со вчера» (только «Сегодня»);
+ * canAdd — можно ли добавлять (в прошедший день календаря — нет); filterable — «Все · Осталось» (только «Сегодня»).
+ */
+@Composable
+fun TodoListCard(
+    model: AppModel,
+    todos: List<Todo>,
+    today: String,
+    day: String,
+    actions: app.lifecommit.TodoActions,
+    links: Links,
+    heading: String? = null,
+    addLabel: String? = null,
+    showCarry: Boolean = true,
+    canAdd: Boolean = true,
+    filterable: Boolean = false,
+) {
+    val p = LocalPalette.current
+    val t = LocalStrings.current
+    val listed = todos.filter { !model.isRemoved("todo:${it.id}") }
     // «Только несделанные» — запоминается на этом устройстве (решение владелицы 02.10.2026), как тема.
     var onlyLeft by rememberSaveable { mutableStateOf(model.prefs.bool(LEFT_KEY)) }
-    val canFilter = listed.any { it.source == null || it.time != null }
+    val canFilter = filterable && listed.any { it.source == null || it.time != null }
     var now by remember { mutableStateOf(ZonedDateTime.now()) }
     // Часы раз в минуту: закончившееся событие уходит из «Осталось», даже если экран не трогают.
     if (canFilter && onlyLeft && listed.any { it.source != null && it.time != null }) {
@@ -318,19 +355,20 @@ private fun TodoBlock(model: AppModel) {
             }
         }
     }
-    val todos = if (canFilter && onlyLeft) listed.filter { !it.done && !Todos.eventOver(it, now) } else listed
-    val heading = when {
+    val shown = if (canFilter && onlyLeft) listed.filter { !it.done && !Todos.eventOver(it, now) } else listed
+    val title = heading ?: when {
         listed.isNotEmpty() && listed.all { it.source != null } -> t.todo.blockEvents
         listed.any { it.source != null } -> t.todo.blockMixed
         else -> t.todo.block
     }
+    var editing by remember { mutableStateOf<Todo?>(null) }
     Column {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            SectionLabel(heading)
+            SectionLabel(title)
             if (canFilter) {
                 Row(
                     Modifier.background(p.heat[0], RoundedCornerShape(14.dp)).padding(3.dp).semantics { contentDescription = t.todo.showWhich },
@@ -347,24 +385,37 @@ private fun TodoBlock(model: AppModel) {
             }
         }
         Card {
-            todos.forEachIndexed { i, d ->
+            shown.forEachIndexed { i, d ->
                 // Ключ — само дело (у повторяющегося — и его день): открытый свайп и поле ввода остаются у своей строки,
                 // когда список переставился (отметили — ушло вниз; /code-review 05.10).
                 key(d.id, d.day) {
-                if (i > 0) RowDivider()
-                // Только что добавленное ещё без номера с сервера (id < 0): смахнуть и отметить его пока нельзя.
-                SwipeRow(
-                    if (d.id < 0) emptyList() else listOf(SwipeAction(t.swipe.remove, danger = true) { model.removeTodo(d) }),
-                    radius = Dim.radius,
-                ) { TodoRow(d, data.day) { model.toggle(d) } }
+                    if (i > 0) RowDivider()
+                    // Только что добавленное ещё без номера с сервера (id < 0): смахнуть и отметить его пока нельзя.
+                    val swipe = when {
+                        d.id < 0 -> emptyList()
+                        d.source == null -> listOf(SwipeAction(t.swipe.remove, danger = true) { actions.remove(d) })
+                        // Событие из календаря: «Удалить» (и в календаре) и «Скрыть» — крайняя, она же «до конца».
+                        else -> listOf(
+                            SwipeAction(t.swipe.remove, danger = true) { actions.remove(d) },
+                            SwipeAction(t.swipe.hide, danger = false, glyph = Glyph.HIDE) { actions.hide(d) },
+                        )
+                    }
+                    SwipeRow(swipe, radius = Dim.radius) {
+                        TodoRow(d, today, showCarry, onOpen = { if (d.id >= 0) editing = d }) { actions.toggle(d) }
+                    }
                 }
             }
-            if (todos.isNotEmpty()) RowDivider()
-            AddTodo { model.addTodo(it) }
+            if (!canAdd && shown.isEmpty()) {
+                Text(t.calEmpty, style = onest(15, color = p.muted), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp, vertical = 15.dp))
+            }
+            if (canAdd) {
+                if (shown.isNotEmpty()) RowDivider()
+                AddTodo(addLabel ?: t.todo.add) { actions.add(it, day) }
+            }
         }
-        var laterOpen by remember { mutableStateOf(false) }
-        if (data.todosLater > 0) LinkButton(t.todo.later(data.todosLater)) { laterOpen = true }
-        if (laterOpen) LaterSheet(model, data.day) { laterOpen = false }
+    }
+    editing?.let { d ->
+        TodoSheet(d, today, links, onSave = { actions.update(d, it) }, onDelete = { actions.remove(d) }, onClose = { editing = null })
     }
 }
 
@@ -430,10 +481,10 @@ private fun SegMini(label: String, on: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TodoRow(d: Todo, today: String, onToggle: () -> Unit) {
+private fun TodoRow(d: Todo, today: String, showCarry: Boolean, onOpen: () -> Unit, onToggle: () -> Unit) {
     val p = LocalPalette.current
     val t = LocalStrings.current
-    val whenLabel = if (!d.recurring) Todos.whenLabel(d.day, today, t) else null
+    val whenLabel = if (showCarry && !d.recurring) Todos.whenLabel(d.day, today, t) else null
     val end = if (d.time != null && d.durationMin != null) Todos.endTime(d.time!!, d.durationMin!!) else null
     val note = listOfNotNull(whenLabel, end?.let(t.todo.until)).joinToString(" · ")
     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).background(Color.Transparent).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -461,7 +512,7 @@ private fun TodoRow(d: Todo, today: String, onToggle: () -> Unit) {
                 ) { if (d.done) StrokeGlyph(Glyph.CHECK, p.accentText, 16.dp, 3f) }
             }
         }
-        Row(Modifier.weight(1f).padding(start = 4.dp, end = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1f).heightIn(min = 52.dp).pressable(onClick = onOpen).padding(start = 4.dp, end = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (d.time != null) Text(d.time!!, style = onest(14, 600, if (d.done) p.muted else p.accent), modifier = Modifier.widthIn(min = 40.dp).padding(end = 10.dp))
             Column(Modifier.weight(1f)) {
                 // Сделанное — серым и зачёркнутым (.todo-list li.done).
@@ -473,13 +524,15 @@ private fun TodoRow(d: Todo, today: String, onToggle: () -> Unit) {
                 )
                 if (note.isNotEmpty() && !d.done) Text(note, style = onest(13, color = p.muted))
             }
+            // Откуда пришло событие: G — Google, A — Apple (.src-mark).
+            d.source?.let { Box(Modifier.padding(start = 10.dp)) { SourceMark(it) } }
         }
     }
 }
 
 /** Строка «+ Дело на сегодня» → поле; Enter добавляет и оставляет поле открытым для следующего дела. */
 @Composable
-private fun AddTodo(onAdd: (String) -> Unit) {
+private fun AddTodo(label: String, onAdd: (String) -> Unit) {
     val p = LocalPalette.current
     val t = LocalStrings.current
     var adding by remember { mutableStateOf(false) }
@@ -498,7 +551,7 @@ private fun AddTodo(onAdd: (String) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             StrokeGlyph(Glyph.PLUS, p.muted, 18.dp, 2.2f)
-            Text(t.todo.add, style = onest(15, 500, p.muted))
+            Text(label, style = onest(15, 500, p.muted))
         }
         return
     }
@@ -524,7 +577,7 @@ private fun AddTodo(onAdd: (String) -> Unit) {
                     }
                     focused = it.isFocused
                 }
-                .semantics { contentDescription = t.todo.add }
+                .semantics { contentDescription = label }
                 .testTag("todoInput"),
         )
     }
