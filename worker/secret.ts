@@ -19,9 +19,17 @@ export async function seal(raw: string, plain: string): Promise<string> {
 
 const b64url = (bytes: Uint8Array) => b64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
+const hmacKey = (raw: string, use: 'sign' | 'verify') => crypto.subtle.importKey('raw', unb64(raw), { name: 'HMAC', hash: 'SHA-256' }, false, [use]);
+
 async function hmac(raw: string, text: string): Promise<string> {
-  const k = await crypto.subtle.importKey('raw', unb64(raw), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  return b64url(new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(`state:${text}`))));
+  return b64url(new Uint8Array(await crypto.subtle.sign('HMAC', await hmacKey(raw, 'sign'), new TextEncoder().encode(`state:${text}`))));
+}
+
+/** Подпись сходится — сравнение за постоянное время (crypto.subtle.verify), а не строкой. */
+async function hmacOk(raw: string, text: string, sig: string): Promise<boolean> {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(sig)) return false;
+  const bytes = Uint8Array.from(atob(sig.replace(/-/g, '+').replace(/_/g, '/') + '='), (ch) => ch.charCodeAt(0));
+  return crypto.subtle.verify('HMAC', await hmacKey(raw, 'verify'), bytes, new TextEncoder().encode(`state:${text}`));
 }
 
 /**
@@ -43,7 +51,7 @@ export async function verifyState(raw: string, state: string): Promise<{ userId:
   if (parts.length !== 3 && !(parts.length === 4 && parts[2] === 'app')) return null;
   const sig = parts.pop()!;
   const [id = '', exp = ''] = parts;
-  if (!id || !exp || !sig || (await hmac(raw, parts.join('.'))) !== sig) return null;
+  if (!id || !exp || !sig || !(await hmacOk(raw, parts.join('.'), sig))) return null;
   const userId = Number(id);
   if (!Number.isSafeInteger(userId) || userId <= 0) return null;
   return { userId, app: parts.length === 3, expired: !(Number(exp) >= Date.now()) };

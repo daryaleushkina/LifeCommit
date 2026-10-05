@@ -76,6 +76,8 @@ describe('state входа Google', () => {
     expect(await verifyState(key, `${id}.${exp}.web.${sig}`)).toBeNull();
     expect(await verifyState(key, 'мусор')).toBeNull();
     expect(await verifyState(key, '')).toBeNull();
+    // Подписан верно, но id не человек Telegram — не пускаем.
+    for (const id of [0, -1, 2 ** 53, 1.5]) expect(await verifyState(key, await signState(key, id))).toBeNull();
   });
 });
 

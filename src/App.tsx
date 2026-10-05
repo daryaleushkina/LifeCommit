@@ -26,8 +26,9 @@ import { DesktopApprove, desktopLoginParam } from './screens/DesktopApprove';
 type Route =
   | { name: 'today' }
   | { name: 'me' }
-  // sheet — сразу открыть «Календари» (вернулись из входа Google по ссылке t.me/…?startapp=calendars).
-  | { name: 'calendar'; sheet?: boolean }
+  // sheet — сразу открыть «Календари» (вернулись из входа Google по ссылке t.me/…?startapp=calendars); googlePending —
+  // код подключения из t.me/…?startapp=gcal_<код>: шторка закончит им подключение (worker/google.ts).
+  | { name: 'calendar'; sheet?: boolean; googlePending?: string }
   | { name: 'pick' }
   | { name: 'detail'; id: number }
   | { name: 'task'; id: number | null; kind?: TaskKind }
@@ -151,6 +152,10 @@ export function App(): ReactNode {
       launched.current = true;
       // Из бота кнопкой web_app start_param нет — приглашение тогда в адресе (?join=<код>).
       if (start_param === 'calendars') setRoute({ name: 'calendar', sheet: true });
+      if (start_param?.startsWith('gcal_')) {
+        const code = start_param.slice(5);
+        setRoute({ name: 'calendar', sheet: true, ...(/^[A-Za-z0-9_-]{43}$/.test(code) && { googlePending: code }) });
+      }
       else if (joinCode) setRoute({ name: 'join', code: joinCode });
       else if (groupId) setRoute({ name: 'group', id: groupId, back: 'groups' });
       else if (friendCode) setRoute({ name: 'friendLink', code: friendCode });
@@ -302,7 +307,7 @@ export function App(): ReactNode {
             section={route.name === 'groups' ? route.section : undefined}
           />
         ) : currentTab === 'calendar' ? (
-          <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} onChanged={() => void refresh()} me={boot.user.id} onOpenGroup={openGroup} />
+          <Calendar today={cache.today.day} openSheet={route.name === 'calendar' && route.sheet} googlePending={route.name === 'calendar' ? route.googlePending : undefined} onChanged={() => void refresh()} me={boot.user.id} onOpenGroup={openGroup} />
         ) : (
           <Today cache={cache} setCache={setCache} me={boot.user.id} onOpenGroup={openGroup} onEdit={(id) => setRoute(id === null ? { name: 'pick' } : { name: 'detail', id })} onArchive={() => setRoute({ name: 'archive' })} onDeleted={() => refresh(true)} />
         )}

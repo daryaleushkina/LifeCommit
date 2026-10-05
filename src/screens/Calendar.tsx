@@ -33,6 +33,8 @@ interface Props {
   onChanged: () => void;
   /** Сразу открыть шторку «Календари». */
   openSheet?: boolean;
+  /** Код подключения Google (вернулись из входа по кнопке) — шторка закончит им подключение. */
+  googlePending?: string;
   /** Мой id — чьи групповые дела и очередь. */
   me: number;
   onOpenGroup: (id: number) => void;
@@ -48,7 +50,7 @@ const keyOf = (mode: Mode, anchor: string) => {
   return [days[0]!, days[days.length - 1]!] as const;
 };
 
-export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup }: Props): ReactNode {
+export function Calendar({ today, onChanged, openSheet = false, googlePending, me, onOpenGroup }: Props): ReactNode {
   const t = useT();
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
@@ -206,6 +208,7 @@ export function Calendar({ today, onChanged, openSheet = false, me, onOpenGroup 
       )}
       {sheet && (
         <CalendarsSheet
+          googlePending={googlePending}
           onClose={() => setSheet(false)}
           onChanged={() => {
             void syncNow();

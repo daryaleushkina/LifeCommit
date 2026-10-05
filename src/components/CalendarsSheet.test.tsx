@@ -17,6 +17,7 @@ vi.mock('../api', async (orig) => ({
     toggleCollection: vi.fn(),
     setDefaultCalendar: vi.fn(),
     disconnectCalendar: vi.fn(),
+    finishGoogle: vi.fn(),
   },
 }));
 const tg = vi.hoisted(() => ({ popup: true, answer: 'off' as string | undefined, show: vi.fn(), open: vi.fn() }));
@@ -297,6 +298,66 @@ describe('Google', () => {
     await expect.poll(() => api.googleUrl).toHaveBeenCalled();
     await expect.element(page.getByRole('button', { name: 'Подключить заново' })).not.toBeInTheDocument();
     await expect.element(page.getByText('Что забирать')).not.toBeInTheDocument();
+  });
+});
+
+// Вернулись из входа Google по кнопке «Вернуться в LifeCommit» (t.me/…?startapp=gcal_<код>): подключение заканчивает
+// мини-апп своим initData — сервер примет код только от того, кто начал вход (worker/google.ts).
+describe('возврат из входа Google с кодом подключения', () => {
+  // Код одноразовый, и шторка помнит, что уже отправила его: у каждого теста свой.
+  const code = (c: string) => c.repeat(43);
+  const open = (pending: string, onChanged = vi.fn()) => renderApp(<CalendarsSheet onClose={vi.fn()} onChanged={onChanged} googlePending={pending} />);
+
+  it('код уходит на сервер один раз — подключено, шторка сразу с выбором календарей', async () => {
+    caches.accounts = [];
+    vi.mocked(api.finishGoogle).mockImplementation(async () => {
+      caches.accounts = [google({ status: 'setup' })];
+      return { account_id: 1, fresh: true };
+    });
+    const onChanged = vi.fn();
+    const r = await open(code('a'), onChanged);
+    await expect.element(page.getByText('Свои календари уже отмечены. Праздники и чужие календари — по желанию.')).toBeVisible();
+    expect(api.finishGoogle).toHaveBeenCalledTimes(1);
+    expect(api.finishGoogle).toHaveBeenCalledWith(code('a'));
+    // Шторку закрыли и открыли снова с тем же адресом — код второй раз не уходит.
+    await r.unmount();
+    await open(code('a'));
+    await expect.element(page.getByText('Свои календари уже отмечены. Праздники и чужие календари — по желанию.')).toBeVisible();
+    expect(api.finishGoogle).toHaveBeenCalledTimes(1);
+    // Событий ещё нет — забирать нечего, пока не выбрали календари.
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it('подключили заново — календари перечитываются (дела могли поменяться)', async () => {
+    caches.accounts = [google({ status: 'auth_failed' })];
+    vi.mocked(api.finishGoogle).mockImplementation(async () => {
+      caches.accounts = [google()];
+      return { account_id: 1, fresh: false };
+    });
+    const onChanged = vi.fn();
+    await open(code('b'), onChanged);
+    await expect.poll(() => onChanged.mock.calls.length).toBe(1);
+    await expect.element(page.getByText('Google больше не пускает: доступ истёк или его отозвали.')).not.toBeInTheDocument();
+  });
+
+  it('код чужой, использован или устарел — «Ссылка устарела», ничего не подключено', async () => {
+    caches.accounts = [];
+    for (const [status, error, c] of [[404, 'pending_not_found', 'c'], [410, 'pending_expired', 'd']] as const) {
+      vi.mocked(api.finishGoogle).mockRejectedValueOnce(new ApiError(status, error));
+      const r = await open(code(c));
+      await expect.element(page.getByText('Ссылка устарела — нажмите «Подключить» ещё раз.')).toBeVisible();
+      await r.unmount();
+    }
+    expect(api.finishGoogle).toHaveBeenCalledTimes(2);
+    expect(caches.accounts).toEqual([]);
+  });
+
+  it('сервер не ответил — «Не достучался до Google», можно снова', async () => {
+    caches.accounts = [];
+    vi.mocked(api.finishGoogle).mockRejectedValueOnce(new ApiError(502, 'internal'));
+    await open(code('e'));
+    await expect.element(page.getByText('Не достучался до Google. Попробуйте ещё раз чуть позже.')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Подключить' }).first()).toBeVisible();
   });
 });
 

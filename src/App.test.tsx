@@ -14,7 +14,7 @@ import { bumpChange } from './useTaskLog';
 
 const m = vi.hoisted(() => ({
   api: {
-    session: vi.fn(), today: vi.fn(), heatmap: vi.fn(), calendars: vi.fn(), calendar: vi.fn(), syncCalendars: vi.fn(), googleUrl: vi.fn(),
+    session: vi.fn(), today: vi.fn(), heatmap: vi.fn(), calendars: vi.fn(), calendar: vi.fn(), syncCalendars: vi.fn(), googleUrl: vi.fn(), finishGoogle: vi.fn(),
     invitation: vi.fn(), join: vi.fn(), group: vi.fn(), groups: vi.fn(), history: vi.fn(), laterTodos: vi.fn(), createTodos: vi.fn(),
     createTasks: vi.fn(), createItem: vi.fn(), createTask: vi.fn(), updateTask: vi.fn(), archiveTask: vi.fn(), restoreTask: vi.fn(),
     deleteTask: vi.fn(), settings: vi.fn(), summary: vi.fn(), log: vi.fn(), checkGroupChat: vi.fn(), markItem: vi.fn(),
@@ -475,6 +475,21 @@ describe('ссылки запуска', () => {
     await boot({ start_param: 'calendars' });
     await expect.element(heading('Календарь')).toBeVisible();
     await expect.element(page.getByRole('dialog', { name: 'Календари' })).toBeVisible();
+  });
+
+  it('startapp=gcal_<код> (вернулись из входа Google по кнопке) — «Календари» открыты, подключение закончено этим кодом', async () => {
+    const code = 'k'.repeat(43);
+    m.api.finishGoogle.mockResolvedValue({ account_id: 1, fresh: true });
+    await boot({ start_param: `gcal_${code}` });
+    await expect.element(heading('Календарь')).toBeVisible();
+    await expect.element(page.getByRole('dialog', { name: 'Календари' })).toBeVisible();
+    await expect.poll(() => m.api.finishGoogle.mock.calls).toEqual([[code]]);
+  });
+
+  it('startapp=gcal_ с испорченным кодом — шторка открыта, на сервер ничего не уходит', async () => {
+    await boot({ start_param: 'gcal_short' });
+    await expect.element(page.getByRole('dialog', { name: 'Календари' })).toBeVisible();
+    expect(m.api.finishGoogle).not.toHaveBeenCalled();
   });
 
   it('startapp=g_<код> — приглашение подтянуто заранее; вступили — экран группы во вкладке «Вместе»', async () => {

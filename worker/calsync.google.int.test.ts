@@ -52,12 +52,14 @@ async function sync(u: TestUser) {
   return u.call('POST', '/calendars/sync');
 }
 
-/** Браузер вернулся из входа Google с кодом. */
+/** Браузер вернулся из входа Google с кодом, человек вернулся в мини-апп по кнопке — подключение тем же человеком. */
 async function callback(u: TestUser) {
   const c = ctx();
   const res = await worker.fetch(new Request(`https://lifecommit.test/google/callback?${new URLSearchParams({ state: await signState(env.CALENDAR_KEY, u.id), code: 'code-1' })}`), env, c as unknown as ExecutionContext);
   await c.settle();
-  return res.status;
+  const pending = /startapp=gcal_([A-Za-z0-9_-]+)/.exec(await res.text())?.[1];
+  if (res.status !== 200 || !pending) return res.status;
+  return (await u.call('POST', '/calendars/google/finish', { pending })).status;
 }
 
 async function callWith(u: TestUser, patch: Partial<Env>, method: string, path: string) {

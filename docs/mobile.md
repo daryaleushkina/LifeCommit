@@ -186,26 +186,40 @@ Telegram принимает своё имя схемы в `redirect_uri` (SDK т
 | GET `/calendar?from&to` | до 62 дней → `{today, todos, groups: GroupDayBlock[]}`; повторы раскрыты сервером, **не отсортировано** (`sortTodos`) | 400 `bad_range` |
 | GET `/calendars` | → `CalendarAccount[]` | |
 | GET `/calendars/google/url?client=app` | → `{url}` — адрес входа Google; `client=app` метит state «вход из приложения» | 400 `bad_client` (любое другое значение `client`), 503 `calendar_unavailable` |
+| POST `/calendars/google/finish` | `{pending}` → `{account_id, fresh}` — подключить Google кодом из возврата (ниже) | 400 `bad_pending`, 404 `pending_not_found`, 410 `pending_expired` |
 | POST `/calendars/apple` | `{login, password}` → 201 | 400 `apple_bad_input`, 401 `apple_auth` (не выход!), 502, 503 |
 | POST `/calendars/:id/confirm`; PATCH `/calendars/:id/collections` `{url, enabled}`; PATCH `/calendars/:id/default` `{url}`; DELETE `/calendars/:provider`; POST `/calendars/sync` | | 404, 400 `unknown_calendar`, `bad_provider` |
 
 **Возврат после входа Google.** Приложение берёт адрес с `?client=app` и открывает его во внешнем окне входа
 (iOS/Mac — `ASWebAuthenticationSession` со схемой `lifecommit`, Android — Custom Tab). Google возвращает браузер на
-`/google/callback`; для state с меткой app сервер отвечает **302 на `lifecommit://calendars?status=<итог>`** (без
-страницы и без токенов в адресе):
+`/google/callback`; **календарь там не подключается**: сервер меняет код Google на токены и кладёт итог «в ожидание»
+под одноразовым кодом (`google_pending`, живёт 15 минут). Для state с меткой app ответ — **302 на
+`lifecommit://calendars?status=<итог>`**, при успехе — **`&pending=<код>`** (43 знака base64url):
 
-| `status` | Что случилось | Что показать |
+| `status` | Что случилось | Что делать |
 | --- | --- | --- |
-| `ok` | Google подключён впервые | шторку «Календари» с его календарями — выбрать, какие забирать (`POST /calendars/:id/confirm`) |
-| `again` | был подключён — подключён снова | шторку «Календари» |
-| `denied` | отказ на экране Google или сняли галочку доступа к событиям | «Доступ не дали» (тексты всех итогов — как на странице возврата, `TEXT` в `worker/google.ts`) |
+| `ok` + `pending` | Google дал доступ | `POST /calendars/google/finish {pending}` своим ключом → `{account_id, fresh}`; `fresh: true` — шторка «Календари» с выбором календарей (`POST /calendars/:id/confirm`), `false` — подключён заново, перечитать дела |
+| `denied` | отказ на экране Google или сняли галочку доступа к событиям | «Доступ не дали» |
 | `expired` | ссылке больше 15 минут или аккаунта уже нет | «Ссылка устарела — нажмите «Подключить» ещё раз» |
-| `failed` | Google или база не ответили | «Не получилось подключить, попробуйте позже» |
+| `failed` | Google или база не ответили (и `ok` без кода) | «Не получилось подключить, попробуйте позже» |
 
-Метка app подписана вместе с id и сроком (`worker/secret.ts`): приписать её чужому state нельзя — такой state
-получает страницу 400 в браузере, а не переход в приложение. Без `client` всё как раньше: страница с кнопкой
-«Вернуться в LifeCommit» → `t.me/…?startapp=calendars`. Тесты — `worker/google.int.test.ts`,
-`worker/calsync.google.int.test.ts`, `worker/gcal.test.ts`.
+`POST /calendars/google/finish`: 400 `bad_pending` (не строка 43 знаков base64url), **404 `pending_not_found`** (чужой,
+использованный или подобранный код — без подсказки, чей), 410 `pending_expired` (дольше 15 минут). Код одноразовый:
+повтор — 404. Тексты итогов — как на странице возврата (`TEXT` в `worker/google.ts`) и `cal.googleLinkExpired`.
+
+**Зачем ожидание (security-review 06.10.2026).** state подписан и привязан к человеку, но не к браузеру (cookie из
+Telegram в браузер не переходят). Раньше чужая ссылка входа, которую жертва открыла и подтвердила на экране Google,
+подключала её календарь к аккаунту автора ссылки. Теперь подключает только тот, кто начал вход, и только кодом, который
+пришёл туда, где дали согласие: у автора чужой ссылки нет кода, у жертвы — его ключа. Ссылку `lifecommit://calendars`
+может открыть кто угодно — приложение только перечитывает календари и шлёт код своим ключом, ничего не доверяя адресу.
+На Android принимать её только пока ждём вход (как `tglogin`).
+
+Метка app подписана вместе с id и сроком (`worker/secret.ts`, сравнение подписи — `crypto.subtle.verify`): приписать её
+чужому state нельзя — такой state получает страницу 400 в браузере, а не переход в приложение. Без `client` — мини-апп:
+страница «Почти готово» с кнопкой «Вернуться в LifeCommit» → `t.me/…?startapp=gcal_<код>`, мини-апп открывает
+«Календари» и заканчивает подключение тем же `finish`. Тесты — `worker/google.int.test.ts`,
+`worker/calsync.google.int.test.ts`, `worker/gcal.test.ts`, `src/components/CalendarsSheet.test.tsx`, `src/App.test.tsx`,
+`e2e/calendar.spec.ts`.
 
 ### Группы
 `GET /groups` → `GroupToday[]`; `POST /groups {title, kind?}`; `GET|PATCH|DELETE /groups/:id`; `POST /groups/:id/chat/check`;

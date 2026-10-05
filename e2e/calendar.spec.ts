@@ -1,4 +1,4 @@
-// Календарь: «День / Месяц», дни вперёд-назад, дело на другой день, список листается.
+// Календарь: «День / Месяц», дни вперёд-назад, дело на другой день, список листается; возврат из входа Google.
 import { expect, goTab, scrollsByFinger, swipeLeft, test } from './fixtures';
 
 test('день и месяц, дело на завтра — добавить и удалить свайпом', async ({ app: page }) => {
@@ -62,4 +62,18 @@ test('место под нижней панелью — элементом, а �
   });
   expect(padding).toBe('0px');
   expect(spacer).toBeGreaterThanOrEqual(bar);
+});
+
+// Возврат из входа Google по кнопке «Вернуться в LifeCommit» (t.me/…?startapp=gcal_<код>): мини-апп заканчивает
+// подключение своим initData. Чужой (по ссылке другого человека), использованный или подобранный код настоящий сервер не
+// принимает — «Ссылка устарела», ничего не подключено. Удачная ветка — в worker/google.int.test.ts и
+// CalendarsSheet.test.tsx: обмен кода с Google на стенде не подменить.
+test('вернулись из входа Google с чужим кодом — «Календари» открыты, «Ссылка устарела»', async ({ app: page, me }) => {
+  const url = new URL(page.url());
+  url.searchParams.set('tgStart', `gcal_${'A'.repeat(43)}`);
+  await page.goto(url.toString());
+  const sheet = page.getByRole('dialog', { name: 'Календари' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText('Ссылка устарела — нажмите «Подключить» ещё раз.')).toBeVisible();
+  expect(await me.api('GET', '/calendars')).toEqual([]);
 });
