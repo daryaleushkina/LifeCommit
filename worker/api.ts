@@ -29,7 +29,7 @@ import { byTelegram, db, type Env } from './env';
 import { MAX_HABITS, MAX_TODOS, transcribe } from './voice';
 import { routeVoice, voiceGroups } from './voiceRoute';
 import { occurrences, parseRRule } from '../shared/rrule';
-import { confirmGoogle, connectApple, deleteRemote, disconnect, moveOwnEvents, pullAccount, pushTodo, retimeCalendars, type AccountRow } from './calsync';
+import { confirmGoogle, connectApple, deleteRemote, disconnect, moveOwnEvents, pullAccount, pushTodo, retimeCalendars, saveGoogle, type AccountRow, type GoogleGrant } from './calsync';
 import { DavError, isAuthError } from './caldav';
 import { authUrl } from './gcal';
 import { signState } from './secret';
@@ -39,7 +39,8 @@ import { toTodayTasks, type ScreenLog, type TaskRow, type TodayRow } from './hab
 import { friends } from './friends';
 import { removeUserFeedbackFiles } from './feedback';
 import { feedbackApi } from './feedbackApi';
-import { desktopApi } from './desktop';
+import { body, desktopApi, tokenHash } from './desktop';
+import { GOOGLE_PENDING_TTL_MS } from './google';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -528,6 +529,25 @@ api.get('/calendars/google/url', async (c) => {
   if (!c.env.CALENDAR_KEY || !c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) throw new HTTPException(503, { message: 'calendar_unavailable' });
   const redirect = `${new URL(c.req.url).origin}/google/callback`;
   return c.json({ url: authUrl(c.env, redirect, await signState(c.env.CALENDAR_KEY, c.get('user').id, undefined, client)) });
+});
+
+// Вход Google закончился (worker/google.ts): итог ждёт под одноразовым кодом, который пришёл туда, где дали согласие
+// (мини-апп — startapp=gcal_<код>, приложение — lifecommit://calendars?pending=<код>). Подключаем, только если код
+// принёс тот же человек, что начал вход: у автора чужой ссылки нет кода, у жертвы — его ключа. Чужой, повторный и
+// подобранный код — 404 (без подсказки, чей он).
+api.post('/calendars/google/finish', async (c) => {
+  const { pending } = await body(c.req);
+  if (typeof pending !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(pending)) throw new HTTPException(400, { message: 'bad_pending' });
+  const sb = c.get('sb');
+  const user = c.get('user');
+  // Одноразовый: забираем удалением — повтор и два запроса наперегонки найдут пусто.
+  const row = must(
+    await sb.from('google_pending').delete().eq('code_hash', await tokenHash(pending)).eq('user_id', user.id).select('secret, login, calendars, created_at').maybeSingle(),
+  ) as (GoogleGrant & { created_at: string }) | null;
+  if (!row) throw new HTTPException(404, { message: 'pending_not_found' });
+  if (Date.now() - Date.parse(row.created_at) > GOOGLE_PENDING_TTL_MS) throw new HTTPException(410, { message: 'pending_expired' });
+  const { account, fresh } = await saveGoogle(sb, user, row);
+  return c.json({ account_id: account.id, fresh });
 });
 
 // Google подключён, человек выбрал календари — забираем события.

@@ -439,15 +439,18 @@ async function connectApple(u: TestUser, s: ICloud) {
   expect(res.status).toBe(201);
   return (await account(u, 'apple'))!;
 }
-/** Вход Google: адрес → «браузер» возвращается с кодом → выбрали календари → «Готово». */
+/** Вход Google: адрес → «браузер» возвращается с кодом → по кнопке назад в мини-апп, подключение кодом → выбрали календари → «Готово». */
 async function connectGoogle(u: TestUser, opts: { enable?: string[]; confirm?: boolean } = {}) {
   const { body } = await u.call('GET', '/calendars/google/url');
   const state = new URL(body.url).searchParams.get('state')!;
   const page = await request(`/google/callback?state=${encodeURIComponent(state)}&code=good-code`);
+  const pending = /startapp=gcal_([A-Za-z0-9_-]+)/.exec(String(page.body))?.[1];
+  const finished = await u.call('POST', '/calendars/google/finish', { pending });
+  expect(finished.status).toBe(200);
   const acc = (await account(u, 'google'))!;
   for (const url of opts.enable ?? []) await u.call('PATCH', `/calendars/${acc.id}/collections`, { url, enabled: true });
   if (opts.confirm !== false) expect((await u.call('POST', `/calendars/${acc.id}/confirm`)).status).toBe(200);
-  return { acc: (await account(u, 'google'))!, page, state };
+  return { acc: (await account(u, 'google'))!, page, state, fresh: finished.body.fresh as boolean };
 }
 
 // ══ Apple ══
@@ -1123,9 +1126,10 @@ describe.skipIf(!ready)('Google: подключение', () => {
     const own = (await u.call('POST', '/todos', { title: 'Позвонить маме', day: addDays(today, 1), time: '15:00', location: 'Дом' })).body.id;
     expect(net.calls).toEqual([]);
 
-    const { acc, page } = await connectGoogle(u, { confirm: false });
+    const { acc, page, fresh: first } = await connectGoogle(u, { confirm: false });
     expect(page.status).toBe(200);
-    expect(page.body).toContain('Google Календарь подключён');
+    expect(page.body).toContain('Почти готово');
+    expect(first).toBe(true);
     expect(acc).toMatchObject({ provider: 'google', login: g.email, status: 'setup', home_url: null, default_url: primary, default_manual: false });
     expect(await open(env.CALENDAR_KEY, acc.secret)).toBe(g.refresh);
     // Свои календари включены, чужие — по выбору; «только занятость» и удалённые не показываем.
@@ -1216,7 +1220,10 @@ describe.skipIf(!ready)('Google: подключение', () => {
     expect((await back(`state=${enState}&error=access_denied`)).body).toContain('Access not granted');
     // Google не сказал, какие доступы дали, — считаем, что все запрошенные.
     g.scope = null;
-    expect((await back(`state=${state}&code=good-code`)).body).toContain('Google Календарь подключён');
+    const page = String((await back(`state=${state}&code=good-code`)).body);
+    expect(page).toContain('Почти готово');
+    const pending = /startapp=gcal_([A-Za-z0-9_-]+)/.exec(page)?.[1];
+    expect((await u.call('POST', '/calendars/google/finish', { pending })).status).toBe(200);
     expect((await account(u, 'google'))!.status).toBe('setup');
   });
 
@@ -1250,8 +1257,8 @@ describe.skipIf(!ready)('Google: подключение', () => {
     expect(g.sent('POST', '/events')).toHaveLength(0);
 
     g.refreshError = null;
-    const { page } = await connectGoogle(u, { confirm: false });
-    expect(page.body).toContain('снова подключён');
+    const { fresh: firstTime } = await connectGoogle(u, { confirm: false });
+    expect(firstTime).toBe(false);
     expect(await account(u, 'google')).toMatchObject({ id: acc.id, status: 'ok', last_error: null });
     expect((await collections(acc.id)).find((c) => c.url === holidays)!.enabled).toBe(true);
 

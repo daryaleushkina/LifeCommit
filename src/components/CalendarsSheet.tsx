@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { openLink, popup } from '@tma.js/sdk-react';
 import { api, ApiError, type CalendarAccount } from '../api';
 import { caches, googleUrlFresh, load as fetchInto } from '../caches';
@@ -18,7 +18,15 @@ interface Props {
   onClose: () => void;
   /** Подключили, отключили или выключили календарь — дела надо перечитать. */
   onChanged: () => void;
+  /** Код подключения Google из t.me/…?startapp=gcal_<код>: вход закончился, подключение заканчиваем здесь. */
+  googlePending?: string;
 }
+
+/**
+ * Код подключения уходит на сервер один раз за жизнь страницы: он одноразовый, а шторку могут закрыть и открыть снова
+ * (или React в разработке смонтирует её дважды) — повтор получил бы «ссылка устарела».
+ */
+const finishing = new Map<string, Promise<{ fresh: boolean }>>();
 
 /**
  * Календари: Google и Apple. Google подключается входом Google в браузере (внутри Telegram он не работает),
@@ -26,7 +34,7 @@ interface Props {
  * основной пароль не просим. Подключённый показывает, когда обновлялся, какие календари забирать
  * и даёт отключить; если календарь перестал пускать — просит подключить заново.
  */
-export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
+export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): ReactNode {
   const t = useT();
   // Подключённые календари знаем с запуска — шторка сразу открывается такой, какая есть, без перескоков.
   const [accounts, setAccountsState] = useState<CalendarAccount[] | null>(caches.accounts);
@@ -47,6 +55,45 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
     caches.googleUrl = null;
     return fetchInto.googleUrl().then(setGoogleUrl);
   };
+  // Вернулись из входа Google с кодом — заканчиваем подключение: сервер примет код только от того, кто начал вход.
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const onChangedRef = useRef(onChanged);
+  useEffect(() => {
+    onChangedRef.current = onChanged;
+  });
+  const notified = useRef(false);
+  useEffect(() => {
+    if (!googlePending) return;
+    let alive = true;
+    let run = finishing.get(googlePending);
+    if (!run) {
+      run = api.finishGoogle(googlePending);
+      finishing.set(googlePending, run);
+    }
+    run.then(
+      ({ fresh }) => {
+        if (!alive) return;
+        fetchInto.accounts().then(
+          (list) => alive && setAccountsState(list),
+          (e: unknown) => console.warn('calendars reload failed', e),
+        );
+        // Подключили заново — события могли поменяться; новое ждёт выбора календарей, забирать пока нечего.
+        if (!fresh && !notified.current) {
+          notified.current = true;
+          onChangedRef.current();
+        }
+      },
+      (e: unknown) => {
+        if (!alive) return;
+        console.warn('google finish failed', e);
+        setFinishError(e instanceof ApiError && (e.code === 'pending_not_found' || e.code === 'pending_expired') ? t.cal.googleLinkExpired : t.cal.errGoogle);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [googlePending, t]);
+
   useEffect(() => {
     void load();
     if (googleUrlFresh() === null) void loadUrl();
@@ -93,6 +140,11 @@ export function CalendarsSheet({ onClose, onChanged }: Props): ReactNode {
       {failed && (
         <p className="error" onClick={() => setFailed(false)}>
           {t.error}
+        </p>
+      )}
+      {finishError && (
+        <p className="error" onClick={() => setFinishError(null)}>
+          {finishError}
         </p>
       )}
       <div className={`provider${!google && googleUrl === '' ? ' off' : ''}`}>

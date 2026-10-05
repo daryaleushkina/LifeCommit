@@ -200,13 +200,27 @@ const googleCollection = (accountId: number, c: GoogleCalendar) => ({ account_id
  * Первое подключение — статус setup: события забираем после того, как человек выберет календари.
  * Подключение заново (доступ истёк) — выбор прежний, сразу синхронизируем.
  */
-export async function connectGoogle(env: Env, sb: SupabaseClient, user: UserLite, code: string, redirectUri: string): Promise<{ account: AccountRow; fresh: boolean }> {
+/** Вход Google обменян на токены: зашифрованный refresh token, почта и календари — то, что ждёт подключения. */
+export interface GoogleGrant {
+  secret: string;
+  login: string;
+  calendars: GoogleCalendar[];
+}
+
+/** Возврат из Google: код → токены, права, календари. В базу не пишет — подключение ждёт подтверждения (google.ts). */
+export async function exchangeGoogle(env: Env, code: string, redirectUri: string): Promise<GoogleGrant> {
   const tokens = await exchangeCode(env, code, redirectUri);
   // На экране согласия Google галочки можно снять — без доступа к событиям подключать нечего.
   const granted = tokens.scope?.split(' ') ?? GOOGLE_SCOPES;
   if (!GOOGLE_SCOPES.every((s) => granted.includes(s))) throw new GoogleError(403, 'scope_denied');
   if (!tokens.refresh_token) throw new GoogleError(400, 'no_refresh_token');
   const calendars = await listCalendars(tokens.access_token);
+  return { secret: await seal(env.CALENDAR_KEY, tokens.refresh_token), login: loginOf(calendars) || 'Google', calendars };
+}
+
+/** Подключить Google тем, что выдал вход: новое — «setup» (человек выберет календари), было — снова «ok». */
+export async function saveGoogle(sb: SupabaseClient, user: UserLite, grant: GoogleGrant): Promise<{ account: AccountRow; fresh: boolean }> {
+  const { calendars } = grant;
   const before = check(await sb.from('calendar_accounts').select('id, status').eq('user_id', user.id).eq('provider', 'google').maybeSingle()) as { id: number; status: AccountRow['status'] } | null;
   const fresh = !before || before.status === 'setup';
   const primary = calendars.find((c) => c.primary) ?? calendars.find((c) => c.writable);
@@ -217,8 +231,8 @@ export async function connectGoogle(env: Env, sb: SupabaseClient, user: UserLite
         {
           user_id: user.id,
           provider: 'google',
-          login: loginOf(calendars) || 'Google',
-          secret: await seal(env.CALENDAR_KEY, tokens.refresh_token),
+          login: grant.login,
+          secret: grant.secret,
           home_url: null,
           status: fresh ? 'setup' : 'ok',
           last_error: null,
