@@ -884,8 +884,10 @@ api.post('/write-access', async (c) => {
 api.delete('/account', async (c) => {
   // Со связанного аккаунта удалить общего пользователя нельзя — только с основного.
   if (c.get('user').id !== c.get('tgUser').id) throw new HTTPException(403, { message: 'linked_account' });
-  // И только из Telegram: ключ компьютера живёт долго, необратимое ему не доверяем.
-  if (c.get('desktop')) throw new HTTPException(403, { message: 'telegram_only' });
+  // Из Telegram или из приложения на телефоне (решение владелицы 06.10.2026: App Store и Google Play требуют удаления
+  // внутри приложения, подтверждение — одним окном). Ключ компьютера живёт долго — необратимое ему не доверяем.
+  const desktop = c.get('desktop');
+  if (desktop && desktop.device !== 'ios' && desktop.device !== 'android') throw new HTTPException(403, { message: 'telegram_only' });
   // Свои группы — дальше участникам (или в архив), иначе они остаются без владельца и ломаются.
   const sb = c.get('sb');
   // Скриншоты жалоб: строки уйдут каскадом вместе с человеком, файлы в хранилище — нет. Первым шагом: если хранилище

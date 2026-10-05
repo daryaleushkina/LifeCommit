@@ -400,6 +400,34 @@ describe.skipIf(!ready)('вход через Telegram', () => {
   });
 });
 
+// Удаление аккаунта из нативного приложения (решение владелицы 06.10.2026: «просто подтверждением» — одно окно «Удалить
+// навсегда?», без повторного входа Telegram). App Store (5.1.1(v)) и Google Play требуют удаления внутри приложения.
+// Ключ компьютера (mac, web) по-прежнему не удаляет — worker/desktop.int.test.ts.
+describe.skipIf(!ready)('вход через Telegram: удаление аккаунта с телефона', () => {
+  for (const device of ['ios', 'android'] as const) {
+    it(`${device}: ключом телефона аккаунт удаляется — данные и все ключи человека пропадают`, async () => {
+      const id = freshId();
+      madeHere.push(id);
+      const phone = (await signIn({ id_token: await idToken({ id }), device })).body.token as string;
+      const other = (await signIn({ id_token: await idToken({ id, jti: 'second' }), device: 'mac' })).body.token as string;
+      expect((await asPhone(phone, 'POST', '/tasks', { title: 'Читать', kind: 'check', target: 1 })).status).toBe(201);
+      expect(await asPhone(phone, 'DELETE', '/account')).toEqual({ status: 200, body: { ok: true } });
+      expect((await sb.from('users').select('id').eq('id', id)).data).toEqual([]);
+      expect((await sb.from('desktop_sessions').select('id').eq('user_id', id)).data).toEqual([]);
+      expect((await asPhone(phone, 'GET', '/today')).status).toBe(401);
+      expect((await asPhone(other, 'GET', '/today')).status).toBe(401);
+    });
+  }
+
+  it('ключ компьютера по-прежнему не удаляет: 403 telegram_only, аккаунт цел', async () => {
+    const id = freshId();
+    madeHere.push(id);
+    const mac = (await signIn({ id_token: await idToken({ id }), device: 'mac' })).body.token as string;
+    expect(await asPhone(mac, 'DELETE', '/account')).toEqual({ status: 403, body: { error: 'telegram_only' } });
+    expect((await sb.from('users').select('id').eq('id', id)).data).toEqual([{ id }]);
+  });
+});
+
 describe.skipIf(!ready)('вход через Telegram: ключи Telegram со временем', () => {
   afterEach(() => {
     vi.useRealTimers();
