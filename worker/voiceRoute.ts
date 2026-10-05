@@ -192,6 +192,9 @@ const labelKey = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/[^
 export function sortAnswer(raw: unknown, listed: { group: VoiceGroup; label: string }[], today: string, me: number, said: string): Omit<RoutedVoice, 'by'> {
   const items = (raw as { group_items?: unknown })?.group_items;
   const byGroup = listed.map(() => [] as unknown[]);
+  // Где группа впервые встретилась в ответе: в таком порядке и показываем — как человек сказал, а не как лежат в базе.
+  const firstSeen = listed.map(() => Infinity);
+  let seenGroups = 0;
   const strays: unknown[] = [];
   for (const item of Array.isArray(items) ? items : []) {
     const label = (item as { group?: unknown })?.group;
@@ -200,8 +203,10 @@ export function sortAnswer(raw: unknown, listed: { group: VoiceGroup; label: str
     const loose = key ? listed.flatMap((l, j) => (labelKey(l.label) === key ? [j] : [])) : [];
     const i = listed.findIndex((l) => l.label === label);
     const at = i >= 0 ? i : loose.length === 1 ? loose[0]! : -1;
-    if (at >= 0) byGroup[at]!.push(item);
-    else strays.push(item);
+    if (at >= 0) {
+      byGroup[at]!.push(item);
+      if (firstSeen[at] === Infinity) firstSeen[at] = seenGroups++;
+    } else strays.push(item);
   }
   if (strays.length) console.warn('voice: group not in the list', strays.map((s) => (s as { group?: unknown })?.group));
   const groups = listed
@@ -213,7 +218,10 @@ export function sortAnswer(raw: unknown, listed: { group: VoiceGroup; label: str
         names: d.assignees.map((id) => (id === me ? '' : (group.members.find((m) => m.id === id)?.name ?? '…'))),
       })),
     }))
-    .filter((g) => g.items.length > 0);
+    .map((g, i) => ({ g, seen: firstSeen[i]! }))
+    .filter(({ g }) => g.items.length > 0)
+    .sort((a, b) => a.seen - b.seen)
+    .map(({ g }) => g);
   const strayTodos = toTodoInputs(
     {
       todos: strays.map((s) => {
@@ -233,7 +241,7 @@ function must<T>(res: { data: T | null; error: { message: string } | null }): T 
 
 /** Группы человека с участниками — для разбора. База не ответила — ошибка, а не «групп нет»: иначе всё молча ушло бы себе. */
 export async function voiceGroups(sb: SupabaseClient, userId: number): Promise<VoiceGroup[]> {
-  const mine = must(await sb.from('group_members').select('group_id, groups!inner(id, title, archived_at)').eq('user_id', userId).is('groups.archived_at', null)) as unknown as
+  const mine = must(await sb.from('group_members').select('group_id, groups!inner(id, title, archived_at)').eq('user_id', userId).is('groups.archived_at', null).order('group_id')) as unknown as
     | { group_id: number; groups: { id: number; title: string } }[]
     | null;
   if (!mine?.length) return [];
