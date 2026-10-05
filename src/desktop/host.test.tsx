@@ -137,6 +137,24 @@ describe('подтверждения', () => {
     expect(top().inert).toBe(false);
   });
 
+  it('подтверждение из шторки: шторка под ним (она вне #root, порталом в body) тоже недоступна с клавиатуры', async () => {
+    const sheet = document.createElement('div');
+    sheet.className = 'sheet-backdrop';
+    const already = document.createElement('div');
+    already.inert = true;
+    document.body.append(sheet, already);
+    const answer = popup.show({ message: 'Отключить календарь?', buttons: [{ id: 'off', type: 'destructive', text: 'Отключить' }, { type: 'cancel' }] });
+    await expect.element(page.getByRole('alertdialog')).toBeVisible();
+    expect(sheet.inert).toBe(true);
+    expect(document.querySelector<HTMLElement>('.host-popup')!.inert).toBe(false);
+    await page.getByRole('button', { name: 'Отмена' }).click();
+    await answer;
+    expect(sheet.inert).toBe(false);
+    expect(already.inert).toBe(true); // что было недоступно до подтверждения, таким и осталось
+    sheet.remove();
+    already.remove();
+  });
+
   it('«назад» при открытом подтверждении (⌘[ в заголовке окна) закрывает подтверждение, а не экран под ним', async () => {
     const onBack = vi.fn();
     const off = backButton.onClick(onBack);
@@ -207,6 +225,16 @@ describe('наружу', () => {
       ['https://lifecommit.app/privacy/', '_blank', 'noopener'],
       ['https://t.me/tribute/app?startapp=dRk2', '_blank', 'noopener'],
     ]);
+  });
+
+  it('наружу — только веб, Telegram и почта: javascript: и чужие схемы не открываются', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    openLink('javascript:alert(document.domain)');
+    openLink('file:///etc/passwd');
+    openLink('mailto:hi@lifecommit.app');
+    expect(open.mock.calls).toEqual([['mailto:hi@lifecommit.app', '_blank', 'noopener']]);
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 
   it('разрешить боту писать — только в Telegram: открываем чат с ботом, ответ «не разрешили»', async () => {

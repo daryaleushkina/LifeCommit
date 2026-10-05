@@ -14,6 +14,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
   private let strings: Strings
   private let webView: WKWebView
   private var backVisible = false
+  /** Когда падал процесс страницы — чтобы не перезагружать по кругу. */
+  private var crashes: [Date] = []
   private weak var backItem: NSToolbarItem?
 
   init(url: URL, strings: Strings) {
@@ -174,10 +176,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     offline(error)
   }
 
-  // Процесс страницы упал (например, не хватило памяти) — не оставлять белое окно, а загрузить заново.
+  // Процесс страницы упал (например, не хватило памяти) — не оставлять белое окно, а загрузить заново. Падает на каждой
+  // загрузке — не мигать бесконечно: после двух падений за минуту сказать и предложить «Попробовать ещё раз».
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-    NSLog("LifeCommit: web content process terminated, reloading")
-    reload(nil)
+    let now = Date()
+    crashes = crashes.filter { now.timeIntervalSince($0) < 60 } + [now]
+    NSLog("LifeCommit: web content process terminated (\(crashes.count) in 60 s)")
+    if crashes.count <= 2 { reload(nil) } else { offline(URLError(.cannotLoadFromNetwork)) }
   }
 
   /// Не загрузилось (нет интернета) — сказать и предложить ещё раз, а не оставлять пустое окно.

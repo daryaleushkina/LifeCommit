@@ -111,7 +111,8 @@ export const api = {
   shareChat: (fileId: string, caption: string) => call<{ prepared_id?: string; sent?: boolean }>('POST', '/share/chat', { file_id: fileId, caption }),
   // Вход на компьютере (worker/desktop.ts): начать и забрать ключ — без подписи; подтвердить — из Telegram.
   desktopLogin: (device: 'mac' | 'web') => call<{ secret: string; code: string; link: string }>('POST', '/desktop/login', { device }),
-  desktopPoll: (secret: string) => call<{ status: 'pending' } | { status: 'ok'; token: string }>('POST', '/desktop/login/poll', { secret }),
+  /** claimed — ключ по этому входу уже выдан (ответ с ним потерялся): начать вход заново. */
+  desktopPoll: (secret: string) => call<{ status: 'pending' | 'claimed' } | { status: 'ok'; token: string }>('POST', '/desktop/login/poll', { secret }),
   desktopApprove: (ticket: string, device: 'mac' | 'web') => call<{ ok: true }>('POST', '/desktop/approve', { ticket, device }),
   desktopSessions: () => call<DesktopSession[]>('GET', '/desktop/sessions'),
   logoutEverywhere: () => call<{ ok: true }>('DELETE', '/desktop/sessions'),
