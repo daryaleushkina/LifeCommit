@@ -357,14 +357,14 @@ describe('«Сообщить о проблеме»', () => {
 describe('компьютеры (вход на Mac и в браузере)', () => {
   const mac = { id: 2, device: 'mac', created_at: '2026-10-05T09:00:00Z', last_used_at: '2026-10-05T09:00:00Z', current: false };
 
-  it('в Telegram: не входили на компьютере — строки нет; входили — «Компьютеры» с числом', async () => {
+  it('в Telegram: не входили на компьютере — строки нет; входили — «Устройства» с числом', async () => {
     await setup();
     await expect.element(page.getByText('Тема')).toBeVisible();
-    await expect.element(page.getByRole('button', { name: /Компьютеры/ })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /Устройства/ })).not.toBeInTheDocument();
     m.api.desktopSessions.mockResolvedValue([mac, { ...mac, id: 3, device: 'web' }]);
     await setup();
-    await expect.element(page.getByRole('button', { name: /Компьютеры\s*2/ })).toBeVisible();
-    await expect.element(page.getByRole('button', { name: 'Выйти на этом компьютере' })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /Устройства\s*2/ })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Выйти на этом устройстве' })).not.toBeInTheDocument();
   });
 
   it('«Выйти везде»: «Отмена» — ничего; подтвердили — сервер выходит, строка пропадает; не вышло — ошибка', async () => {
@@ -372,10 +372,10 @@ describe('компьютеры (вход на Mac и в браузере)', () =
     m.tg.popup = true;
     m.tg.answer = null;
     await setup();
-    const row = page.getByRole('button', { name: /Компьютеры/ });
+    const row = page.getByRole('button', { name: /Устройства/ });
     await row.click();
     await expect.poll(() => m.tg.popups.length).toBe(1);
-    expect(m.tg.popups[0]).toMatchObject({ message: 'Выйти из LifeCommit на всех компьютерах?', buttons: [{ id: 'out', type: 'destructive', text: 'Выйти везде' }, { type: 'cancel' }] });
+    expect(m.tg.popups[0]).toMatchObject({ message: 'Выйти из LifeCommit на всех устройствах?', buttons: [{ id: 'out', type: 'destructive', text: 'Выйти везде' }, { type: 'cancel' }] });
     expect(m.api.logoutEverywhere).not.toHaveBeenCalled();
 
     m.tg.answer = 'out';
@@ -395,14 +395,14 @@ describe('компьютеры (вход на Mac и в браузере)', () =
     await setup();
     await expect.poll(() => warn.mock.calls.length).toBe(1);
     expect(warn).toHaveBeenCalledWith('desktop sessions failed', expect.any(Error));
-    await expect.element(page.getByRole('button', { name: /Компьютеры/ })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /Устройства/ })).not.toBeInTheDocument();
     warn.mockRestore();
   });
 
   it('без подтверждений Telegram «Компьютеры» ничего не делает', async () => {
     m.api.desktopSessions.mockResolvedValue([mac]);
     await setup();
-    await page.getByRole('button', { name: /Компьютеры/ }).click();
+    await page.getByRole('button', { name: /Устройства/ }).click();
     expect(m.api.logoutEverywhere).not.toHaveBeenCalled();
   });
 
@@ -411,15 +411,15 @@ describe('компьютеры (вход на Mac и в браузере)', () =
     m.tg.popup = true;
     m.tg.answer = null;
     await setup();
-    const out = page.getByRole('button', { name: 'Выйти на этом компьютере' });
+    const out = page.getByRole('button', { name: 'Выйти на этом устройстве' });
     // удалить аккаунт — только из Telegram
     await expect.element(page.getByRole('button', { name: 'Удалить аккаунт' })).not.toBeInTheDocument();
     await out.click();
     await expect.poll(() => m.tg.popups.length).toBe(1);
-    expect(m.tg.popups[0]).toMatchObject({ message: 'Выйти из LifeCommit на этом компьютере?' });
+    expect(m.tg.popups[0]).toMatchObject({ message: 'Выйти из LifeCommit на этом устройстве?' });
     expect(m.api.logout).not.toHaveBeenCalled();
     expect(m.api.desktopSessions).not.toHaveBeenCalled();
-    await expect.element(page.getByRole('button', { name: /Компьютеры/ })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /Устройства/ })).not.toBeInTheDocument();
 
     m.tg.answer = 'out';
     m.api.logout.mockRejectedValueOnce(new Error('offline'));
@@ -434,7 +434,7 @@ describe('компьютеры (вход на Mac и в браузере)', () =
   it('на компьютере без подтверждений «Выйти» ничего не делает', async () => {
     m.desk.desktop = true;
     await setup();
-    await page.getByRole('button', { name: 'Выйти на этом компьютере' }).click();
+    await page.getByRole('button', { name: 'Выйти на этом устройстве' }).click();
     expect(m.api.logout).not.toHaveBeenCalled();
   });
 });

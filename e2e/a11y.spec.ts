@@ -26,7 +26,7 @@ const screens: [string, (page: import('@playwright/test').Page) => Promise<void>
   ['«Войти на Mac?»', async (p) => {
     const { link } = (await (await p.request.post('/api/desktop/login', { data: { device: 'mac' } })).json()) as { link: string };
     const url = new URL(p.url());
-    url.searchParams.set('tgStart', new URL(link).searchParams.get('startapp')!);
+    url.searchParams.set('tgStart', new URL(link).searchParams.get('start')!);
     await p.goto(url.toString());
     await expect(p.getByRole('heading', { name: 'Войти на Mac?' })).toBeVisible();
   }],

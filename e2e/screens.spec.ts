@@ -161,7 +161,7 @@ test('друзья: «Что показать», список, заявки, э�
 test('вход на компьютере: «Войти на Mac?» и «Готово»', async ({ app: page, request }) => {
   const { link } = (await (await request.post('/api/desktop/login', { data: { device: 'mac' } })).json()) as { link: string };
   const url = new URL(page.url());
-  url.searchParams.set('tgStart', new URL(link).searchParams.get('startapp')!);
+  url.searchParams.set('tgStart', new URL(link).searchParams.get('start')!);
   await page.goto(url.toString());
   await expect(page.getByRole('heading', { name: 'Войти на Mac?' })).toBeVisible();
   await checkScreen(page, 'desktop-approve');

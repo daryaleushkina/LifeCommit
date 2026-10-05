@@ -45,7 +45,8 @@ async function signIn(page: Page, me: Me, onWaiting?: () => Promise<void>) {
   const { ticket } = (await (await started).json()) as { ticket: string };
   await expect(page.getByRole('heading', { name: 'Подтверди вход в Telegram' })).toBeVisible();
   await onWaiting?.();
-  expect(await opened(page)).toEqual([`https://t.me/LifeCommit_bot?startapp=web_${ticket}`]);
+  // Ссылка — в чат с ботом: там «Войти» прямо под сообщением (подтверждение кнопкой — worker/desktop.int.test.ts).
+  expect(await opened(page)).toEqual([`https://t.me/LifeCommit_bot?start=web_${ticket}`]);
   await me.api('POST', '/desktop/approve', { ticket, device: 'web' });
   // Новичок без привычек видит «Чего я хочу?» — пропускаем, как в Telegram.
   const skip = page.getByRole('button', { name: 'Пропустить' });
@@ -180,7 +181,7 @@ test('«Выйти на этом компьютере» — снова экра�
   expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
   expect((await me.api<{ device: string }[]>('GET', '/desktop/sessions')).map((s) => s.device)).toEqual(['web']);
   await goTab(page, 'Я');
-  await page.getByRole('button', { name: 'Выйти на этом компьютере' }).click();
+  await page.getByRole('button', { name: 'Выйти на этом устройстве' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Выйти' }).click();
   await expect(signInButton(page)).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('lc-desktop-token'))).toBeNull();

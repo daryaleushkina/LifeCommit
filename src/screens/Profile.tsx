@@ -57,7 +57,7 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
   const [blockedOpen, setBlockedOpen] = useState(false);
   // Сервер не разблокировал — человек возвращается в список, в шторке строка ошибки.
   const [unblockError, setUnblockError] = useState(false);
-  // Компьютеры, где вошли (приложение для Mac, браузер): строка видна в Telegram, только если такие есть.
+  // Устройства, где вошли (приложение для Mac, браузер): строка видна в Telegram, только если такие есть.
   const desktop = isDesktop();
   const [computers, setComputers] = useState<DesktopSession[]>([]);
   useEffect(() => {
