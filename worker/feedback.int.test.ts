@@ -3,7 +3,7 @@
 // Всё, что пишет в feedback, — в этом файле: тесты внутри файла идут по очереди, и счёт «за сутки на проект» не
 // гуляет от соседних файлов, которые vitest гоняет параллельно.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { feedbackCleanup } from './feedback';
+import { FEEDBACK, feedbackCleanup } from './feedback';
 import { ai, botUpdate, cronTick, dbReady, env, request, sb, tg, user, type TestUser, type TgCall } from './test/harness';
 
 const ready = await dbReady();
@@ -99,12 +99,15 @@ describe.skipIf(!ready)('жалобы: приём в базе', () => {
     expect((await submit(c.id, '', { attachments: [{ kind: 'tg_photo', file_id: 'f2' }] })).result).toBe('ok');
   });
 
+  // Локальная база общая: параллельные файлы и чужие хуки в соседних worktree добавляют и удаляют жалобы, поэтому
+  // тест не опирается на сегодняшний счёт (05.10.2026 «счёт + 1» мигал). Своя жалоба a — строка, которую никто не тронет.
   it('потолок проекта за сутки — общий на всех', async () => {
-    const before = (await sb.from('feedback').select('id', { count: 'exact', head: true }).gte('created_at', new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString())).count ?? 0;
     const a = await user();
     const b = await user();
-    expect((await submit(a.id, 'Первая', { project: before + 1 })).result).toBe('ok');
-    expect(await submit(b.id, 'Вторая', { project: before + 1 })).toEqual({ result: 'project_limit' });
+    expect((await submit(a.id, 'Первая', { project: 1_000_000 })).result).toBe('ok');
+    // У b своих жалоб нет, но потолок считает всех: жалоба a уже есть, при потолке 1 — отказ.
+    expect(await submit(b.id, 'Вторая', { project: 1 })).toEqual({ result: 'project_limit' });
+    expect((await submit(b.id, 'Вторая', { project: 1_000_000 })).result).toBe('ok');
   });
 
   it('одновременные отправки не проходят лимит вдвоём', async () => {
@@ -272,16 +275,21 @@ describe.skipIf(!ready)('POST /api/feedback', () => {
     expect(toOwner('sendPhoto')).toHaveLength(1);
   });
 
+  // Раньше тест забивал общую базу до 200 жалоб за сегодня — и пока заполнитель лежал, параллельные прогоны
+  // (другие файлы, чужие хуки) получали «потолок проекта» (05.10.2026). Теперь потолок на время теста — 1,
+  // а «сегодня уже есть жалоба» обеспечивает своя жалоба другого человека.
   it('потолок проекта за сутки — 429 feedback_busy', async () => {
-    const filler = await user();
-    const since = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
-    const today = (await sb.from('feedback').select('id', { count: 'exact', head: true }).gte('created_at', since)).count ?? 0;
-    const rows = Array.from({ length: Math.max(0, 200 - today) }, (_, i) => ({ user_id: filler.id, source: 'bot', text: `Заполнитель ${i}` }));
-    expect((await sb.from('feedback').insert(rows)).error).toBeNull();
-    const u = await user();
-    expect(await post(u, form({ text: 'Ещё одна' }))).toEqual({ status: 429, body: { error: 'feedback_busy' } });
-    // Заполнитель — прочь сразу, а не в afterEach: дальше в файле жалобы снова должны проходить.
-    expect((await sb.from('feedback').delete().eq('user_id', filler.id)).error).toBeNull();
+    const other = await user();
+    expect((await post(other, form({ text: 'Чужая' }))).status).toBe(200);
+    const limits = FEEDBACK as { projectDay: number };
+    const cap = limits.projectDay;
+    limits.projectDay = 1;
+    try {
+      const u = await user();
+      expect(await post(u, form({ text: 'Ещё одна' }))).toEqual({ status: 429, body: { error: 'feedback_busy' } });
+    } finally {
+      limits.projectDay = cap;
+    }
   });
 
   it('хранилище не приняло файл — жалобы нет, загруженное убрано, 502 upload_failed (человек повторит)', async () => {
