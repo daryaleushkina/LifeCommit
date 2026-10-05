@@ -51,8 +51,8 @@ public extension TodayResponse {
 
     var notDue: [TodayTask] { tasks.filter { !$0.due } }
 
-    /// Пусто совсем — первый экран «Чего я хочу?».
-    var isEmpty: Bool { tasks.isEmpty && archived.isEmpty && todos.isEmpty && todosLater == 0 }
+    /// Пусто совсем — первый экран «Чего я хочу?». Группы считаются (App.tsx): у человека только в группах — «Сегодня».
+    var isEmpty: Bool { tasks.isEmpty && archived.isEmpty && todos.isEmpty && todosLater == 0 && groups.isEmpty }
 
     var canAddTask: Bool { limits.maxTasks.map { limits.active < $0 } ?? true }
 }

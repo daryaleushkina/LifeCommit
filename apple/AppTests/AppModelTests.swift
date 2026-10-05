@@ -153,6 +153,103 @@ struct AppModelTests {
     }
 }
 
+/// Сервер отказал или связи нет — экран возвращается как был, сверху плашка «Что-то пошло не так» (CLAUDE.md, как
+/// e2e/habits.spec.ts мини-аппа); ключ больше не пускает — на вход.
+@MainActor
+@Suite("Модель: отказы сервера", .timeLimit(.minutes(1)))
+struct AppModelFailureTests {
+    func model(_ server: FakeServer) -> AppModel {
+        let m = AppModel(api: server.api, tokens: MemoryTokenStore("key"))
+        m.showForTests(user: server.user, today: server.today)
+        return m
+    }
+
+    @Test("отметка не дошла — откат и плашка")
+    func logRollsBack() async {
+        let server = FakeServer(today: AppModelTests.today())
+        let m = model(server)
+        server.fail("PUT logs")
+        await m.log(m.today.tasks[1], value: 8, status: nil)
+        #expect(m.today.tasks[1].value == 0)
+        #expect(!m.today.tasks[1].logged)
+        #expect(m.banner == m.strings.error)
+    }
+
+    @Test("отметка задним числом без связи — история как была (не «отмечено»), плашка")
+    func markDayRollsBackOffline() async {
+        let server = FakeServer(today: AppModelTests.today())
+        let m = model(server)
+        let before = TaskHistory(start: "2026-09-20", goals: [HistoryGoal(effectiveFrom: "2026-09-20", target: 1)], logs: [HistoryLog(day: "2026-10-01", value: 1)])
+        m.setHistoryForTests(1, before)
+        server.fail("PUT logs", status: 0)
+        server.fail("GET tasks/1/history", status: 0)
+        await m.markDay(m.today.tasks[0], day: "2026-10-04", yes: true)
+        #expect(m.histories[1] == before)
+        #expect(m.banner == m.strings.error)
+    }
+
+    @Test("отметка задним числом не дошла, но связь есть — история перечитана с сервера")
+    func markDayReloadsHistory() async {
+        let server = FakeServer(today: AppModelTests.today())
+        let m = model(server)
+        let fresh = TaskHistory(start: "2026-09-20", goals: [], logs: [HistoryLog(day: "2026-09-30", value: 1)])
+        server.histories.withLock { $0[1] = fresh }
+        server.fail("PUT logs")
+        await m.markDay(m.today.tasks[0], day: "2026-10-04", yes: true)
+        #expect(m.histories[1] == fresh)
+        #expect(m.banner == m.strings.error)
+    }
+
+    @Test("дело не отметилось — галочка снята обратно, плашка")
+    func toggleRollsBack() async {
+        let todo = Todo(id: 5, title: "Купить хлеб", day: AppModelTests.day)
+        let server = FakeServer(today: AppModelTests.today(todos: [todo]))
+        let m = model(server)
+        server.fail("PATCH todos/5")
+        await m.toggle(todo)
+        #expect(m.today.todos.first?.done == false)
+        #expect(m.banner == m.strings.error)
+    }
+
+    @Test("дело не добавилось — временной строки нет, плашка")
+    func addTodoRollsBack() async {
+        let server = FakeServer(today: AppModelTests.today())
+        let m = model(server)
+        server.fail("POST todos")
+        await m.addTodo("Купить хлеб")
+        #expect(m.today.todos.isEmpty)
+        #expect(m.banner == m.strings.error)
+    }
+
+    @Test("удаление не прошло — экран перечитан с сервера (строка вернулась), «Что-то пошло не так» поверх экрана")
+    func removalFails() async {
+        let todo = Todo(id: 5, title: "Купить хлеб", day: AppModelTests.day)
+        let server = FakeServer(today: AppModelTests.today(todos: [todo]))
+        let m = model(server)
+        // Пока строка висела под «Вернуть», с другого устройства добавили дело — перечитанный экран его покажет.
+        server.state.withLock { $0.todos.append(Todo(id: 6, title: "Позвонить маме", day: AppModelTests.day)) }
+        server.fail("DELETE todos/5")
+        m.removeTodo(todo)
+        await m.flushRemoval()?.value
+        #expect(m.removalFailed)
+        #expect(!m.isRemoved("todo:5"))
+        #expect(m.today.todos.map(\.id) == [5, 6])
+    }
+
+    @Test("ключ больше не пускает (401 bad_session) — ключ забыт, экран входа")
+    func signedOut() async throws {
+        let server = FakeServer(today: AppModelTests.today())
+        let tokens = MemoryTokenStore("key")
+        let m = AppModel(api: server.api, tokens: tokens)
+        m.showForTests(user: server.user, today: server.today)
+        server.fail("PUT logs", status: 401, code: "bad_session")
+        await m.log(m.today.tasks[0], value: 1, status: nil)
+        #expect(m.phase == .signedOut)
+        #expect(try tokens.load() == nil)
+        #expect(m.today.tasks.isEmpty)
+    }
+}
+
 @Suite("Адрес сервера")
 struct ConfigTests {
     @Test("подмена адреса из настроек — только в сборке для разработки: в сборке для людей ключ уходит лишь на прод")

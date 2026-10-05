@@ -45,6 +45,10 @@ final class FakeServer: Sendable {
     private let holds = Mutex<[String: (gate: Gate, left: Int)]>([:])
     private let watchers = Mutex<[(key: String, times: Int, done: CheckedContinuation<Void, Never>)]>([])
     private let nextId = Mutex(1000)
+    /// Ближайшие запросы с этим ключом ответят ошибкой (сколько раз и с каким кодом).
+    private let failures = Mutex<[String: (status: Int, code: String, left: Int)]>([:])
+    /// История привычек для GET tasks/:id/history.
+    let histories = Mutex<[Int: TaskHistory]>([:])
 
     init(today: TodayResponse, user: UserSettings = UserSettings(id: 777, firstName: "Даша")) {
         state = Mutex(today)
@@ -68,6 +72,12 @@ final class FakeServer: Sendable {
         let gate = Gate()
         holds.withLock { $0[key] = (gate, times) }
         return gate
+    }
+
+    /// Следующие `times` запросов `key` («PUT logs», «GET tasks/1/history») ответят ошибкой `status` с кодом `code`;
+    /// status 0 — нет связи.
+    func fail(_ key: String, status: Int = 500, code: String = "internal", times: Int = 1) {
+        failures.withLock { $0[key] = (status, code, times) }
     }
 
     /// Дождаться, пока придёт `times`-й запрос `key` (сам ответ может быть придержан).
@@ -100,6 +110,15 @@ final class FakeServer: Sendable {
         }
         // Ответ на придержанный запрос сервер собирает сразу (как настоящий, пока ответ идёт по сети), а правки — после
         // двери: так «ответ устарел» и «правка ещё не дошла» воспроизводятся каждая сама по себе.
+        let failure = failures.withLock { failures -> (Int, String)? in
+            guard let f = failures[call.key], f.left > 0 else { return nil }
+            failures[call.key] = (f.status, f.code, f.left - 1)
+            return (f.status, f.code)
+        }
+        if let (status, code) = failure {
+            await gate?.wait()
+            return (status, try! JSONSerialization.data(withJSONObject: ["error": code]))
+        }
         if call.method == "GET", let gate {
             let answer = handle(call)
             await gate.wait()
@@ -118,6 +137,9 @@ final class FakeServer: Sendable {
             return Self.json(200, ["user": user, "is_new": false])
         case ("GET", "today", 1):
             return (200, try! Self.encoder.encode(today))
+        case ("GET", "tasks", 3) where parts[2] == "history":
+            guard let history = histories.withLock({ $0[Int(parts[1]) ?? 0] }) else { return Self.json(404, ["error": "not_found"]) }
+            return (200, try! Self.encoder.encode(history))
         case ("POST", "todos", 1):
             let id = nextId.withLock { n in
                 n += 1
@@ -187,6 +209,10 @@ final class FakeProtocol: URLProtocol, @unchecked Sendable {
         let call = FakeServer.Call(method: request.httpMethod ?? "GET", path: path, body: body)
         Task {
             let (status, data) = await server.respond(call)
+            if status == 0 {
+                client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+                return
+            }
             let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)

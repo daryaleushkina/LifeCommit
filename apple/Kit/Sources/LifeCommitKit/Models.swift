@@ -199,7 +199,19 @@ public struct TaskLimits: Codable, Sendable, Equatable {
     }
 }
 
-/// GET /today. Группы (`groups`) придут вместе с разделом «Вместе» — пока их поле не читаем.
+/// Группа на «Сегодня» (GroupToday в shared/groups.ts). Пока читаем только, кто она, — блоки групп придут с разделом
+/// «Вместе»; но «пусто ли совсем» без групп не понять.
+public struct TodayGroup: Codable, Sendable, Equatable, Identifiable {
+    public var id: Int
+    public var title: String
+
+    public init(id: Int, title: String) {
+        self.id = id
+        self.title = title
+    }
+}
+
+/// GET /today.
 public struct TodayResponse: Codable, Sendable, Equatable {
     /// Логический день человека (YYYY-MM-DD).
     public var day: String
@@ -209,14 +221,17 @@ public struct TodayResponse: Codable, Sendable, Equatable {
     public var todos: [Todo]
     /// Сколько дел запланировано на потом.
     public var todosLater: Int
+    /// Группы, где человек состоит (блоки — с разделом «Вместе»).
+    public var groups: [TodayGroup]
 
-    public init(day: String, tasks: [TodayTask] = [], archived: [ArchivedTask] = [], limits: TaskLimits = .init(), todos: [Todo] = [], todosLater: Int = 0) {
+    public init(day: String, tasks: [TodayTask] = [], archived: [ArchivedTask] = [], limits: TaskLimits = .init(), todos: [Todo] = [], todosLater: Int = 0, groups: [TodayGroup] = []) {
         self.day = day
         self.tasks = tasks
         self.archived = archived
         self.limits = limits
         self.todos = todos
         self.todosLater = todosLater
+        self.groups = groups
     }
 }
 
