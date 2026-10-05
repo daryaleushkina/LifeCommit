@@ -340,24 +340,16 @@ struct AppleForm: View {
     private func submit() async {
         busy = true
         error = nil
-        do {
-            try await model.connectApple(login: login.trimmingCharacters(in: .whitespaces), password: password)
-            dismiss()
-        } catch let e as APIError where e.code == "apple_auth" {
-            error = t.cal.errAuth
-        } catch let e as APIError where e.code == "apple_bad_input" {
-            error = t.cal.errInput
-        } catch {
-            self.error = t.cal.errNet
-        }
+        error = await model.connectApple(login: login.trimmingCharacters(in: .whitespaces), password: password)
         busy = false
+        if error == nil { dismiss() }
     }
 }
 
 extension Color {
-    /// Цвет календаря из CSS «#0b8043»; другое — nil.
+    /// Цвет календаря из CSS «#0b8043» (Links.cssColor); другое — nil.
     init?(css: String) {
-        guard css.hasPrefix("#"), css.count == 7, let v = UInt32(css.dropFirst(), radix: 16) else { return nil }
+        guard let v = Links.cssColor(css) else { return nil }
         self.init(hex: v)
     }
 }

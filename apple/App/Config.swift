@@ -48,9 +48,15 @@ enum Config {
     /// Устройство для сессии на сервере: ios, mac (android — у Android-приложения).
     static var device: String {
         #if os(macOS)
-        "mac"
+        device(macOS: true, iOSAppOnMac: false)
         #else
-        "ios"
+        device(macOS: false, iOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac)
         #endif
+    }
+
+    /// iPhone-приложение, запущенное на Mac с Apple Silicon, — тоже компьютер: ключ компьютера аккаунт не удаляет
+    /// (docs/mobile.md), а метку сервер берёт с клиента.
+    static func device(macOS: Bool, iOSAppOnMac: Bool) -> String {
+        macOS || iOSAppOnMac ? "mac" : "ios"
     }
 }

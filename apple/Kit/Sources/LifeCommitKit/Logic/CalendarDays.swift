@@ -46,11 +46,18 @@ public enum CalendarDays {
         return strings.synced(minutes < 1 ? strings.justNow : strings.minutesAgo(minutes))
     }
 
-    /// Время сервера (Postgres пишет доли секунды до микросекунд: 09:05:00.123456+00:00).
+    /// Время сервера (Postgres пишет доли секунды до микросекунд: 09:05:00.123456+00:00). Форматтеры — общие: подпись
+    /// «обновлено N мин» считается на каждую перерисовку вкладки, а создавать их дорого. ISO8601DateFormatter
+    /// потокобезопасен.
+    nonisolated(unsafe) private static let isoFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    nonisolated(unsafe) private static let iso = ISO8601DateFormatter()
+
     static func parseISO(_ s: String) -> Date? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return withFraction.date(from: s) ?? ISO8601DateFormatter().date(from: s)
+        isoFraction.date(from: s) ?? iso.date(from: s)
     }
 }
 
@@ -80,8 +87,10 @@ public struct TodoEdit: Sendable, Equatable {
         return patch
     }
 
-    /// Шторка открывается с этим днём: переехавшее со вчера дело — как сегодняшнее (прошлым днём его уже не поставить).
-    public static func initialDay(of todo: Todo, today: String) -> String {
-        !todo.recurring && todo.day < today ? today : todo.day
+    /// Шторка открывается с этим днём. carried — открыли с «Сегодня»: там дело со вчера переехало, и открывается
+    /// сегодняшним (прошлым днём его уже не поставить). Во вкладке «Календарь» прошлый день остаётся своим — иначе любая
+    /// правка (опечатка в названии) тихо переносила бы старое дело на сегодня.
+    public static func initialDay(of todo: Todo, today: String, carried: Bool) -> String {
+        carried && !todo.recurring && todo.day < today ? today : todo.day
     }
 }

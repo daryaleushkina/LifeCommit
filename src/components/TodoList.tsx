@@ -219,6 +219,7 @@ export function TodoList({ todos: all, later = 0, today, heading, addLabel, show
           source={editing.source}
           details={editing.details}
           today={today}
+          carried={showCarry}
           onSave={(edit) => void onUpdate(editing, edit)}
           onDelete={() => void onRemove(editing)}
           onClose={() => setEditing(null)}

@@ -191,6 +191,7 @@ final class FakeServer: Sendable {
             let today = self.today.day
             let todo = Todo(id: id, title: body["title"] as? String ?? "", day: body["day"] as? String ?? today)
             if todo.day == today { state.withLock { $0.todos.append(todo) } }
+            if todo.day > today { later.withLock { $0 = $0.map { $0 + [todo] } } }
             calendar.withLock { $0 = $0.map { $0 + [todo] } }
             return Self.json(200, ["id": id])
         case ("PATCH", "todos", 2):
@@ -207,12 +208,15 @@ final class FakeServer: Sendable {
                     return t
                 }
             }
-            state.withLock { $0.todos = edit($0.todos) }
+            // Перенесённое на завтра уходит с «Сегодня» (там — сегодняшние и переехавшие со вчера).
+            state.withLock { s in s.todos = edit(s.todos).filter { $0.day <= s.day } }
             calendar.withLock { $0 = $0.map(edit) }
+            later.withLock { $0 = $0.map(edit) }
             return Self.json(200, [:])
         case ("DELETE", "todos", 2):
             state.withLock { s in s.todos.removeAll { $0.id == Int(parts[1]) } }
             calendar.withLock { $0 = $0?.filter { $0.id != Int(parts[1]) } }
+            later.withLock { $0 = $0?.filter { $0.id != Int(parts[1]) } }
             return Self.json(200, [:])
         case ("PUT", "logs", 1):
             state.withLock { s in

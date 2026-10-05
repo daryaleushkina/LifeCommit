@@ -12,6 +12,12 @@ interface Props {
   time: string | null;
   /** Сегодняшний логический день: раньше него дело поставить нельзя. */
   today: string;
+  /**
+   * Открыли с «Сегодня»: дело со вчера переехало и открывается сегодняшним (прошлым днём его уже не поставить). Во
+   * вкладке «Календарь» — false: прошлый день остаётся своим, иначе любая правка тихо переносила бы старое дело на
+   * сегодня.
+   */
+  carried?: boolean;
   /** Повторяющееся (из календаря): день не меняется — он задаёт, в какие дни дело бывает. */
   recurring?: boolean;
   source?: Todo['source'];
@@ -44,11 +50,11 @@ const hostOf = (url: string) => {
  * Правка дела: название, день («Сегодня» / «Завтра» в одно касание, остальное — календарём), время и место.
  * У события из календаря сверху — его подробности: где, ссылка на созвон, кто будет, описание.
  */
-export function TodoSheet({ title: initialTitle, day: initialDay, time: initialTime, today, recurring, source, details, onSave, onDelete, onClose }: Props): ReactNode {
+export function TodoSheet({ title: initialTitle, day: initialDay, time: initialTime, today, carried = true, recurring, source, details, onSave, onDelete, onClose }: Props): ReactNode {
   const t = useT();
   const [title, setTitle] = useState(initialTitle);
   // Переехавшее со вчера дело показываем как сегодняшнее: прошлым днём его уже не поставить.
-  const [day, setDay] = useState(!recurring && initialDay < today ? today : initialDay);
+  const [day, setDay] = useState(carried && !recurring && initialDay < today ? today : initialDay);
   const [time, setTime] = useState(initialTime);
   const [place, setPlace] = useState(details?.location ?? '');
   const tomorrow = addDays(today, 1);

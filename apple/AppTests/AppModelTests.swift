@@ -382,6 +382,121 @@ struct CalendarModelTests {
         #expect(m.calendarNotice == m.strings.error)
     }
 
+    @Test("«Потом» без вкладки «Календарь»: удалили — дело не возвращается; поправили — видно сразу, до ответа сервера")
+    func laterWithoutCalendar() async {
+        let a = Todo(id: 50, title: "Забрать посылку", day: Self.tomorrow)
+        let b = Todo(id: 51, title: "Сдать отчёт", day: Self.tomorrow)
+        let server = FakeServer(today: AppModelTests.today())
+        server.later.withLock { $0 = [a, b] }
+        let m = model(server)
+        await m.loadLater()
+        m.removeTodo(a)
+        await m.flushRemoval()?.value
+        #expect(m.later?.map(\.id) == [51])
+        let gate = server.hold("PATCH todos/51")
+        let editing = Task { await m.updateTodo(b, TodoEdit(title: "Сдать отчёт в срок", day: Self.tomorrow, time: nil, location: "")) }
+        await server.seen("PATCH todos/51")
+        #expect(m.later?.first?.title == "Сдать отчёт в срок")
+        await gate.open()
+        await editing.value
+        #expect(m.later?.map(\.title) == ["Сдать отчёт в срок"])
+    }
+
+    @Test("дело на завтра из календаря сразу попадает и в открытое «Потом»")
+    func addTodoUpdatesLater() async {
+        let server = FakeServer(today: AppModelTests.today())
+        server.later.withLock { $0 = [] }
+        let m = model(server)
+        await m.loadLater()
+        await m.addTodo("Купить хлеб", day: Self.tomorrow)
+        #expect(m.later?.map(\.title) == ["Купить хлеб"])
+    }
+
+    @Test("перенос дела на другой день из шторки: уходит day, дело уезжает из сегодня в завтра")
+    func moveTodoToAnotherDay() async {
+        let todo = Todo(id: 5, title: "Купить хлеб", day: Self.day)
+        let server = FakeServer(today: AppModelTests.today(todos: [todo]))
+        server.calendar.withLock { $0 = [todo] }
+        let m = model(server)
+        await m.showRange(from: Self.day, to: Self.tomorrow)
+        await m.updateTodo(todo, TodoEdit(title: todo.title, day: Self.tomorrow, time: nil, location: ""))
+        #expect(server.calls("PATCH todos/5").first?.json["day"] as? String == Self.tomorrow)
+        #expect(m.calendarTodos(from: Self.day, to: Self.tomorrow)?.first { $0.id == 5 }?.day == Self.tomorrow)
+        #expect(m.today.todos.isEmpty)
+    }
+
+    @Test("возврат из Google, пока открыта «Сегодня», — вкладка «Календарь» со шторкой, а не тишина")
+    func googleReturnShowsCalendar() async {
+        let server = FakeServer(today: AppModelTests.today())
+        server.accounts.withLock { $0 = [] }
+        let m = model(server)
+        m.tab = .today
+        await m.googleReturned(GoogleReturn(status: .denied, pending: nil))
+        #expect(m.tab == .calendar)
+        #expect(m.calendarsSheetOpen)
+        #expect(m.calendarNotice == m.strings.cal.googleDenied)
+    }
+
+    @Test("ответы, ушедшие до выхода, не возвращают календарь прошлого человека")
+    func noCalendarAfterSignOut() async {
+        let todo = Todo(id: 1, title: "x", day: Self.day)
+        let server = FakeServer(today: AppModelTests.today())
+        server.calendar.withLock { $0 = [todo] }
+        server.later.withLock { $0 = [todo] }
+        server.accounts.withLock { $0 = [CalendarAccount(id: 1, provider: .apple, login: "a@b.c")] }
+        let m = model(server)
+        let gates = [server.hold("GET calendars"), server.hold("GET calendar"), server.hold("GET todos/later")]
+        let loads = [Task { await m.loadAccounts() }, Task { await m.showRange(from: Self.day, to: Self.day) }, Task { await m.loadLater() }]
+        for key in ["GET calendars", "GET calendar", "GET todos/later"] { await server.seen(key) }
+        m.signOutLocally()
+        for gate in gates { await gate.open() }
+        for load in loads { await load.value }
+        #expect(m.accounts == nil)
+        #expect(m.calendarTodos(from: Self.day, to: Self.day) == nil)
+        #expect(m.later == nil)
+    }
+
+    @Test("«Потом» с протухшим ключом — на вход, а не пустой список")
+    func laterSignedOut() async {
+        let server = FakeServer(today: AppModelTests.today())
+        let m = model(server)
+        server.fail("GET todos/later", status: 401, code: "session_expired")
+        await m.loadLater()
+        #expect(m.phase == .signedOut)
+    }
+
+    @Test("Apple: не подошёл пароль, неверный ввод, нет связи — свои тексты; ключ протух — на вход; подключили — форма не ждёт синхронизации")
+    func connectApple() async {
+        let server = FakeServer(today: AppModelTests.today())
+        server.accounts.withLock { $0 = [] }
+        let m = model(server)
+        server.answer("POST calendars/apple", 401, ["error": "apple_auth"])
+        #expect(await m.connectApple(login: "d@icloud.com", password: "abcd-efgh-ijkl-mnop") == m.strings.cal.errAuth)
+        server.answer("POST calendars/apple", 400, ["error": "apple_bad_input"])
+        #expect(await m.connectApple(login: "d@icloud.com", password: "x") == m.strings.cal.errInput)
+        server.answer("POST calendars/apple", 502, ["error": "internal"])
+        #expect(await m.connectApple(login: "d@icloud.com", password: "abcd-efgh-ijkl-mnop") == m.strings.cal.errNet)
+        server.answer("POST calendars/apple", 201, ["ok": true])
+        let sync = server.hold("POST calendars/sync")
+        #expect(await m.connectApple(login: "d@icloud.com", password: "abcd-efgh-ijkl-mnop") == nil)
+        await sync.open()
+        server.answer("POST calendars/apple", 401, ["error": "session_expired"])
+        #expect(await m.connectApple(login: "d@icloud.com", password: "abcd-efgh-ijkl-mnop") == nil)
+        #expect(m.phase == .signedOut)
+    }
+
+    @Test("ушли с вкладки «Календарь» — её дни после правок не перечитываются")
+    func hiddenRangeNotReloaded() async {
+        let todo = Todo(id: 5, title: "Купить хлеб", day: Self.day)
+        let server = FakeServer(today: AppModelTests.today(todos: [todo]))
+        server.calendar.withLock { $0 = [todo] }
+        let m = model(server)
+        await m.showRange(from: Self.day, to: Self.day)
+        m.hideRange()
+        await m.updateTodo(todo, TodoEdit(title: "Купить батон", day: Self.day, time: nil, location: ""))
+        #expect(server.calls("GET calendar").count == 1)
+    }
+
     @Test("вышли — календарь прошлого человека забыт")
     func signOutClears() async {
         let server = FakeServer(today: AppModelTests.today())
@@ -398,6 +513,13 @@ struct CalendarModelTests {
 
 @Suite("Адрес сервера")
 struct ConfigTests {
+    @Test("устройство для сессии: iPhone — ios; Mac и iPhone-приложение, запущенное на Mac, — mac (ключ компьютера аккаунт не удаляет)")
+    func device() {
+        #expect(Config.device(macOS: false, iOSAppOnMac: false) == "ios")
+        #expect(Config.device(macOS: true, iOSAppOnMac: false) == "mac")
+        #expect(Config.device(macOS: false, iOSAppOnMac: true) == "mac")
+    }
+
     @Test("подмена адреса из настроек — только в сборке для разработки: в сборке для людей ключ уходит лишь на прод")
     func apiBaseOverride() {
         let evil = "https://evil.example/api"

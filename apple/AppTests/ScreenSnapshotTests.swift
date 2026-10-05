@@ -136,11 +136,11 @@ struct ScreenSnapshotTests {
     @Test("Шторка дела: своё (день, время, место) и событие календаря (место, созвон, участники, описание)", arguments: [ColorScheme.light, .dark])
     func todoSheet(scheme: ColorScheme) {
         let own = Todo(id: 22, title: "Забрать посылку", day: "2026-10-06", time: "15:30", details: TodoDetails(location: "Почта на Тверской"))
-        check(TodoSheet(todo: own, today: "2026-10-05", onSave: { _ in }, onDelete: {}), model: model(), scheme: scheme, named: "todo-sheet", sheet: true)
+        check(TodoSheet(todo: own, today: "2026-10-05", carried: true, onSave: { _ in }, onDelete: {}), model: model(), scheme: scheme, named: "todo-sheet", sheet: true)
         let event = Todo(id: 21, title: "Планёрка", day: "2026-10-05", time: "10:00", durationMin: 30, recurring: true, source: .google, details: TodoDetails(
             location: "Офис, переговорная 3", link: "https://meet.google.com/abc-defg-hij", peopleCount: 6, people: ["Аня", "Борис", "Вика", "Гоша"],
             notes: "Повестка: итоги недели, планы на следующую. Каждый — по две минуты.", openUrl: "https://calendar.google.com/event?eid=1"))
-        check(TodoSheet(todo: event, today: "2026-10-05", onSave: { _ in }, onDelete: {}), model: model(), scheme: scheme, named: "event-sheet", sheet: true)
+        check(TodoSheet(todo: event, today: "2026-10-05", carried: true, onSave: { _ in }, onDelete: {}), model: model(), scheme: scheme, named: "event-sheet", sheet: true)
     }
 
     @Test("«Календари»: подключены Google и Apple (Apple перестал пускать); ничего не подключено; Google — выбрать календари", arguments: [ColorScheme.light, .dark])
