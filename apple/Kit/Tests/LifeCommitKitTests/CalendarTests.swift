@@ -39,6 +39,14 @@ struct CalendarDaysTests {
         ]
         #expect(CalendarDays.dots(list, day: day) == [false, true, false])
         #expect(CalendarDays.dots(list, day: "2026-10-07") == [])
+        // Дела групп — после своих, без мероприятий и сделанных.
+        let block = GroupDayBlock(day: "2026-10-07", group: .init(id: 1, title: "Семья"), items: [
+            GroupDayItem(id: 1, title: "ужин", mode: .event, start: "2026-10-07"),
+            GroupDayItem(id: 2, title: "сделано", mode: .one, done: true, start: "2026-10-07"),
+            GroupDayItem(id: 3, title: "мусор", mode: .one, start: "2026-10-07"),
+        ])
+        #expect(CalendarDays.dots([Todo(id: 9, title: "созвон", day: "2026-10-07", source: .apple)], groups: [block], day: "2026-10-07") == [true, false])
+        #expect(CalendarDays.dots(list, groups: [block], day: day) == [false, true, false])
     }
 
     @Test("«обновлено…»: не обновлялся — пусто; меньше минуты — «только что»; иначе минуты; время сервера с микросекундами")
@@ -137,10 +145,15 @@ struct CalendarAPITests {
         #expect(list[1].defaultUrl == "https://caldav.icloud.com/1/calendars/home/")
     }
 
-    @Test("дни: GET /calendar?from&to; групповые дела пока не читаем")
+    @Test("дни: GET /calendar?from&to — свои дела и дела групп по дням")
     func range() async throws {
         let stub = Stub { _ in
-            Stub.json(200, ["today": "2026-10-05", "groups": [["day": "2026-10-05"]],
+            let item: [String: Any] = ["id": 9, "title": "Вынести мусор", "mode": "one", "time": NSNull(), "duration_min": NSNull(), "due_day": NSNull(),
+                                   "carried": false, "recurring": false, "people": [1], "all_members": false, "rotate": false, "turn": NSNull(),
+                                   "for_me": true, "can_mark": true, "done": false, "done_by": [], "target": NSNull(), "total": NSNull(),
+                                   "unit": NSNull(), "goal_until": NSNull(), "start": "2026-10-05", "rrule": NSNull(), "assignees": []]
+            return Stub.json(200, ["today": "2026-10-05",
+                            "groups": [["day": "2026-10-05", "group": ["id": 3, "title": "Семья", "kind": "other", "members": [["id": 1, "name": "Даша", "photo": NSNull()]]], "items": [item]]],
                             "todos": [["id": 1, "title": "Созвон", "day": "2026-10-05", "done": false, "time": "10:00", "duration_min": 30,
                                        "recurring": true, "source": "google", "details": ["link": "https://meet.google.com/abc"]]]])
         }
@@ -150,6 +163,7 @@ struct CalendarAPITests {
         #expect(range.today == "2026-10-05")
         #expect(range.todos.first?.durationMin == 30)
         #expect(range.todos.first?.details?.link == "https://meet.google.com/abc")
+        #expect(range.groups.first?.group.title == "Семья" && range.groups.first?.items.first?.title == "Вынести мусор")
     }
 
     @Test("вход Google: адрес с client=app; открываем только accounts.google.com")

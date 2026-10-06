@@ -1,0 +1,15 @@
+{
+  "friends": [],
+  "incoming": [
+    {
+      "id": 8100548533511,
+      "first_name": "Даша",
+      "username": "u8100548533511",
+      "photo_url": null,
+      "via": "username"
+    }
+  ],
+  "outgoing": [],
+  "link": "https://t.me/LifeCommit_bot?startapp=f_ha6y7s5vcc",
+  "prompt": false
+}

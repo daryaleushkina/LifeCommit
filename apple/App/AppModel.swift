@@ -21,6 +21,16 @@ final class AppModel {
         /// Экран привычки: сегодня, числа, календарь месяца.
         case detail(Int)
         case archive
+        /// Экран группы.
+        case group(Int)
+        /// Вступить по приглашению (lifecommit://join/<код>, lifecommit.app/j/<код>).
+        case join(String)
+        /// Заявки в друзья.
+        case requests
+        /// Экран друга.
+        case friend(Int)
+        /// Открыли чужую ссылку «Позвать друга» (lifecommit://friend/<код>, lifecommit.app/f/<код>).
+        case friendLink(String)
     }
 
     /// Убранная строка, пока можно «Вернуть».
@@ -39,8 +49,9 @@ final class AppModel {
     var tab: Tab = .today
     var path: [Route] = []
     private(set) var removal: Removal?
-    /// Сервер не выполнил удаление — плашка «Что-то пошло не так» поверх любого экрана.
+    /// Сервер не выполнил удаление — плашка поверх любого экрана: «Что-то пошло не так» или своя причина.
     private(set) var removalFailed = false
+    private(set) var removalFailedText: String?
     private(set) var removed: Set<String> = []
     /// История привычек для их экранов (GET /tasks/:id/history), подтягивается при открытии.
     private(set) var histories: [Int: TaskHistory] = [:]
@@ -48,6 +59,8 @@ final class AppModel {
     private(set) var signingIn = false
 
     let api: APIClient
+    /// «Вместе»: группы и друзья.
+    let together: TogetherModel
     private let tokens: TokenStore
     /// Номер последнего изменения привычек и дел: перечитка «Сегодня», за время которой он сменился, устарела.
     private var change = 0
@@ -56,11 +69,14 @@ final class AppModel {
     private var editsSettled: [CheckedContinuation<Void, Never>] = []
     private var loadedAt: Date?
     private var pendingCommit: (() async throws -> Void)?
+    private var pendingFailure: ((Error) -> String?)?
     private var removalTimer: Task<Void, Never>?
 
     init(api: APIClient, tokens: TokenStore) {
         self.api = api
         self.tokens = tokens
+        together = TogetherModel(api: api)
+        together.app = self
     }
 
     /// Язык: как у человека в настройках; до входа — язык телефона.
@@ -184,6 +200,10 @@ final class AppModel {
         calendarNotice = nil
         calendarsSheetOpen = false
         deferredGoogle = nil
+        rangeGroups = [:]
+        // «Вместе» прошлого человека — тоже.
+        together.reset()
+        deferredInvite = nil
         path = []
         tab = .today
         phase = .signedOut
@@ -401,12 +421,15 @@ final class AppModel {
 
     /// Строка пропадает сразу, внизу 5 секунд «Вернуть»; на сервер удаление уходит, когда плашка закрылась (или
     /// приложение свернули). Не вышло — экран перечитывается (строка вернётся), поверх — «Что-то пошло не так».
-    func removeWithUndo(key: String, text: String, commit: @escaping () async throws -> Void) {
+    /// failure — своя причина отказа (например, «дела удаляют только админы»); nil — «Что-то пошло не так».
+    func removeWithUndo(key: String, text: String, failure: ((Error) -> String?)? = nil, commit: @escaping () async throws -> Void) {
         flushRemoval()
         removalFailed = false
+        removalFailedText = nil
         removed.insert(key)
         removal = Removal(key: key, text: text)
         pendingCommit = commit
+        pendingFailure = failure
         Haptics.impact()
         removalTimer = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.undoSeconds))
@@ -419,6 +442,7 @@ final class AppModel {
         guard let removal else { return }
         removalTimer?.cancel()
         pendingCommit = nil
+        pendingFailure = nil
         removed.remove(removal.key)
         self.removal = nil
     }
@@ -427,14 +451,17 @@ final class AppModel {
     @discardableResult
     func flushRemoval() -> Task<Void, Never>? {
         guard let removal, let commit = pendingCommit else { return nil }
+        let failure = pendingFailure
         removalTimer?.cancel()
         pendingCommit = nil
+        pendingFailure = nil
         self.removal = nil
         return Task {
             do {
                 try await commit()
             } catch {
                 modelLog.error("removal failed: \(String(describing: error), privacy: .public)")
+                removalFailedText = failure?(error)
                 removalFailed = true
                 Task {
                     try? await Task.sleep(for: .seconds(Self.undoSeconds))
@@ -445,7 +472,10 @@ final class AppModel {
         }
     }
 
-    func dismissRemovalError() { removalFailed = false }
+    func dismissRemovalError() {
+        removalFailed = false
+        removalFailedText = nil
+    }
 
     /// Удаление уходит на сервер, потом «Сегодня» перечитывается — строка остаётся скрытой, пока не придёт список
     /// без неё (иначе она мигнула бы). Не вышло — перечитываем (строка вернётся) и отдаём ошибку плашке.
@@ -487,6 +517,8 @@ final class AppModel {
 
     /// Дела по промежуткам дней «from:to» (как caches.days мини-аппа): уже виденное открывается сразу.
     private(set) var ranges: [String: [Todo]] = [:]
+    /// Дела групп тех же промежутков — по дням.
+    private(set) var rangeGroups: [String: [GroupDayBlock]] = [:]
     /// Промежуток на экране вкладки — его перечитываем после правок и синхронизации.
     private var shownRange: (from: String, to: String)?
     /// Подключённые календари; nil — ещё не знаем (не пишем «не подключено» — это было бы неправдой).
@@ -509,6 +541,8 @@ final class AppModel {
     private static func rangeKey(_ from: String, _ to: String) -> String { "\(from):\(to)" }
 
     func calendarTodos(from: String, to: String) -> [Todo]? { ranges[Self.rangeKey(from, to)] }
+
+    func calendarGroups(from: String, to: String) -> [GroupDayBlock] { rangeGroups[Self.rangeKey(from, to)] ?? [] }
 
     /// Вкладка показывает этот промежуток: из памяти сразу, свежий — с сервера.
     func showRange(from: String, to: String) async {
@@ -534,6 +568,7 @@ final class AppModel {
                 guard session == epoch else { return }
                 if seq == change {
                     ranges[Self.rangeKey(from, to)] = fresh.todos
+                    rangeGroups[Self.rangeKey(from, to)] = fresh.groups
                     return
                 }
             }
@@ -551,9 +586,11 @@ final class AppModel {
     private func reloadCalendar() async {
         if let shown = shownRange {
             ranges = ranges.filter { $0.key == Self.rangeKey(shown.from, shown.to) }
+            rangeGroups = rangeGroups.filter { $0.key == Self.rangeKey(shown.from, shown.to) }
             await loadRange(from: shown.from, to: shown.to)
         } else {
             ranges = [:]
+            rangeGroups = [:]
         }
         // «Потом» открывают с «Сегодня» — и без вкладки «Календарь».
         if later != nil { await loadLater() }
@@ -759,13 +796,91 @@ final class AppModel {
         }
     }
 
-    /// После загрузки: отложенный возврат из Google и синхронизация календарей в фоне (как при каждом входе в мини-апп).
+    /// После загрузки: отложенные возврат из Google и приглашение, синхронизация календарей в фоне (как при каждом
+    /// входе в мини-апп).
     private func afterLoad() async {
+        if let invite = deferredInvite {
+            deferredInvite = nil
+            openInvite(invite)
+        }
         if let deferred = deferredGoogle {
             deferredGoogle = nil
             await googleReturned(deferred)
         }
         await syncCalendars()
+    }
+
+    // MARK: «Вместе»: блоки групп на «Сегодня» и в дне календаря, приглашения
+
+    /// В группах что-то поменялось (отметка, дело, вступили, вышли) — «Сегодня» и дни календаря перечитываются.
+    func groupsChanged() async {
+        change += 1
+        await refresh()
+        await reloadCalendar()
+    }
+
+    /// Отметка группового дела в блоке на «Сегодня»: галочка сразу; не вышло — как было и сказано. Счётчики «5 из 8»
+    /// и чужие отметки — потом с сервера.
+    func markGroupOnToday(groupId: Int, _ item: GroupDayItem) async {
+        let done = !item.done
+        let me = user?.id ?? 0
+        patchTodayGroupItem(groupId, item.id) { GroupLogic.marked($0, done: done, me: me) }
+        if done { Haptics.success() }
+        do {
+            _ = try await track { try await api.markGroupItem(groupId: groupId, itemId: item.id, done: done) }
+        } catch {
+            patchTodayGroupItem(groupId, item.id) { _ in item }
+            failGroupMark(error)
+        }
+        await groupsChanged()
+        await together.loadGroup(groupId)
+    }
+
+    private func patchTodayGroupItem(_ groupId: Int, _ itemId: Int, _ f: (GroupDayItem) -> GroupDayItem) {
+        today.groups = today.groups.map { g in
+            guard g.id == groupId else { return g }
+            var next = g
+            next.items = g.items.map { $0.id == itemId ? f($0) : $0 }
+            return next
+        }
+    }
+
+    /// Отметка в дне календаря (сегодня или прошлый день): галочка — после ответа сервера и перечитывания дня.
+    func markGroupOnDay(groupId: Int, _ item: GroupDayItem, day: String) async {
+        do {
+            _ = try await track { try await api.markGroupItem(groupId: groupId, itemId: item.id, done: !item.done, day: day) }
+            if !item.done { Haptics.success() }
+        } catch {
+            failGroupMark(error)
+        }
+        await groupsChanged()
+    }
+
+    /// Уже не на мне (очередь сменилась, на экране старое) — так и сказать: повтор не поможет.
+    private func failGroupMark(_ error: Error) {
+        if let api = error as? APIError, api.code == "not_yours" {
+            modelLog.notice("group mark: not_yours")
+            banner = strings.gr.notYours
+            return
+        }
+        fail(error)
+    }
+
+    /// Приглашение пришло, пока приложение загружалось (ключа нет), — разберём после загрузки.
+    private var deferredInvite: InviteLink?
+
+    /// Открыли ссылку-приглашение: в группу — экран «Вступить», в друзья — «зовёт в друзья». Код уже проверен
+    /// (InviteLink): в путь API ничего постороннего не попадёт.
+    func openInvite(_ link: InviteLink) {
+        guard phase == .ready else {
+            deferredInvite = link
+            return
+        }
+        tab = .groups
+        switch link.kind {
+        case .join: path = [.join(link.code)]
+        case .friend: path = [.friendLink(link.code)]
+        }
     }
 
     // MARK: Экран привычки
@@ -880,8 +995,9 @@ final class AppModel {
     }
 
     /// Календарь без сети — для снимков: дни (from, to, дела), подключения, «Потом».
-    func setCalendarForTests(ranges: [(String, String, [Todo])] = [], accounts: [CalendarAccount]? = nil, later: [Todo]? = nil) {
+    func setCalendarForTests(ranges: [(String, String, [Todo])] = [], groups: [(String, String, [GroupDayBlock])] = [], accounts: [CalendarAccount]? = nil, later: [Todo]? = nil) {
         for (from, to, todos) in ranges { self.ranges[Self.rangeKey(from, to)] = todos }
+        for (from, to, blocks) in groups { rangeGroups[Self.rangeKey(from, to)] = blocks }
         if let accounts { self.accounts = accounts }
         if let later { self.later = later }
     }

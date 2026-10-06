@@ -11,6 +11,7 @@ import { db } from './env';
 import { feedbackCleanup } from './feedback';
 import { feedbackTick } from './feedbackBot';
 import { google } from './google';
+import { invites } from './invites';
 import { shareFiles } from './share';
 import { site } from './site';
 import type { Env } from './env';
@@ -27,6 +28,8 @@ app.route('/google', google);
 // Картинки «Поделиться» по ссылке — для сторис Telegram и «Сохранить».
 app.route('/share', shareFiles);
 app.all('/api/*', (c) => c.json({ error: 'not_found' }, 404));
+// Приглашения для приложений (/j/<код>, /f/<код>) и assetlinks.json для Android.
+app.route('/', invites);
 // Лендинг и документы без языка в адресе; мини-апп — статика /app/.
 app.route('/', site);
 

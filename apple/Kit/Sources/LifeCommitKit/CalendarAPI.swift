@@ -58,15 +58,18 @@ public struct CalendarAccount: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
-/// GET /calendar?from&to. Групповые дела (`groups`) придут вместе с разделом «Вместе» — пока их поле не читаем.
+/// GET /calendar?from&to: свои дела и дела групп по дням.
 public struct CalendarRange: Codable, Sendable, Equatable {
     public var today: String
     /// Повторы раскрыты сервером; порядок — не отсортирован (Todos.sorted).
     public var todos: [Todo]
+    /// Дела групп по дням — у каждого дня свой блок на группу.
+    public var groups: [GroupDayBlock]
 
-    public init(today: String, todos: [Todo]) {
+    public init(today: String, todos: [Todo], groups: [GroupDayBlock] = []) {
         self.today = today
         self.todos = todos
+        self.groups = groups
     }
 }
 

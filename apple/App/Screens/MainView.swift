@@ -34,6 +34,16 @@ struct MainView: View {
                         TaskDetailView(taskId: id)
                     case .archive:
                         ArchiveView()
+                    case .group(let id):
+                        GroupView(groupId: id)
+                    case .join(let code):
+                        JoinView(code: code)
+                    case .requests:
+                        RequestsView()
+                    case .friend(let id):
+                        FriendView(friendId: id)
+                    case .friendLink(let code):
+                        FriendLinkView(code: code)
                     }
                 }
                 .background(GlowBackground())
@@ -51,7 +61,7 @@ struct MainView: View {
             switch model.tab {
             case .today: TodayView()
             case .calendar: CalendarView()
-            case .groups: PendingTabView(title: model.strings.groups)
+            case .groups: TogetherView()
             case .me: ProfilePendingView()
             }
         }
@@ -221,7 +231,7 @@ struct UndoToast: View {
                     .accessibilityIdentifier("undo")
                 }
             } else if model.removalFailed {
-                toast(t.error) { EmptyView() }
+                toast(model.removalFailedText ?? t.error) { EmptyView() }
                     .onTapGesture { model.dismissRemovalError() }
             }
         }

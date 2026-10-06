@@ -2,7 +2,7 @@
 // стрелки, «К сегодня», ниже — дела выбранного дня (повторяющиеся события стоят в каждом своём дне со своей отметкой).
 // Сверху — плашка «Подключите календарь» (пока ничего не подключено), метки подключённых календарей, «Обновить» и
 // шторка «Календари». Синхронизация — при запуске и по «Обновить», не при открытии вкладки: она открывается сразу.
-// Групповые дела в календаре придут вместе с разделом «Вместе» (docs/parity.md).
+// Под своими делами — дела групп этого дня: отметить можно сегодня и в прошлые дни, будущие — только посмотреть.
 import LifeCommitKit
 import SwiftUI
 
@@ -25,6 +25,7 @@ struct CalendarView: View {
         let bounds = CalendarDays.bounds(mode, anchor: selected)
         let todos = model.calendarTodos(from: bounds.from, to: bounds.to)
         let dayTodos = Todos.sorted((todos ?? []).filter { $0.day == selected })
+        let groupDays = model.calendarGroups(from: bounds.from, to: bounds.to)
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -50,7 +51,7 @@ struct CalendarView: View {
                         .disabled(selected == today)
                         .accessibilityHidden(selected == today)
                 }
-                if mode == .month { grid(selected: selected, today: today, todos: todos ?? []) }
+                if mode == .month { grid(selected: selected, today: today, todos: todos ?? [], groups: groupDays) }
 
                 if let banner = model.banner {
                     ErrorNote(text: banner).padding(.top, 12).onTapGesture { model.banner = nil }
@@ -64,6 +65,13 @@ struct CalendarView: View {
                         showCarry: false,
                         canAdd: selected >= today
                     ) { title in Task { await model.addTodo(title, day: selected) } }
+                }
+
+                ForEach(groupDays.filter { $0.day == selected }, id: \.group.id) { block in
+                    GroupBlockView(
+                        groupId: block.group.id, title: block.group.title, members: block.group.members, items: block.items,
+                        canMark: selected <= today, day: selected
+                    ) { item in Task { await model.markGroupOnDay(groupId: block.group.id, item, day: selected) } }
                 }
             }
             .padding(.horizontal, 20)
@@ -188,7 +196,7 @@ struct CalendarView: View {
         .accessibilityLabel(label)
     }
 
-    private func grid(selected: String, today: String, todos: [Todo]) -> some View {
+    private func grid(selected: String, today: String, todos: [Todo], groups: [GroupDayBlock]) -> some View {
         let days = CalendarDays.range(.month, anchor: selected)
         let month = Months.of(selected)
         let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 4), count: 7)
@@ -205,7 +213,7 @@ struct CalendarView: View {
                             .font(.onest(14, day == today && !on ? .bold : .medium))
                             .foregroundStyle(on ? palette.accentText : day == today ? palette.accent : palette.text)
                         HStack(spacing: 3) {
-                            ForEach(Array(CalendarDays.dots(todos, day: day).enumerated()), id: \.offset) { _, ext in
+                            ForEach(Array(CalendarDays.dots(todos, groups: groups, day: day).enumerated()), id: \.offset) { _, ext in
                                 Circle().fill(on ? palette.accentText : ext ? palette.outside : palette.heat[3]).frame(width: 5, height: 5)
                             }
                         }

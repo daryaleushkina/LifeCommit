@@ -1,0 +1,37 @@
+{
+  "person": {
+    "id": 8100548533512,
+    "first_name": "Аня",
+    "username": "u8100548533512",
+    "photo_url": null
+  },
+  "since": "2026-10-06T18:04:49.216+00:00",
+  "today": "2026-10-06",
+  "heat": [
+    {
+      "day": "2026-10-06",
+      "score": 0.375
+    }
+  ],
+  "habits": [
+    {
+      "id": 27533,
+      "title": "Пить воду",
+      "emoji": null,
+      "kind": "count",
+      "unit": "стаканов",
+      "target": 8,
+      "value": 3,
+      "status": null,
+      "due": true,
+      "clean_days": 0,
+      "logs": [
+        {
+          "day": "2026-10-06",
+          "value": 3,
+          "status": null
+        }
+      ]
+    }
+  ]
+}
