@@ -183,6 +183,23 @@ class MeTest : AppTest() {
         compose.waitFor { model.user?.dayStartHour == 4 && model.user?.languageCode == "ru" }
     }
 
+    @Test fun `поздняя правка не сохранилась раньше ранней - на экране то, что сервер сохранил`() {
+        seed()
+        // Конец дня сохраняется медленно, язык — быстро и с ошибкой.
+        server.rules += FakeServer.Rule("PATCH", "/api/settings", "day_start_hour", delayMs = 900)
+        server.rules += FakeServer.Rule("PATCH", "/api/settings", "language_code", delayMs = 100, fail = 500 to "server_error")
+        launch()
+        openMe()
+        compose.waitText("04:00").performClick()
+        compose.waitText("06:00").performClick()
+        compose.scrollToText("me", "Русский").performClick()
+        compose.waitText("English").performClick()
+        compose.waitFor { server.calls("PATCH", "/api/settings").size == 2 }
+        compose.waitText(t.error)
+        compose.waitFor { model.user?.dayStartHour == 6 && model.user?.languageCode == "ru" }
+        compose.waitText("06:00")
+    }
+
     @Test fun `вышли, пока грузились заблокированные, - чужой список не записывается`() {
         seed()
         server.blocked = listOf(Person(3, "Петя", "petya"))

@@ -461,4 +461,99 @@ class CalendarTest : AppTest() {
         assertTrue(server.calls("POST", "/api/calendars/google/finish").isEmpty())
         assertTrue(!model.calendar.sheetOpen)
     }
+
+    @Test fun `вышли, пока шли дела дня, - чужие дела не записываются`() {
+        seed()
+        server.slow["GET /api/calendar"] = 600
+        launch()
+        compose.waitText(t.calendar).performClick()
+        compose.waitFor { "GET /api/calendar" in server.arrived }
+        compose.runOnUiThread { model.signOutLocally() }
+        compose.waitText(t.signIn)
+        compose.waitFor(8_000) { model.calendar.inFlight == 0 }
+        assertTrue(server.calls("GET", "/api/calendar").isNotEmpty())
+        // Ни один промежуток прошлого человека не лёг (иначе предзагрузка месяца у нового его бы не перезапросила).
+        assertEquals(0, model.calendar.loadedRanges)
+    }
+
+    @Test fun `ссылка входа Google - свежая не перезапрашивается, старше 12 минут - заново, «не настроен» - не спрашиваем`() {
+        seed()
+        launch()
+        openCalendar()
+        compose.waitFor { model.calendar.googleUrl != null }
+        compose.waitFor { model.calendar.inFlight == 0 }
+        val n = server.calls("GET", "/api/calendars/google/url").size
+        // Запрос ушёл бы сразу (счётчик растёт до запуска) — проверяем его, не дожидаясь сервера.
+        compose.runOnUiThread {
+            model.calendar.ensureGoogleUrl(System.currentTimeMillis() + 5 * 60_000)
+            assertEquals(0, model.calendar.inFlight)
+        }
+        compose.runOnUiThread { model.calendar.ensureGoogleUrl(System.currentTimeMillis() + 13 * 60_000) }
+        compose.waitFor { server.calls("GET", "/api/calendars/google/url").size == n + 1 }
+        // Google на сервере не настроен (503): ответ «скоро» не перезапрашиваем.
+        server.googleUrl = null
+        compose.runOnUiThread { model.calendar.loadGoogleUrl() }
+        compose.waitFor { model.calendar.googleUrl == "" && model.calendar.inFlight == 0 }
+        compose.runOnUiThread {
+            model.calendar.ensureGoogleUrl(System.currentTimeMillis() + 13 * 60_000)
+            assertEquals(0, model.calendar.inFlight)
+        }
+    }
+
+    @Test fun `шторка календарей открыта - при возврате в приложение свежие календари и ссылка, закрыта - ничего`() {
+        seed()
+        launch()
+        openCalendar()
+        compose.waitFor { model.calendar.googleUrl != null && model.calendar.inFlight == 0 }
+        // Шторка закрыта: ничего не запрашиваем (счётчик растёт сразу, до запуска запроса).
+        compose.runOnUiThread {
+            model.calendar.resumed()
+            assertEquals(0, model.calendar.inFlight)
+        }
+        compose.waitLabel(t.cal.sheetTitle).performClick()
+        compose.waitText(t.cal.sheetHint)
+        compose.waitFor { model.calendar.inFlight == 0 }
+        val accounts1 = server.calls("GET", "/api/calendars").size
+        val url1 = server.calls("GET", "/api/calendars/google/url").size
+        compose.runOnUiThread { model.calendar.resumed() }
+        compose.waitFor { server.calls("GET", "/api/calendars").size == accounts1 + 1 && server.calls("GET", "/api/calendars/google/url").size == url1 + 1 }
+    }
+
+    @Test fun `вернулись в приложение, ссылка Google не обновилась - живая ссылка остаётся, «Подключить» нажимается`() {
+        seed()
+        launch()
+        openCalendar()
+        compose.waitLabel(t.cal.sheetTitle).performClick()
+        compose.waitFor { !model.calendar.googleUrl.isNullOrEmpty() }
+        server.failures["GET /api/calendars/google/url"] = 500 to "server_error"
+        val n = server.calls("GET", "/api/calendars/google/url").size
+        compose.runOnUiThread { model.calendar.resumed() }
+        compose.waitFor { server.calls("GET", "/api/calendars/google/url").size == n + 1 }
+        compose.waitFor { model.calendar.inFlight == 0 }
+        compose.waitForIdle()
+        assertTrue(!model.calendar.googleUrl.isNullOrEmpty())
+        compose.onNodeWithTag("connectGoogle").performClick()
+        compose.waitFor { opened.any { it.first.startsWith("https://accounts.google.com/") } }
+    }
+
+    @Test fun `вышли во время синхронизации - у нового входа «Обновить» работает`() {
+        seed()
+        server.accounts = listOf(CalendarAccount(8, TodoSource.Apple, "d@icloud.com", "ok", collections = listOf(CalendarCollection("home", "Дом", null, true, true))))
+        server.slow["POST /api/calendars/sync"] = 800
+        launch()
+        openCalendarConnected()
+        compose.waitLabel(t.cal.refresh).performClick()
+        compose.waitFor { "POST /api/calendars/sync" in server.arrived }
+        compose.runOnUiThread { model.signOutLocally() }
+        compose.waitText(t.signIn)
+        compose.onNodeWithTag("signIn").performClick()
+        compose.waitFor { opened.isNotEmpty() }
+        compose.runOnUiThread { model.handleCallback("lifecommit://tglogin?code=c0de") }
+        compose.waitText(t.today)
+        compose.waitFor { server.calls("POST", "/api/calendars/sync").size == 1 }
+        server.slow.remove("POST /api/calendars/sync")
+        openCalendarConnected()
+        compose.waitLabel(t.cal.refresh).performClick()
+        compose.waitFor { server.calls("POST", "/api/calendars/sync").size == 2 }
+    }
 }

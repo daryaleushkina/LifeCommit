@@ -45,9 +45,6 @@ class MeModel(
     /** Сервер не разблокировал — строка ошибки в шторке. */
     var unblockError by mutableStateOf(false)
 
-    /** Номер правки настроек: ответ на старую правку новую не затирает. */
-    private var seq = 0
-
     /** Номер человека: растёт при выходе — ответы, начатые при прошлом аккаунте, ничего не записывают. */
     private var epoch = 0
 
@@ -59,7 +56,6 @@ class MeModel(
     private var saving = 0
 
     fun reset() {
-        seq++
         epoch++
         saved = null
         saving = 0
@@ -106,7 +102,6 @@ class MeModel(
     /** Напоминание (HH:MM или null — выключено), конец дня (0–12), язык — на экране сразу, потом с сервера. */
     fun save(patch: Map<String, Any?>) {
         val before = user() ?: return
-        val mine = ++seq
         val e = epoch
         if (saving++ == 0) saved = before
         error = false
@@ -116,17 +111,29 @@ class MeModel(
                 val fresh = api.updateSettings(JsonObject(patch.mapValues { (_, v) -> json(v) }))
                 if (e != epoch) return@launch
                 saved = fresh
-                if (mine == seq) setUser(fresh)
+                // Других правок в пути нет — экран как на сервере; есть — у них на экране свои значения: берём только свои поля.
+                val cur = user() ?: return@launch
+                setUser(if (saving == 1) fresh else apply(cur, patch.keys.associateWith { field(fresh, it) }))
             } catch (err: ApiError) {
                 if (e != epoch) return@launch
                 if (err.isSignedOut) return@launch onSignedOut()
                 log.info("settings: $err")
-                if (mine == seq) saved?.let(setUser)
+                // Назад — только поля этой правки и к тому, что сервер точно сохранил: другая правка могла уже дойти
+                // (или ещё идти), её не трогаем (/lc-review 06.10 — ответы приходят в любом порядке).
+                val base = saved ?: before
+                user()?.let { cur -> setUser(apply(cur, patch.keys.associateWith { field(base, it) })) }
                 error = true
             } finally {
                 if (e == epoch && --saving == 0) saved = null
             }
         }
+    }
+
+    private fun field(u: UserSettings, key: String): Any? = when (key) {
+        "remind_evening" -> u.remindEvening
+        "day_start_hour" -> u.dayStartHour
+        "language_code" -> u.languageCode
+        else -> null
     }
 
     private fun json(v: Any?) = when (v) {

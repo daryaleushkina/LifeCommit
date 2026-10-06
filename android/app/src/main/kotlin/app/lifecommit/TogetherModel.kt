@@ -95,6 +95,7 @@ class TogetherModel(
         friendsData = null
         friendsFailed = false
         answered = emptySet()
+        answeredAt.clear()
         answerFailed = false
         cancelFailed = false
         showFailed = null
@@ -206,7 +207,7 @@ class TogetherModel(
      */
     fun rename(groupId: Long, title: String) {
         val before = details[groupId]?.title
-        val beforeList = list
+        val beforeInList = list?.firstOrNull { it.id == groupId }?.title
         details[groupId]?.let { details[groupId] = it.copy(title = title) }
         list = list?.map { if (it.id == groupId) it.copy(title = title) else it }
         val e0 = epoch
@@ -218,8 +219,9 @@ class TogetherModel(
                 if (e0 != epoch) return@launch
                 if (e.isSignedOut) return@launch onSignedOut()
                 log.info("rename group $groupId: $e")
+                // Назад — только название этой группы: остальное в списке за это время могло поменяться (вышли из другой).
                 before?.let { old -> details[groupId]?.let { details[groupId] = it.copy(title = old) } }
-                list = beforeList
+                beforeInList?.let { old -> list = list?.map { if (it.id == groupId) it.copy(title = old) else it } }
                 note = GroupNote(groupId, ERROR)
             }
         }
@@ -302,6 +304,10 @@ class TogetherModel(
                 if (seq == friendsSeq) {
                     friendsData = d
                     friendsFailed = false
+                    // Ответ сервера начат после того, как заявку приняли или отклонили: он уже без неё. Если в нём снова
+                    // заявка от этого человека — она новая (позвал ещё раз), её показываем.
+                    answered = answered.filterTo(mutableSetOf()) { id -> (answeredAt[id] ?: Int.MAX_VALUE) >= seq }
+                    answeredAt.keys.retainAll(answered)
                     after(d)
                 }
             } catch (e: ApiError) {
@@ -319,16 +325,21 @@ class TogetherModel(
     var answered by mutableStateOf(setOf<Long>())
         private set
 
+    /** Номер последнего перечитывания друзей на момент, когда сервер принял ответ на заявку: начатые позже её уже не знают. */
+    private val answeredAt = mutableMapOf<Long, Int>()
+
     /** Ответ на заявку не дошёл — заявка снова на экране, строка ошибки. */
     var answerFailed by mutableStateOf(false)
 
     fun answer(id: Long, accept: Boolean) {
         answerFailed = false
         answered = answered + id
+        answeredAt.remove(id)
         val e0 = epoch
         scope.launch {
             try {
                 if (accept) api.acceptFriend(id) else api.dropRequest(id)
+                if (e0 == epoch) answeredAt[id] = friendsSeq
             } catch (e: ApiError) {
                 if (e0 != epoch) return@launch
                 if (e.isSignedOut) return@launch onSignedOut()
