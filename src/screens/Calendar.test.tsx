@@ -164,6 +164,18 @@ describe('день', () => {
     await expect.element(page.getByText('В этот день ничего')).toBeVisible();
   });
 
+  it('дело прошлого дня: шторка показывает его день, правка буквы не уносит дело на сегодня', async () => {
+    await setup();
+    await page.getByRole('button', { name: 'Предыдущий день' }).click();
+    await title('Вчерашнее').click();
+    const sheet = page.getByRole('dialog', { name: 'Дело' });
+    await expect.element(sheet.getByRole('radio', { name: 'Сегодня' })).toHaveAttribute('aria-checked', 'false');
+    await expect.element(sheet.getByRole('button', { name: /Другой день/ })).toMatchTextContent(/2 октября/);
+    await sheet.getByRole('textbox', { name: 'Дело' }).fill('Вчерашнее!');
+    await sheet.getByRole('button', { name: 'Готово' }).click();
+    await expect.poll(() => m.api.updateTodo.mock.calls).toEqual([[4, { title: 'Вчерашнее!' }]]);
+  });
+
   // 05.10.2026 (хук перед пушем, под нагрузкой): перешла на завтра и сразу добавила дело, пока день перечитывался, —
   // перечитка спросила ещё раз, пока дело создавалось, получила день без него, и строка пропала насовсем.
   it('дело, добавленное, пока день перечитывается, не пропадает', async () => {

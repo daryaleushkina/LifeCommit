@@ -598,12 +598,18 @@ final class AppModel {
         }
         calendarSyncing = true
         defer { calendarSyncing = false }
-        let session = epoch
+        var session = epoch
         repeat {
             syncAgain = false
             do {
                 try await api.syncCalendars()
-                guard session == epoch else { return }
+                guard session == epoch else {
+                    // Вышли, пока шёл запрос: ответ прошлого человека не применяем, а просьбу вошедшего следом
+                    // (syncAgain) выполняем — repeat-while её проверит.
+                    modelLog.notice("calendar sync: signed out mid-sync, stale result dropped")
+                    session = epoch
+                    continue
+                }
             } catch {
                 // Не синхронизировалось — состояние подключения покажут календари (auth_failed, error), не плашка.
                 modelLog.notice("calendar sync failed: \(String(describing: error), privacy: .public)")

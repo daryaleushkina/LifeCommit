@@ -78,9 +78,9 @@ export function TodoSheet({ title: initialTitle, day: initialDay, time: initialT
         </div>
       )}
       <div className="card flat">
-        {/* «Сегодня» и «Завтра» уже видны кнопками — здесь дата только для остальных дней. */}
+        {/* «Сегодня» и «Завтра» уже видны кнопками — здесь дата для остальных дней, и для прошлого дня из календаря. */}
         {!recurring && (
-          <DateRow label={t.todo.otherDay} value={day > tomorrow ? day : ''} placeholder={t.todo.pick} min={addDays(today, 2)} clearable={false} onChange={(v) => v && setDay(v)} />
+          <DateRow label={t.todo.otherDay} value={day > tomorrow || day < today ? day : ''} placeholder={t.todo.pick} min={addDays(today, 2)} clearable={false} onChange={(v) => v && setDay(v)} />
         )}
         <TimeRow label={t.todo.time} value={time} onChange={setTime} allowOff offLabel={t.todo.allDay} offAction={t.todo.noTime} initial="12:00" />
         {/* Своё дело: место можно вписать или поправить, оно уйдёт в календарь телефона. */}

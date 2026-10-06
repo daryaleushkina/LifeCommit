@@ -485,6 +485,39 @@ struct CalendarModelTests {
         #expect(m.phase == .signedOut)
     }
 
+    @Test("вышли и вошли, пока шла синхронизация прошлого человека, — синхронизация нового не теряется")
+    func syncAfterSignOut() async {
+        let server = FakeServer(today: AppModelTests.today())
+        server.accounts.withLock { $0 = [] }
+        let m = model(server)
+        let gate = server.hold("POST calendars/sync")
+        let first = Task { await m.syncCalendars() }
+        await server.seen("POST calendars/sync")
+        m.signOutLocally()
+        m.showForTests(user: server.user, today: server.today)
+        await m.syncCalendars()
+        await gate.open()
+        await first.value
+        #expect(server.calls("POST calendars/sync").count == 2)
+    }
+
+    @Test("ушли с экрана, пока грузились календари и «Потом», — это не сбой: не пишем «ничего не подключено» и пустое «Потом»")
+    func cancelledLoadIsNotFailure() async {
+        let server = FakeServer(today: AppModelTests.today())
+        server.accounts.withLock { $0 = [] }
+        server.later.withLock { $0 = [] }
+        let m = model(server)
+        let gates = [server.hold("GET calendars"), server.hold("GET todos/later")]
+        let loads = [Task { await m.loadAccounts() }, Task { await m.loadLater() }]
+        await server.seen("GET calendars")
+        await server.seen("GET todos/later")
+        for load in loads { load.cancel() }
+        for gate in gates { await gate.open() }
+        for load in loads { await load.value }
+        #expect(m.accounts == nil)
+        #expect(m.later == nil)
+    }
+
     @Test("ушли с вкладки «Календарь» — её дни после правок не перечитываются")
     func hiddenRangeNotReloaded() async {
         let todo = Todo(id: 5, title: "Купить хлеб", day: Self.day)
