@@ -236,6 +236,16 @@ Telegram в браузер не переходят). Раньше чужая с�
 `invite_expired`; 400 `no_title` `bad_mode` `bad_time` `bad_repeat` `bad_target` `no_target` `bad_day` `bad_amount`.
 Кто делает сегодня (`for_me`, `can_mark`, `turn`, `done`) сервер присылает уже посчитанным.
 
+### Ссылки-приглашения
+`https://lifecommit.app/j/<код>` — в группу, `/f/<код>` — в друзья (`worker/invites.ts`). Android с приложением
+открывает их сам (проверенный App Link: `/.well-known/assetlinks.json` с отпечатком ключа подписи `app.lifecommit`);
+иначе — страница без входа и без запросов в базу: «Открыть в приложении» → `lifecommit://join/<код>` /
+`lifecommit://friend/<код>` и «Открыть в Telegram» → `t.me/…?startapp=g_<код>` / `f_<код>`. Код — только
+`[A-Za-z0-9_-]{4,64}`, иначе 404 «Ссылка не работает»; клиенты сверяют его так же (`InviteLink` в Kit,
+`AppModel.invitePath` на Android) — в путь API ничего постороннего не попадает. iOS/Mac открывают `lifecommit://`
+со страницы; universal links для `/j/` и `/f/` — когда будет Team ID (файл `apple-app-site-association`). Поле `link`
+в ответах (`POST /groups/:id/invite`, `GET /friends`) пока ведёт в Telegram.
+
 ### Друзья
 `GET /friends` → `FriendsResponse`; `GET /friends/find?username=`; `GET /friends/link/:code` → `{person, status}`;
 `POST /friends/requests {username}|{code}` → `{status: sent|friends}`; `POST /friends/requests/:id/accept`;

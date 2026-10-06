@@ -1,0 +1,16 @@
+{
+  "group": {
+    "id": 13525,
+    "title": "Семья",
+    "kind": "other",
+    "color": null
+  },
+  "inviter": "Даша",
+  "members": [
+    {
+      "id": 8100548533511,
+      "name": "Даша"
+    }
+  ],
+  "member": false
+}

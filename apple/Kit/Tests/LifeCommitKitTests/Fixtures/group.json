@@ -1,0 +1,905 @@
+{
+  "id": 13525,
+  "title": "Семья",
+  "kind": "other",
+  "color": null,
+  "role": "owner",
+  "members": [
+    {
+      "id": 8100548533511,
+      "name": "Даша",
+      "photo": null
+    },
+    {
+      "id": 8100548533512,
+      "name": "Аня",
+      "photo": null
+    }
+  ],
+  "items": [
+    {
+      "id": 25379,
+      "title": "Вынести мусор",
+      "mode": "one",
+      "time": "19:00",
+      "duration_min": null,
+      "due_day": null,
+      "carried": false,
+      "recurring": false,
+      "people": [
+        8100548533511,
+        8100548533512
+      ],
+      "all_members": false,
+      "rotate": false,
+      "turn": null,
+      "for_me": true,
+      "can_mark": true,
+      "done": true,
+      "done_by": [
+        8100548533511
+      ],
+      "target": null,
+      "total": null,
+      "unit": null,
+      "goal_until": null,
+      "start": "2026-10-06",
+      "rrule": null,
+      "assignees": []
+    },
+    {
+      "id": 25380,
+      "title": "Помыть посуду",
+      "mode": "assign",
+      "time": null,
+      "duration_min": null,
+      "due_day": null,
+      "carried": false,
+      "recurring": true,
+      "people": [
+        8100548533511
+      ],
+      "all_members": false,
+      "rotate": true,
+      "turn": 8100548533511,
+      "for_me": true,
+      "can_mark": true,
+      "done": false,
+      "done_by": [],
+      "target": null,
+      "total": null,
+      "unit": null,
+      "goal_until": null,
+      "start": "2026-10-06",
+      "rrule": "FREQ=DAILY",
+      "assignees": [
+        8100548533511,
+        8100548533512
+      ]
+    },
+    {
+      "id": 25381,
+      "title": "Купить хлеб",
+      "mode": "assign",
+      "time": null,
+      "duration_min": null,
+      "due_day": null,
+      "carried": false,
+      "recurring": false,
+      "people": [
+        8100548533512
+      ],
+      "all_members": false,
+      "rotate": false,
+      "turn": null,
+      "for_me": false,
+      "can_mark": false,
+      "done": false,
+      "done_by": [],
+      "target": null,
+      "total": null,
+      "unit": null,
+      "goal_until": null,
+      "start": "2026-10-06",
+      "rrule": null,
+      "assignees": [
+        8100548533512
+      ]
+    },
+    {
+      "id": 25383,
+      "title": "Отпуск",
+      "mode": "goal",
+      "time": null,
+      "duration_min": null,
+      "due_day": null,
+      "carried": false,
+      "recurring": false,
+      "people": [
+        8100548533511,
+        8100548533512
+      ],
+      "all_members": false,
+      "rotate": false,
+      "turn": null,
+      "for_me": true,
+      "can_mark": false,
+      "done": false,
+      "done_by": [],
+      "target": 150000,
+      "total": 5000,
+      "unit": null,
+      "goal_until": null,
+      "start": "2026-10-06",
+      "rrule": null,
+      "assignees": []
+    }
+  ],
+  "planned": 3,
+  "done": 1,
+  "settings": {
+    "admins_only_edit": false,
+    "rating_enabled": false,
+    "chat_digest": true,
+    "chat_reminders": true,
+    "tg_chat_title": null
+  },
+  "upcoming": [
+    {
+      "day": "2026-10-07",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533512
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533512,
+          "for_me": false,
+          "can_mark": false,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        },
+        {
+          "id": 25382,
+          "title": "Семейный ужин",
+          "mode": "event",
+          "time": "20:00",
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": false,
+          "people": [
+            8100548533511,
+            8100548533512
+          ],
+          "all_members": true,
+          "rotate": false,
+          "turn": null,
+          "for_me": true,
+          "can_mark": false,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-07",
+          "rrule": null,
+          "assignees": []
+        }
+      ]
+    },
+    {
+      "day": "2026-10-08",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533511
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533511,
+          "for_me": true,
+          "can_mark": true,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-09",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533512
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533512,
+          "for_me": false,
+          "can_mark": false,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-10",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533511
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533511,
+          "for_me": true,
+          "can_mark": true,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-11",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533512
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533512,
+          "for_me": false,
+          "can_mark": false,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-12",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533511
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533511,
+          "for_me": true,
+          "can_mark": true,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-13",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533512
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533512,
+          "for_me": false,
+          "can_mark": false,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-14",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533511
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533511,
+          "for_me": true,
+          "can_mark": true,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-15",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533512
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533512,
+          "for_me": false,
+          "can_mark": false,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-16",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533511
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533511,
+          "for_me": true,
+          "can_mark": true,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-17",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533512
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533512,
+          "for_me": false,
+          "can_mark": false,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-18",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533511
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533511,
+          "for_me": true,
+          "can_mark": true,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-19",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533512
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533512,
+          "for_me": false,
+          "can_mark": false,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    },
+    {
+      "day": "2026-10-20",
+      "group": {
+        "id": 13525,
+        "title": "Семья",
+        "kind": "other",
+        "members": [
+          {
+            "id": 8100548533511,
+            "name": "Даша",
+            "photo": null
+          },
+          {
+            "id": 8100548533512,
+            "name": "Аня",
+            "photo": null
+          }
+        ]
+      },
+      "items": [
+        {
+          "id": 25380,
+          "title": "Помыть посуду",
+          "mode": "assign",
+          "time": null,
+          "duration_min": null,
+          "due_day": null,
+          "carried": false,
+          "recurring": true,
+          "people": [
+            8100548533511
+          ],
+          "all_members": false,
+          "rotate": true,
+          "turn": 8100548533511,
+          "for_me": true,
+          "can_mark": true,
+          "done": false,
+          "done_by": [],
+          "target": null,
+          "total": null,
+          "unit": null,
+          "goal_until": null,
+          "start": "2026-10-06",
+          "rrule": "FREQ=DAILY",
+          "assignees": [
+            8100548533511,
+            8100548533512
+          ]
+        }
+      ]
+    }
+  ]
+}

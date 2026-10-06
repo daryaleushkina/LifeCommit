@@ -34,17 +34,24 @@ struct RouteTests {
         #expect(after == before, "экран редактора поменялся, когда привычка пропала с «Сегодня»")
     }
 
-    /// Пиксели окна после того, как SwiftUI применил изменения модели. Сравниваем пиксели, а не PNG: кодировщик для
-    /// одной и той же картинки выдаёт разные байты, и тест падал при совпадающем экране (06.10.2026, 2 из 3 прогонов).
+    /// Пиксели окна, когда SwiftUI применил изменения модели и экран перестал меняться: два кадра подряд одинаковы.
+    /// Три уступки потоку не хватало под нагрузкой Мака (load 180, 07.10.2026): первый кадр снимался недорисованным,
+    /// и тест падал при верном экране. Сравниваем пиксели, а не PNG: кодировщик для одной и той же картинки выдаёт
+    /// разные байты (06.10.2026).
     private func picture(_ window: UIWindow) async -> Data {
-        for _ in 0..<3 {
+        var last = Data()
+        for _ in 0..<40 {
             await Task.yield()
             window.layoutIfNeeded()
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let pixels = (image.cgImage?.dataProvider?.data as Data?) ?? Data()
+            if pixels == last { return pixels }
+            last = pixels
+            try? await Task.sleep(for: .milliseconds(20))
         }
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
-        return (image.cgImage?.dataProvider?.data as Data?) ?? Data()
+        return last
     }
 }
 #endif

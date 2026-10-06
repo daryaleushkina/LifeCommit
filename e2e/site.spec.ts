@@ -282,6 +282,35 @@ for (const [lang, to] of [['ru', '/'], ['en', '/'], ['ru', '/privacy/'], ['ru', 
   });
 }
 
+// Приглашение для приложений (worker/invites.ts): на телефоне без приложения — страница с двумя кнопками.
+test('приглашение lifecommit.app/j/<код>: «Открыть в приложении» и «Открыть в Telegram», доступность, эталон', async ({ page }) => {
+  await page.goto('/lang/ru?to=/');
+  await page.goto('/j/abc234xyz9');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Приглашение в группу');
+  await expect(page.getByRole('link', { name: 'Открыть в приложении' })).toHaveAttribute('href', 'lifecommit://join/abc234xyz9');
+  await expect(page.getByRole('link', { name: 'Открыть в Telegram' })).toHaveAttribute('href', /startapp=g_abc234xyz9$/);
+  await noSideScroll(page);
+  const res = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  expect(res.violations.map((v) => `${v.id}: ${v.nodes.length}`), 'нарушения доступности').toEqual([]);
+  await expect(page).toHaveScreenshot('site-invite.png');
+  // Плохой код — «Ссылка не работает», без кнопок.
+  await page.goto('/f/%3Cb%3E');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ссылка не работает');
+  await expect(page.getByRole('link')).toHaveCount(0);
+});
+
+test.describe('компьютер: приглашение', () => {
+  test.use({ viewport: { width: 1280, height: 800 }, isMobile: false, hasTouch: false });
+  test('приглашение в друзья на компьютере — по центру, кнопки в одну колонку', async ({ page }) => {
+    await page.goto('/lang/en?to=/');
+    await page.goto('/f/j8wuasb95a');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Friend invitation');
+    await expect(page.getByRole('link', { name: 'Open in the app' })).toHaveAttribute('href', 'lifecommit://friend/j8wuasb95a');
+    await noSideScroll(page);
+    await expect(page).toHaveScreenshot('site-invite-desktop.png');
+  });
+});
+
 test('эталон первого экрана лендинга', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#heroPh .app .habit').first()).toBeVisible();

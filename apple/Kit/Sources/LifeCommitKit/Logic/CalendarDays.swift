@@ -34,9 +34,12 @@ public enum CalendarDays {
         mode == .day ? Days.add(selected, n) : "\(Months.shift(Months.of(selected), n))-01"
     }
 
-    /// Точки под днём месяца: до трёх несделанных дел; true — событие из календаря (синяя точка).
-    public static func dots(_ todos: [Todo], day: String) -> [Bool] {
-        todos.filter { $0.day == day && !$0.done }.prefix(3).map { $0.source != nil }
+    /// Точки под днём месяца: до трёх несделанных дел — сначала свои, потом дела групп (без мероприятий); true — событие
+    /// из календаря (синяя точка).
+    public static func dots(_ todos: [Todo], groups: [GroupDayBlock] = [], day: String) -> [Bool] {
+        let own = todos.filter { $0.day == day && !$0.done }.map { $0.source != nil }
+        let shared = groups.filter { $0.day == day }.flatMap(\.items).filter { !$0.done && $0.mode != .event }.map { _ in false }
+        return Array((own + shared).prefix(3))
     }
 
     /// «обновлено 3 мин назад»; ещё не обновлялся — пусто.

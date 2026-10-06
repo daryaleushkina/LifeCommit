@@ -62,6 +62,14 @@ struct TodayView: View {
                     .padding(.top, 10)
                 }
 
+                // Блоки групп (GroupBlocks.tsx): под личным — мои дела каждой группы; заголовок ведёт в группу.
+                ForEach(data.groups) { group in
+                    GroupBlockView(
+                        groupId: group.id, title: group.title, members: group.members, items: GroupLogic.todayOrder(group.items),
+                        progress: group.planned > 0 ? t.gr.progress(group.done, group.planned) : nil, day: data.day
+                    ) { item in Task { await model.markGroupOnToday(groupId: group.id, item) } }
+                }
+
                 if data.canAddTask {
                     LinkButton(title: t.addTask, icon: Glyph.plus) { model.path.append(.pick) }
                         .padding(.top, 4)

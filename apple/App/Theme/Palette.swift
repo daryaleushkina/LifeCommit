@@ -23,6 +23,13 @@ struct Palette: Sendable {
     let neutralPill: Color
     let neutralPillText: Color
     let outside: Color
+    /// Текст на светло-синем (.badge.blue): --outside-ink.
+    let outsideInk: Color
+    /// Янтарный (.badge.amber — дело другому): --amber, --amber-ink.
+    let amber: Color
+    let amberInk: Color
+    /// Чат Telegram в настройках группы: --telegram-ink.
+    let telegramInk: Color
     let heat: [Color]
     /// Стекло: заливка панели и обводка, тень.
     let glass: Color
@@ -72,6 +79,10 @@ struct Palette: Sendable {
         neutralPill: Color(hex: 0x6B7368),
         neutralPillText: .white,
         outside: Color(hex: 0x4470CC),
+        outsideInk: Color(hex: 0x2B4579),
+        amber: Color(hex: 0xD9A441),
+        amberInk: Color(hex: 0x6E4F0E),
+        telegramInk: Color(hex: 0x2A8BC8),
         heat: [Color(hex: 0xE4E8DF), Color(hex: 0xB8E0C4), Color(hex: 0x7CCB96), Color(hex: 0x3FA968), Color(hex: 0x237A46)],
         glass: Color.white.opacity(0.58),
         glassEdge: Color.white.opacity(0.75),
@@ -112,6 +123,10 @@ struct Palette: Sendable {
         neutralPill: Color(hex: 0xA3AD9F),
         neutralPillText: Color(hex: 0x0F1511),
         outside: Color(hex: 0x7F9FE3),
+        outsideInk: Color(hex: 0xA9C1F0),
+        amber: Color(hex: 0xD9A441),
+        amberInk: Color(hex: 0xE8C98A),
+        telegramInk: Color(hex: 0x2A8BC8),
         heat: [Color.white.opacity(0.09), Color(hex: 0x1E4A2E), Color(hex: 0x2B7143), Color(hex: 0x3FA968), Color(hex: 0x7CCB96)],
         glass: Color.white.opacity(0.07),
         glassEdge: Color.white.opacity(0.07),

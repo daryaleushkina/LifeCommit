@@ -56,6 +56,14 @@ final class FakeServer: Sendable {
     let accounts = Mutex<[CalendarAccount]?>(nil)
     /// «Потом» для GET todos/later; nil — 404.
     let later = Mutex<[Todo]?>(nil)
+    /// «Вместе»: экраны групп (GET groups/:id, список — GET groups); нет группы — 404.
+    let groups = Mutex<[Int: GroupToday]>([:])
+    /// Дела групп для GET calendar.
+    let calendarGroups = Mutex<[GroupDayBlock]>([])
+    /// Друзья (GET friends); nil — 404.
+    let friends = Mutex<FriendsResponse?>(nil)
+    /// Экраны друзей (GET friends/:id); нет — 404.
+    let profiles = Mutex<[Int: FriendProfile]>([:])
     /// Заготовленные ответы по ключу запроса («POST calendars/google/finish»).
     private let canned = Mutex<[String: (Int, Data)]>([:])
 
@@ -151,7 +159,8 @@ final class FakeServer: Sendable {
         case ("GET", "calendar", 1):
             guard let list = calendar.withLock({ $0 }) else { return Self.json(404, ["error": "not_found"]) }
             let from = call.query["from"] ?? "", to = call.query["to"] ?? ""
-            return (200, try! Self.encoder.encode(CalendarRange(today: today.day, todos: list.filter { $0.day >= from && $0.day <= to })))
+            let blocks = calendarGroups.withLock { $0 }.filter { $0.day >= from && $0.day <= to }
+            return (200, try! Self.encoder.encode(CalendarRange(today: today.day, todos: list.filter { $0.day >= from && $0.day <= to }, groups: blocks)))
         case ("GET", "calendars", 1):
             guard let list = accounts.withLock({ $0 }) else { return Self.json(404, ["error": "not_found"]) }
             return (200, try! Self.encoder.encode(list))
@@ -229,6 +238,160 @@ final class FakeServer: Sendable {
                 s.tasks[i].logged = value != nil || status != nil
             }
             return Self.json(200, [:])
+        case (_, "groups", _), (_, "invites", _):
+            return handleGroups(call, parts, body)
+        case (_, "friends", _):
+            return handleFriends(call, parts, body)
+        default:
+            return Self.json(404, ["error": "not_found"])
+        }
+    }
+
+    private func newId() -> Int {
+        nextId.withLock { n in
+            n += 1
+            return n
+        }
+    }
+
+    /// Правка группы — и на её экране, и в блоке на «Сегодня».
+    private func editGroup(_ id: Int, _ f: (inout GroupToday) -> Void) {
+        groups.withLock { if var g = $0[id] { f(&g); $0[id] = g } }
+        state.withLock { s in
+            s.groups = s.groups.map { g in
+                guard g.id == id else { return g }
+                var next = g
+                f(&next)
+                next.settings = nil
+                next.upcoming = nil
+                return next
+            }
+        }
+    }
+
+    private func handleGroups(_ call: Call, _ parts: [String], _ body: [String: Any]) -> (Int, Data) {
+        let id = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+        let item = parts.count > 3 ? Int(parts[3]) ?? 0 : 0
+        switch (call.method, parts.count, parts.count > 2 ? parts[2] : "", parts.count > 4 ? parts[4] : "") {
+        case ("GET", 1, _, _):
+            let list = groups.withLock { $0.values.sorted { $0.id < $1.id } }.map { g -> GroupToday in
+                var x = g
+                x.settings = nil
+                x.upcoming = nil
+                return x
+            }
+            return (200, try! Self.encoder.encode(list))
+        case ("POST", 1, _, _):
+            let gid = newId()
+            let g = GroupToday(id: gid, title: body["title"] as? String ?? "", role: .owner, members: [GroupMember(id: user.id, name: user.firstName)], settings: GroupSettings(), upcoming: [])
+            groups.withLock { $0[gid] = g }
+            return Self.json(201, ["id": gid])
+        case ("GET", 2, _, _) where parts[0] == "groups":
+            guard let g = groups.withLock({ $0[id] }) else { return Self.json(404, ["error": "not_found"]) }
+            return (200, try! Self.encoder.encode(g))
+        case ("PATCH", 2, _, _):
+            editGroup(id) { g in
+                if let title = body["title"] as? String { g.title = title }
+                if let on = body["admins_only_edit"] as? Bool { g.settings?.adminsOnlyEdit = on }
+            }
+            return Self.json(200, ["ok": true])
+        case ("DELETE", 2, _, _), ("POST", 3, "leave", _):
+            groups.withLock { $0[id] = nil }
+            state.withLock { s in s.groups.removeAll { $0.id == id } }
+            return Self.json(200, ["ok": true])
+        case ("POST", 3, "invite", _):
+            return Self.json(201, ["code": "abc234xyz9", "link": "https://t.me/LifeCommit_bot?startapp=g_abc234xyz9", "expires_at": "2026-10-12T00:00:00Z"])
+        case ("POST", 4, "chat", _) where parts[3] == "check":
+            let title = groups.withLock { $0[id]?.settings?.tgChatTitle }
+            return Self.json(200, ["tg_chat_title": title as Any? ?? NSNull()])
+        case ("DELETE", 3, "chat", _):
+            editGroup(id) { $0.settings?.tgChatTitle = nil }
+            return Self.json(200, ["ok": true])
+        case ("POST", 3, "items", _):
+            let iid = newId()
+            let it = GroupDayItem(id: iid, title: body["title"] as? String ?? "", mode: GroupMode(rawValue: body["mode"] as? String ?? "") ?? .one,
+                                  time: body["time"] as? String, people: [user.id], canMark: true, start: body["day"] as? String ?? today.day,
+                                  rrule: body["rrule"] as? String, assignees: body["assignees"] as? [Int] ?? [])
+            editGroup(id) { $0.items.append(it) }
+            return Self.json(201, ["id": iid])
+        case ("PATCH", 4, "items", _):
+            editGroup(id) { g in
+                g.items = g.items.map { x in
+                    guard x.id == item else { return x }
+                    var next = x
+                    if let title = body["title"] as? String { next.title = title }
+                    return next
+                }
+            }
+            return Self.json(200, ["ok": true])
+        case ("DELETE", 4, "items", _), ("POST", 5, "items", "skip"):
+            editGroup(id) { $0.items.removeAll { $0.id == item } }
+            return Self.json(200, ["ok": true])
+        case ("PUT", 5, "items", "mark"):
+            let done = body["done"] as? Bool ?? true
+            let me = user.id
+            editGroup(id) { g in
+                g.items = g.items.map { x in x.id == item ? GroupLogic.marked(x, done: done, me: me) : x }
+                g.done += done ? 1 : -1
+            }
+            return Self.json(200, ["ok": true, "taken": false])
+        case ("POST", 5, "items", "entries"):
+            let amount = body["amount"] as? Double ?? 0
+            editGroup(id) { g in
+                g.items = g.items.map { x in
+                    guard x.id == item else { return x }
+                    var next = x
+                    next.total = (x.total ?? 0) + amount
+                    return next
+                }
+            }
+            return Self.json(201, ["ok": true])
+        default:
+            return Self.json(404, ["error": "not_found"])
+        }
+    }
+
+    private func handleFriends(_ call: Call, _ parts: [String], _ body: [String: Any]) -> (Int, Data) {
+        let id = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+        let request = parts.count > 2 ? Int(parts[2]) ?? 0 : 0
+        switch (call.method, parts.count) {
+        case ("GET", 1):
+            guard let data = friends.withLock({ $0 }) else { return Self.json(404, ["error": "not_found"]) }
+            return (200, try! Self.encoder.encode(data))
+        case ("GET", 2):
+            guard let p = profiles.withLock({ $0[id] }) else { return Self.json(404, ["error": "not_found"]) }
+            return (200, try! Self.encoder.encode(p))
+        case ("POST", 4) where parts[1] == "requests" && parts[3] == "accept":
+            friends.withLock { f in
+                guard let r = f?.incoming.first(where: { $0.id == request }) else { return }
+                f?.incoming.removeAll { $0.id == request }
+                f?.friends.append(FriendCard(id: r.id, firstName: r.firstName, username: r.username, days: Array(repeating: 0, count: 14)))
+            }
+            return Self.json(200, ["ok": true])
+        case ("DELETE", 3) where parts[1] == "requests":
+            friends.withLock { f in
+                f?.incoming.removeAll { $0.id == request }
+                f?.outgoing.removeAll { $0.id == request }
+            }
+            return Self.json(200, ["ok": true])
+        case ("DELETE", 2):
+            friends.withLock { $0?.friends.removeAll { $0.id == id } }
+            profiles.withLock { $0[id] = nil }
+            return Self.json(200, ["ok": true])
+        case ("POST", 3) where parts[2] == "block":
+            friends.withLock { $0?.friends.removeAll { $0.id == id } }
+            profiles.withLock { $0[id] = nil }
+            return Self.json(200, ["ok": true])
+        case ("PUT", 2) where parts[1] == "shown":
+            let ids = body["task_ids"] as? [Int] ?? []
+            state.withLock { s in
+                for i in s.tasks.indices { s.tasks[i].visibility = ids.contains(s.tasks[i].id) ? .friends : .private }
+            }
+            friends.withLock { $0?.prompt = false }
+            return Self.json(200, ["ok": true])
+        case ("POST", 2) where parts[1] == "prompted":
+            friends.withLock { $0?.prompt = false }
+            return Self.json(200, ["ok": true])
         default:
             return Self.json(404, ["error": "not_found"])
         }

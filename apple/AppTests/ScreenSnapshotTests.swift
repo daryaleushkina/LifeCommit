@@ -175,6 +175,149 @@ struct ScreenSnapshotTests {
         check(LaterSheet(), model: m, scheme: scheme, named: "later", sheet: true)
     }
 
+    // MARK: «Вместе»
+
+    static let members = [GroupMember(id: 777, name: "Даша"), GroupMember(id: 5, name: "Аня"), GroupMember(id: 6, name: "Петя"), GroupMember(id: 8, name: "Бабушка")]
+
+    static let family: GroupToday = {
+        let day = "2026-10-05"
+        let rub = GoalUnit(type: "money", forms: ["рубль", "рубля", "рублей"], currency: "₽")
+        let items = [
+            GroupDayItem(id: 1, title: "Отпуск в Грузии", mode: .goal, people: [777, 5, 6, 8], target: 150_000, total: 62_400, unit: rub, start: day),
+            GroupDayItem(id: 2, title: "Вынести мусор", mode: .one, time: "19:00", people: [777, 5, 6, 8], canMark: true, done: true, doneBy: [5], start: day),
+            GroupDayItem(id: 3, title: "Помыть посуду", mode: .assign, recurring: true, people: [777], rotate: true, turn: 777, canMark: true, start: day, rrule: "FREQ=DAILY", assignees: [777, 5]),
+            GroupDayItem(id: 4, title: "Купить хлеб", mode: .assign, people: [5], forMe: false, start: day, assignees: [5]),
+            GroupDayItem(id: 5, title: "Позвонить бабушке", mode: .assign, people: [777, 5, 6], canMark: true, doneBy: [6], start: day, assignees: [777, 5, 6]),
+            GroupDayItem(id: 6, title: "Семейный ужин", mode: .event, time: "20:00", people: [777, 5, 6, 8], allMembers: true, start: day),
+        ]
+        let soon = GroupDayBlock(day: "2026-10-07", group: .init(id: 1, title: "Семья", members: members), items: [
+            GroupDayItem(id: 7, title: "Поход в кино", mode: .event, time: "18:30", people: [777, 5, 6], start: "2026-10-07"),
+            GroupDayItem(id: 3, title: "Помыть посуду", mode: .assign, recurring: true, people: [5], rotate: true, turn: 5, forMe: false, start: day, rrule: "FREQ=DAILY", assignees: [777, 5]),
+        ])
+        return GroupToday(id: 1, title: "Семья", role: .owner, members: members, items: items, planned: 4, done: 2,
+                          settings: GroupSettings(adminsOnlyEdit: false, tgChatTitle: "Семья 🏡"), upcoming: [soon])
+    }()
+
+    static let sport = GroupToday(id: 2, title: "Бег по выходным", role: .member, members: Array(members.prefix(3)), items: [
+        GroupDayItem(id: 21, title: "Пробежка 5 км", mode: .assign, time: "07:30", people: [777], canMark: true, start: "2026-10-05", assignees: [777]),
+    ], planned: 3, done: 1, settings: GroupSettings(), upcoming: [])
+
+    static let friendsData = FriendsResponse(
+        friends: [
+            FriendCard(id: 5, firstName: "Аня", username: "anna_k", done: 2, due: 3, days: [0, 1, 2, 0, 3, 5, 2, 1, 0, 4, 6, 2, 3, 1]),
+            FriendCard(id: 6, firstName: "Петя", days: [0, 0, 1, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0]),
+        ],
+        incoming: [FriendRequest(id: 9, firstName: "Маша", via: .link)],
+        outgoing: [Person(id: 10, firstName: "Коля")],
+        link: "https://t.me/LifeCommit_bot?startapp=f_j8wuasb95a"
+    )
+
+    static let anyaProfile: FriendProfile = {
+        let heat = (0..<200).map { i in HeatDay(day: Days.add("2026-10-05", -i), score: Double([0, 1, 2, 4, 6, 0, 3][i % 7])) }
+        return FriendProfile(person: Person(id: 5, firstName: "Аня", username: "anna_k"), today: "2026-10-05", heat: heat, habits: [
+            FriendHabit(id: 1, title: "Пить воду", kind: .count, unit: "стаканов", target: 8, value: 3),
+            FriendHabit(id: 2, title: "Бег", kind: .check, value: 1),
+            FriendHabit(id: 3, title: "Не курить", kind: .abstain, status: .clean, cleanDays: 12),
+        ])
+    }()
+
+    /// Модель «Вместе»: на экране и на подменённом сервере — одно и то же (экраны перечитывают своё при открытии).
+    func togetherModel(today: TodayResponse = Self.today, groups: [GroupToday] = [family, sport], friends: FriendsResponse? = friendsData) -> AppModel {
+        let server = FakeServer(today: today)
+        server.groups.withLock { list in for g in groups { list[g.id] = g } }
+        server.friends.withLock { $0 = friends }
+        server.profiles.withLock { $0[5] = Self.anyaProfile }
+        let m = AppModel(api: server.api, tokens: MemoryTokenStore())
+        m.showForTests(user: Self.user, today: today)
+        m.together.setForTests(list: groups.map { g in
+            var x = g
+            x.settings = nil
+            x.upcoming = nil
+            return x
+        }, details: groups, friends: friends, profiles: [Self.anyaProfile])
+        return m
+    }
+
+    @Test("«Вместе»: группы с прогрессом, целью и «Тебе: …»; пусто", arguments: [ColorScheme.light, .dark])
+    func together(scheme: ColorScheme) {
+        check(TogetherView(section: "groups"), model: togetherModel(), scheme: scheme, named: "together-groups")
+        if scheme == .light {
+            check(TogetherView(section: "groups"), model: togetherModel(groups: []), scheme: scheme, named: "together-empty")
+        }
+    }
+
+    @Test("Экран группы: цель, дела всех видов, «Скоро»; «Люди»", arguments: [ColorScheme.light, .dark])
+    func group(scheme: ColorScheme) {
+        check(GroupView(groupId: 1), model: togetherModel(), scheme: scheme, named: "group")
+        if scheme == .light {
+            check(GroupView(groupId: 1, tab: "people"), model: togetherModel(), scheme: scheme, named: "group-people")
+        }
+    }
+
+    @Test("Настройки группы: владелец с чатом; участник без чата", arguments: [ColorScheme.light, .dark])
+    func groupSettings(scheme: ColorScheme) {
+        check(GroupSettingsSheet(group: Self.family, onLeft: {}), model: togetherModel(), scheme: scheme, named: "group-settings", sheet: true)
+        if scheme == .light {
+            check(GroupSettingsSheet(group: Self.sport, onLeft: {}), model: togetherModel(), scheme: scheme, named: "group-settings-member", sheet: true)
+        }
+    }
+
+    @Test("Групповое дело: новое; правка «по очереди» каждый день; цель", arguments: [ColorScheme.light, .dark])
+    func groupItem(scheme: ColorScheme) {
+        let m = togetherModel()
+        check(GroupItemSheet(group: Self.family, target: .edit(Self.family.items[2]), me: 777, today: "2026-10-05"), model: m, scheme: scheme, named: "group-item-rotate", sheet: true)
+        if scheme == .light {
+            check(GroupItemSheet(group: Self.family, target: .new, me: 777, today: "2026-10-05"), model: m, scheme: scheme, named: "group-item-new", sheet: true)
+            check(GroupItemSheet(group: Self.family, target: .edit(Self.family.items[0]), me: 777, today: "2026-10-05"), model: m, scheme: scheme, named: "group-item-goal", sheet: true)
+            check(PutSheet(item: Self.family.items[0]) { _ in }, model: m, scheme: scheme, named: "group-put", sheet: true)
+        }
+    }
+
+    @Test("Вступить по приглашению", arguments: [ColorScheme.light, .dark])
+    func join(scheme: ColorScheme) {
+        let inv = Invitation(group: .init(id: 1, title: "Семья"), inviter: "Аня", members: [.init(id: 5, name: "Аня"), .init(id: 6, name: "Петя")])
+        check(JoinView(code: "abc234xyz9", invitation: inv), model: togetherModel(), scheme: scheme, named: "join")
+    }
+
+    @Test("Друзья: поиск и «Позвать», заявки, друзья с картой двух недель, «ждём ответа»", arguments: [ColorScheme.light, .dark])
+    func friends(scheme: ColorScheme) {
+        check(TogetherView(section: "friends"), model: togetherModel(), scheme: scheme, named: "friends")
+        if scheme == .light {
+            check(RequestsView(), model: togetherModel(), scheme: scheme, named: "friend-requests")
+            check(AddFriendSheet(), model: togetherModel(), scheme: scheme, named: "friend-add", sheet: true)
+        }
+    }
+
+    @Test("Экран друга: карта «Месяц», открытые привычки", arguments: [ColorScheme.light, .dark])
+    func friend(scheme: ColorScheme) {
+        check(FriendView(friendId: 5), model: togetherModel(), scheme: scheme, named: "friend")
+    }
+
+    @Test("Чужая ссылка «Позвать друга» и «Что показать друзьям?»", arguments: [ColorScheme.light])
+    func friendLink(scheme: ColorScheme) {
+        check(FriendLinkView(code: "j8wuasb95a", who: FoundPerson(person: Person(id: 5, firstName: "Аня"), status: .none)), model: togetherModel(), scheme: scheme, named: "friend-link")
+        check(ShowSheet(), model: togetherModel(), scheme: scheme, named: "friends-show")
+    }
+
+    @Test("Блоки групп на «Сегодня» и в дне календаря", arguments: [ColorScheme.light])
+    func groupBlocks(scheme: ColorScheme) {
+        var today = Self.today
+        today.groups = [Self.family, Self.sport].map { g in
+            var x = g
+            x.settings = nil
+            x.upcoming = nil
+            return x
+        }
+        today.tasks = Array(today.tasks.prefix(2))
+        check(TodayView(), model: togetherModel(today: today), scheme: scheme, named: "today-groups")
+        let m = togetherModel(today: today)
+        let day = CalendarDays.bounds(.day, anchor: "2026-10-05")
+        m.setCalendarForTests(ranges: [(day.from, day.to, [])], groups: [(day.from, day.to, [
+            GroupDayBlock(day: "2026-10-05", group: .init(id: 1, title: "Семья", members: Self.members), items: GroupLogic.todayOrder(Self.family.items)),
+        ])], accounts: [])
+        check(CalendarView(), model: m, scheme: scheme, named: "calendar-day-groups")
+    }
+
     // MARK: Снимок
 
     /// sheet — шторка: в приложении она на своей подложке (presentationBackground — palette.surface), а не на фоне экрана.
@@ -193,7 +336,12 @@ struct ScreenSnapshotTests {
         .foregroundStyle(Palette.of(scheme).text)
         .tint(Palette.of(scheme).accent)
 
-        let record: SnapshotTestingConfiguration.Record = ProcessInfo.processInfo.environment["LC_RECORD"] == "1" ? .all : .never
+        // LC_RECORD=1 — переснять все (намеренная правка вида), LC_RECORD=missing — снять только новые экраны.
+        let record: SnapshotTestingConfiguration.Record = switch ProcessInfo.processInfo.environment["LC_RECORD"] {
+        case "1": .all
+        case "missing": .missing
+        default: .never
+        }
         withSnapshotTesting(record: record) {
             #if os(iOS)
             let controller = UIHostingController(rootView: screen)
