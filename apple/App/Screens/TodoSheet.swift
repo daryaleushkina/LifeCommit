@@ -57,7 +57,8 @@ struct TodoSheet: View {
 
             VStack(spacing: 0) {
                 if !todo.recurring {
-                    SheetRow(label: s.otherDay, value: day > tomorrow ? t.dayMonth(day) : s.pick) { dayOpen = true }
+                    // «Сегодня» и «Завтра» — кнопками; здесь — остальные дни и прошлый день дела, открытого в календаре.
+                    SheetRow(label: s.otherDay, value: day > tomorrow || day < today ? t.dayMonth(day) : s.pick) { dayOpen = true }
                     Divider().overlay(palette.line)
                 }
                 SheetRow(label: s.time, value: time ?? s.allDay) { timeOpen = true }

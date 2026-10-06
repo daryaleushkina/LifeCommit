@@ -137,6 +137,11 @@ struct ScreenSnapshotTests {
     func todoSheet(scheme: ColorScheme) {
         let own = Todo(id: 22, title: "Забрать посылку", day: "2026-10-06", time: "15:30", details: TodoDetails(location: "Почта на Тверской"))
         check(TodoSheet(todo: own, today: "2026-10-05", carried: true, onSave: { _ in }, onDelete: {}), model: model(), scheme: scheme, named: "todo-sheet", sheet: true)
+        if scheme == .light {
+            // Дело прошлого дня, открытое в календаре: ни «Сегодня», ни «Завтра» — его день в строке «Другой день».
+            let past = Todo(id: 23, title: "Сдать отчёт", day: "2026-09-28", done: true)
+            check(TodoSheet(todo: past, today: "2026-10-05", carried: false, onSave: { _ in }, onDelete: {}), model: model(), scheme: scheme, named: "todo-sheet-past", sheet: true)
+        }
         let event = Todo(id: 21, title: "Планёрка", day: "2026-10-05", time: "10:00", durationMin: 30, recurring: true, source: .google, details: TodoDetails(
             location: "Офис, переговорная 3", link: "https://meet.google.com/abc-defg-hij", peopleCount: 6, people: ["Аня", "Борис", "Вика", "Гоша"],
             notes: "Повестка: итоги недели, планы на следующую. Каждый — по две минуты.", openUrl: "https://calendar.google.com/event?eid=1"))

@@ -90,6 +90,8 @@ describe('своё дело', () => {
     const { r, onSave } = sheet({ day: '2026-09-28', carried: false });
     await r;
     await expect.element(radio('Сегодня')).toHaveAttribute('aria-checked', 'false');
+    // Какой это день — видно в строке «Другой день».
+    await expect.element(page.getByRole('button', { name: /Другой день/ })).toMatchTextContent(/28 сентября/);
     await title().fill('Купить молоко!');
     await done().click();
     expect(onSave).toHaveBeenCalledWith({ title: 'Купить молоко!', day: '2026-09-28', time: null, location: '' });
