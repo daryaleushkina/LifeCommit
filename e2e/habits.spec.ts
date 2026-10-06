@@ -79,6 +79,9 @@ test('редактор: переименовать, «Отложить» и ве
   await openHabit(page, 'Медитация утром');
   await page.locator('.detail-head').getByRole('button').last().click();
   await page.getByRole('button', { name: 'Отложить' }).click();
+  // Редактор закрывается только после ответа сервера: перезагрузка раньше обрывала запрос (под нагрузкой хука привычка
+  // оставалась на «Сегодня», и «Отложенных» не было).
+  await expect(page.getByRole('button', { name: 'Отложить' })).toHaveCount(0);
   await page.reload();
   await expect(card(page, 'Медитация утром')).toHaveCount(0);
   await page.getByRole('button', { name: /Отложенные/ }).click();
@@ -90,6 +93,8 @@ test('редактор: переименовать, «Отложить» и ве
   await openHabit(page, 'Медитация утром');
   await page.locator('.detail-head').getByRole('button').last().click();
   await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+  // То же: ждём, пока сервер удалит и редактор закроется, — иначе перезагрузка обрывает удаление.
+  await expect(page.getByRole('button', { name: 'Удалить', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(card(page, 'Медитация утром')).toHaveCount(0);
 });
