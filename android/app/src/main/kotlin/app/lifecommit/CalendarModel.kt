@@ -171,6 +171,9 @@ class CalendarModel(
     val days: List<String> get() = CalendarDays.range(mode, selected.ifEmpty { today() })
     private val key: String get() = days.let { "${it.first()}:${it.last()}" }
 
+    /** Сколько промежутков дней загружено — тесты проверяют, что после выхода чужие не легли. */
+    internal val loadedRanges: Int get() = ranges.size + groupRanges.size
+
     /** Дела на экране; null — ещё не пришли. */
     val todos: List<Todo>? get() = ranges[key]
 
@@ -351,7 +354,7 @@ class CalendarModel(
 
     // Подключённые календари
 
-    fun loadAccounts() {
+    fun loadAccounts(withUrl: Boolean = true) {
         val e = epoch
         inFlight++
         scope.launch {
@@ -370,7 +373,7 @@ class CalendarModel(
             }
         }
         // Ссылка входа Google — заранее: шторка откроется уже с кнопкой (и «Переподключить» у сломанного Google).
-        ensureGoogleUrl()
+        if (withUrl) ensureGoogleUrl()
     }
 
     /** Ссылка входа Google, если её нет или ей больше 12 минут (живёт 15). */
@@ -380,28 +383,35 @@ class CalendarModel(
 
     fun loadGoogleUrl() {
         val e = epoch
+        inFlight++
         scope.launch {
-            val url = try {
-                api.googleCalendarUrl()
+            try {
+                val url = api.googleCalendarUrl()
+                if (e != epoch) return@launch
+                googleUrl = url
+                googleUrlAt = System.currentTimeMillis()
             } catch (err: ApiError) {
                 if (e != epoch) return@launch
                 if (err.isSignedOut) return@launch onSignedOut()
-                // 503 calendar_unavailable — Google на сервере не настроен: «Скоро».
-                if (err.code == "calendar_unavailable") "" else {
+                if (err.code == "calendar_unavailable") {
+                    // 503 — Google на сервере не настроен: «Скоро».
+                    googleUrl = ""
+                    googleUrlAt = 0
+                } else {
                     log.info("google url failed: $err")
-                    null
+                    // Сеть моргнула: ещё живая ссылка (15 минут) остаётся — кнопка не гаснет без объяснения.
+                    if (googleUrl.isNullOrEmpty() || System.currentTimeMillis() - googleUrlAt >= GOOGLE_URL_LIFE) googleUrl = null
                 }
+            } finally {
+                inFlight--
             }
-            if (e != epoch) return@launch
-            googleUrl = url
-            googleUrlAt = if (url.isNullOrEmpty()) 0 else System.currentTimeMillis()
         }
     }
 
     /** Вернулись в приложение: шторка календарей открыта — показать, что подключилось, и обновить ссылку входа. */
     fun resumed() {
         if (!sheetOpen) return
-        loadAccounts()
+        loadAccounts(withUrl = false)
         loadGoogleUrl()
     }
 
@@ -607,6 +617,9 @@ class CalendarModel(
 
         /** Ссылка входа Google живёт 15 минут на сервере; свежей считаем 12 (как GOOGLE_URL_TTL мини-аппа). */
         private const val GOOGLE_URL_TTL = 12 * 60_000L
+
+        /** Сколько ссылка входа Google живёт на сервере. */
+        private const val GOOGLE_URL_LIFE = 15 * 60_000L
 
         /** Одноразовый код возврата Google: 43 знака base64url. */
         private val PENDING = Regex("^[A-Za-z0-9_-]{43}$")

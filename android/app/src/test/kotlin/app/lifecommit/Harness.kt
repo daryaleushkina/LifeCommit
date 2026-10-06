@@ -45,7 +45,8 @@ abstract class AppTest {
     lateinit var model: AppModel
     // Главный поток, как у viewModelScope в приложении; не Dispatchers.Main — его тестовое правило Compose подменяет
     // своим диспетчером, и корутины, запущенные из нажатий, ждали бы его, а не главный цикл.
-    private val scope = CoroutineScope(SupervisorJob() + Handler(Looper.getMainLooper()).asCoroutineDispatcher())
+    /** Главный поток — для действий модели, которые тест запускает сам (suspend). */
+    val scope = CoroutineScope(SupervisorJob() + Handler(Looper.getMainLooper()).asCoroutineDispatcher())
 
     @Before fun startServer() {
         server.start()

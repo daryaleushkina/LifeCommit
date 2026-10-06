@@ -44,6 +44,16 @@ class FakeServer {
      */
     val slow = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    /**
+     * Правило для запросов с телом, где есть bodyContains: задержать на delayMs и (если fail) ответить ошибкой. Для
+     * запросов на один путь с разным смыслом (две правки настроек подряд).
+     */
+    data class Rule(val method: String, val path: String, val bodyContains: String, val delayMs: Long = 0, val fail: Pair<Int, String>? = null)
+
+    val rules = CopyOnWriteArrayList<Rule>()
+
+    private fun ruleFor(method: String, path: String, body: String) = rules.firstOrNull { it.method == method && it.path == path && body.contains(it.bodyContains) }
+
     /** «МЕТОД /путь» запросов, которые дошли до сервера (ещё до задержки slow): запрос уже в пути. */
     val arrived = CopyOnWriteArrayList<String>()
 
@@ -122,6 +132,7 @@ class FakeServer {
                 if (request.method == "PUT" && request.url.encodedPath == "/api/logs" && logDelayMs > 0) Thread.sleep(logDelayMs)
                 arrived += "${request.method} ${request.url.encodedPath}"
                 slow["${request.method} ${request.url.encodedPath}"]?.let { Thread.sleep(it) }
+                ruleFor(request.method, request.url.encodedPath, request.body?.utf8() ?: "")?.let { if (it.delayMs > 0) Thread.sleep(it.delayMs) }
                 if (request.method == "PUT" && request.url.encodedPath.endsWith("/mark") && markDelayMs > 0) Thread.sleep(markDelayMs)
                 if (request.method == "POST" && request.url.encodedPath == "/api/calendars/sync" && syncDelayMs > 0) Thread.sleep(syncDelayMs)
                 if (request.method == "POST" && request.url.encodedPath == "/api/session" && sessionDelayMs > 0) Thread.sleep(sessionDelayMs)
@@ -148,6 +159,7 @@ class FakeServer {
         val call = Call(r.method, path, r.body?.utf8() ?: "", r.headers["Authorization"])
         calls += call
         failures["${call.method} $path"]?.let { (status, code) -> return error(status, code) }
+        ruleFor(call.method, path, call.body)?.fail?.let { (status, code) -> return error(status, code) }
         val api = path.removePrefix("/api/")
         return when {
             path == "/oauth/crossapp" -> ok(crossAppLink?.let { """{"url":"$it"}""" } ?: "{}")

@@ -34,6 +34,7 @@ import app.lifecommit.core.Person
 import app.lifecommit.core.PersonStatus
 import app.lifecommit.core.TaskKind
 import app.lifecommit.core.TodayResponse
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -341,14 +342,24 @@ class TogetherTest : AppTest() {
 
     // Настройки группы: правки уходят в фоне модели — шторку закрывают тем же жестом, что и сохраняют.
 
-    private fun openSettings(items: List<GroupDayItem> = defaultItems()) {
+    private fun openSettings(items: List<GroupDayItem> = defaultItems(), rename: Boolean = true) {
         server.groups = listOf(family(items))
         launch()
         openTogether()
         compose.waitText("Семья").performClick()
         compose.waitLabel(t.gr.settings).performClick()
+        if (!rename) return compose.waitText(t.gr.adminsOnly).let { }
         compose.onNodeWithTag("groupTitle").performTextClearance()
         compose.onNodeWithTag("groupTitle").performTextInput("Семья и друзья")
+    }
+
+    /** Войти заново через Telegram (после выхода). */
+    private fun signInAgain() {
+        compose.waitText(t.signIn)
+        compose.onNodeWithTag("signIn").performClick()
+        compose.waitFor { opened.isNotEmpty() }
+        compose.runOnUiThread { model.handleCallback("lifecommit://tglogin?code=c0de") }
+        compose.waitText(t.today)
     }
 
     @Test fun `переименовать - закрыли шторку, имя ушло на сервер и в список групп`() {
@@ -371,16 +382,63 @@ class TogetherTest : AppTest() {
         compose.waitText(t.error)
         compose.onNodeWithTag("groupNote").assertExists()
         compose.waitFor { model.together.details[50]?.title == "Семья" }
+        assertEquals(listOf("Семья"), model.together.list?.map { it.title })
+    }
+
+    @Test fun `только админы не вышло при открытой шторке - переключатель назад и ошибка в шторке`() {
+        seed()
+        server.failures["PATCH /api/groups/50"] = 500 to "server_error"
+        openSettings(rename = false)
+        compose.waitText(t.gr.adminsOnly).performClick()
+        compose.waitFor { compose.onAllNodes(hasText(t.error).and(hasAnyAncestor(isDialog()))).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitFor { model.together.details[50]?.settings?.adminsOnlyEdit == false }
+    }
+
+    @Test fun `переименование не вышло, пока из другой группы вышли, - возвращается только старое имя`() {
+        seed()
+        server.groups = listOf(family(), GroupToday(51, "Бег по утрам", role = GroupRole.Member, members = listOf(GroupMember(me, "Даша"))))
+        launch()
+        openTogether()
+        compose.waitText("Бег по утрам")
+        compose.waitFor { model.together.list?.size == 2 }
+        server.slow["PATCH /api/groups/50"] = 800
+        server.failures["PATCH /api/groups/50"] = 500 to "server_error"
+        compose.runOnUiThread { model.together.rename(50, "Семья и друзья") }
+        compose.waitFor { "PATCH /api/groups/50" in server.arrived }
+        compose.runOnUiThread { scope.launch { model.together.leave(51, remove = false) } }
+        compose.waitFor { server.calls("POST", "/api/groups/51/leave").size == 1 }
+        compose.waitFor { model.together.note != null }
+        assertEquals(listOf("Семья"), model.together.list?.map { it.title })
+    }
+
+    @Test fun `переименовали и вышли, пока шёл запрос, - группы прошлого человека не возвращаются`() {
+        seed()
+        server.slow["PATCH /api/groups/50"] = 800
+        server.failures["PATCH /api/groups/50"] = 500 to "server_error"
+        openSettings()
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitFor { "PATCH /api/groups/50" in server.arrived }
+        compose.runOnUiThread { model.signOutLocally() }
+        server.groups = emptyList()
+        signInAgain()
+        compose.waitFor { server.calls("PATCH", "/api/groups/50").size == 1 }
+        compose.waitText(t.groups).performClick()
+        compose.waitText(t.gr.empty)
+        compose.waitForIdle()
+        assertEquals(null, model.together.note)
+        assertTrue(model.together.list.orEmpty().isEmpty())
     }
 
     @Test fun `только админы - переключили и закрыли шторку, не вышло - назад и подсказка`() {
         seed()
         server.slow["PATCH /api/groups/50"] = 600
         server.failures["PATCH /api/groups/50"] = 500 to "server_error"
-        openSettings()
+        // Только переключатель, без нового названия: ошибку должен показать именно он.
+        openSettings(rename = false)
         compose.waitText(t.gr.adminsOnly).performClick()
         androidx.test.espresso.Espresso.pressBack()
         compose.waitText(t.error)
+        assertEquals(1, server.calls("PATCH", "/api/groups/50").size)
         assertEquals("true", server.calls("PATCH", "/api/groups/50").first { it.json.containsKey("admins_only_edit") }.json["admins_only_edit"].toString())
         compose.waitFor { model.together.details[50]?.settings?.adminsOnlyEdit == false }
     }
@@ -683,6 +741,50 @@ class TogetherTest : AppTest() {
         compose.waitText("Петя")
     }
 
+    @Test fun `отклонили заявку, человек позвал снова - новая заявка видна`() {
+        seedFriends()
+        launch()
+        openFriends()
+        compose.waitText(t.fr.requests(1)).performClick()
+        compose.waitText(t.fr.decline).performClick()
+        compose.waitFor { server.calls("DELETE", "/api/friends/requests/3").size == 1 }
+        compose.waitText(t.fr.nothingFound)
+        compose.runOnUiThread { model.back() }
+        // Петя зовёт снова: на сервере новая заявка от него.
+        server.friendsData = server.friendsData.copy(incoming = listOf(FriendRequest(3, "Петя", via = "link")))
+        compose.runOnUiThread { model.together.reloadFriends() }
+        compose.waitText(t.fr.requests(1)).performClick()
+        compose.waitText(t.fr.viaLink)
+    }
+
+    @Test fun `отменить свою заявку - DELETE, и её нет`() {
+        seedFriends()
+        server.friendsData = server.friendsData.copy(outgoing = listOf(Person(4, "Вася")))
+        launch()
+        openFriends()
+        compose.waitText("Вася")
+        compose.waitText(t.fr.cancel).performClick()
+        compose.waitFor { server.calls("DELETE", "/api/friends/requests/4").size == 1 }
+        assertTrue(server.calls("POST", "/api/friends/requests/4/accept").isEmpty())
+        compose.waitFor { compose.onAllNodes(hasText("Вася")).fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test fun `отменить свою заявку не вышло, а с экрана ушли, - при возврате ошибка и заявка на месте`() {
+        seedFriends()
+        server.friendsData = server.friendsData.copy(outgoing = listOf(Person(4, "Вася")))
+        server.slow["DELETE /api/friends/requests/4"] = 600
+        server.failures["DELETE /api/friends/requests/4"] = 500 to "server_error"
+        launch()
+        openFriends()
+        compose.waitText(t.fr.cancel).performClick()
+        compose.waitText(t.today).performClick()
+        compose.waitFor { server.calls("DELETE", "/api/friends/requests/4").size == 1 }
+        compose.waitFor { model.together.cancelFailed }
+        compose.waitText(t.groups).performClick()
+        compose.waitText(t.error)
+        compose.waitText("Вася")
+    }
+
     @Test fun `отклонить заявку - DELETE, а не принять`() {
         seedFriends()
         launch()
@@ -721,6 +823,8 @@ class TogetherTest : AppTest() {
         compose.waitText(t.groups).performClick()
         compose.waitText(t.fr.tabFriends).performClick()
         compose.waitText("Маша")
+        // Перечитанные друзья пришли и уже без «спросить» (не дошла бы отметка — сервер спрашивал бы снова).
+        compose.waitFor { server.calls("GET", "/api/friends").size >= 2 && model.together.friendsData?.prompt == false }
         compose.waitForIdle()
         compose.onAllNodes(hasText(t.fr.showTitle)).assertCountEquals(0)
         assertEquals(1, server.calls("POST", "/api/friends/prompted").size)
@@ -738,6 +842,12 @@ class TogetherTest : AppTest() {
         compose.waitFor { server.calls("PUT", "/api/friends/shown").size == 1 }
         compose.waitText(t.fr.showTitle)
         compose.waitText(t.error)
+        // Выбранное на месте: «Готово» ещё раз отправляет то же.
+        server.failures.remove("PUT /api/friends/shown")
+        compose.onNodeWithTag("showDone").performClick()
+        compose.waitFor { server.calls("PUT", "/api/friends/shown").size == 2 }
+        assertEquals("[1]", server.calls("PUT", "/api/friends/shown").last().json["task_ids"].toString())
+        compose.waitFor { compose.onAllNodes(hasText(t.fr.showTitle)).fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun `первый друг - один раз спросить, что показать, назад - отметка уже спросили`() {
