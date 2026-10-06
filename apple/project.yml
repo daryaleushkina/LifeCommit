@@ -122,9 +122,14 @@ schemes:
     test:
       config: Debug
       gatherCoverageData: true
+      # Без параллельных прогонов: Xcode гонял бы тесты на клонах симулятора, а каждый клон — ещё 2–4 ГБ памяти Мака,
+      # общей на все проекты (правило «не больше пяти телефонов разом» — docs/mobile.md). Явно, а не по умолчанию
+      # xcodegen: оно может смениться с версией. apple/scripts/test.sh ещё и передаёт -parallel-testing-enabled NO.
       targets:
-        - LifeCommitTests
-        - LifeCommitUITests
+        - name: LifeCommitTests
+          parallelizable: false
+        - name: LifeCommitUITests
+          parallelizable: false
   # Только логика и снимки экранов — для Mac (UI-сценарии XCUITest — на iPhone) и для быстрого прогона.
   LifeCommitSnapshots:
     build:
@@ -133,4 +138,5 @@ schemes:
     test:
       config: Debug
       targets:
-        - LifeCommitTests
+        - name: LifeCommitTests
+          parallelizable: false

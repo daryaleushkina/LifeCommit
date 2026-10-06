@@ -35,8 +35,17 @@
 - **Bundle ID** — `app.lifecommit`. После публикации в App Store не меняется.
 - **Команды** (из корня): `pnpm apple:open` — сгенерировать проект и открыть в Xcode; `pnpm apple:test` — вся проверка
   (`apple/scripts/test.sh`: `swift test` пакета, значки не разошлись с мини-аппом, снимки и сценарии XCUITest на
-  симуляторе iPhone 17 Pro / iOS 26.5 против стенда на порту 5183, снимки Mac); `pnpm apple:icons` — пересобрать
+  своём симуляторе проекта против стенда на порту 5183, снимки Mac); `pnpm apple:icons` — пересобрать
   значки привычек из `src/components/KindIcon.tsx` (генератор `apple/scripts/icons.mjs`).
+- **Симулятор — свой: «LifeCommit iPhone 17 Pro iOS 26.5»** (iPhone 17 Pro и последняя iOS 26.x — под них сняты
+  эталоны). Стандартный «iPhone 17 Pro» общий с другими проектами Мака: чужой прогон посреди нашего ломает оба.
+  `apple/scripts/test.sh` сам создаёт симулятор, если его нет; включает, только пока на Маке меньше пяти включённых
+  телефонов (Android и iOS вместе, правило `~/.claude/CLAUDE.md`; ждёт до 15 минут, потом падает с перечнем
+  включённых); гасит сразу после сценариев iPhone и при любой ошибке, а включённый не им — не трогает. Прогоны из
+  разных копий репозитория (worktree) идут по очереди: замок `lc-apple-test.lock` в общей папке `.git`. Тесты без
+  параллельного режима (`parallelizable: false` в схеме и `-parallel-testing-enabled NO`): иначе Xcode клонирует
+  симулятор, и каждый клон — ещё 2–4 ГБ. Стенд берётся только из своей папки: порт 5183 держит стенд другой копии —
+  скрипт поднимает свой на следующем свободном.
 - **Запуск против стенда:** в Xcode → Edit Scheme → Arguments: `-LCAPIBase http://localhost:5173/api -LCDevUser <id>`
   (подменённый Telegram, только Debug). Без `-LCDevUser` — экран входа через Telegram (нужна настройка @BotFather,
   см. «Вход»).
@@ -45,7 +54,9 @@
   при намеренной правке вида: `LC_RECORD=1 pnpm apple:test`, и написать в коммите.
 - **Сценарии** (`apple/AppUITests`): у каждого свой человек на стенде (`Stand.swift`, как фикстура `me`), проверка —
   на экране и в базе, без пауз (`eventually`). Правила вёрстки — `testLayoutRules`. Новый сценарий до коммита —
-  `-test-iterations 3`.
+  `-test-iterations 3`; вручную `xcodebuild test` — на симуляторе проекта (`-destination 'platform=iOS
+  Simulator,name=LifeCommit iPhone 17 Pro iOS 26.5' -parallel-testing-enabled NO`), а после — `xcrun simctl shutdown
+  <udid>`, если включил его ты.
 - **Грабли.** Сборка для симулятора без подписи не пускает в Keychain (ошибка -34018): ключ входа в симуляторе
   сохраняется только в подписанной сборке (Xcode, Personal Team). `UserDefaults.integer` обрезает большие числа из
   аргументов запуска до 2 147 483 647 — id берём строкой. Подпись `accessibilityIdentifier` у составного вида
@@ -77,6 +88,14 @@
   — в `assetlinks.json` сайта и (позже) в @BotFather. Без ключа (облако) сборка подписывается отладочным.
 - **Разработка**: `adb shell am start -n app.lifecommit/.MainActivity -e LCAPIBase http://10.0.2.2:5173/api --el LCDevUser <id>`
   — подменённый вход на локальном стенде, только сборка Debug (http разрешён только для 10.0.2.2/localhost в Debug).
+- **Эмулятор для своих проверок** — отдельная копия лёгкого AVD `Test_API35` (google_apis без Play, 2 ядра, 1,5 ГБ),
+  а не эмулятор, на который смотрит человек. Сначала посчитать включённые (`adb devices`, `xcrun simctl list devices
+  booted`): на весь Мак не больше пяти, Android и iOS вместе (правило `~/.claude/CLAUDE.md`); пять есть — ждать.
+  Запуск: `emulator -avd Test_API35 -read-only -no-window -no-boot-anim -no-snapshot-save -port <свой чётный
+  5554–5584>` (`-read-only` позволяет несколько копий одного AVD, всё сделанное внутри пропадает при выключении), затем
+  `adb -s emulator-<порт> wait-for-device`, ждать `getprop sys.boot_completed` = 1, ставить и запускать с
+  `-s emulator-<порт>`. Сразу после проверки, и при ошибке тоже, — `adb -s emulator-<порт> emu kill`. Чужие эмуляторы
+  не трогать. `pnpm android:test` эмулятора не требует (Robolectric).
 - **Команды**: `pnpm android:test` (тесты `core` и `app`, сверка снимков), `pnpm android:record` (переснять снимки —
   только при намеренной правке вида), `pnpm android:build` (APK Debug), `pnpm android:icons`.
 - **Тесты идут на Java 21**, код собирается под 17 (`app/build.gradle.kts`, `javaLauncher`): Java 17.0.9 на Apple
@@ -285,7 +304,7 @@ Telegram в браузер не переходят). Раньше чужая с�
 | --- | --- | --- |
 | Логика | Swift Testing в `LifeCommitKit` (`swift test`) | JUnit на JVM |
 | Экраны | снимки `swift-snapshot-testing`: iPhone и Mac, светлая и тёмная; эталоны в git, переснимать только при намеренной правке вида | Roborazzi на JVM (Robolectric) |
-| Сценарии | XCUITest против локального стенда, подменённый Telegram (см. «Вход») | Compose UI-тесты на Robolectric: всё приложение (`Root`) против подменённого сервера (`app/src/test/.../FakeServer.kt`), каждый тест — свой пользователь; эмулятор — ручная проверка |
+| Сценарии | XCUITest против локального стенда, подменённый Telegram (см. «Вход») | Compose UI-тесты на Robolectric: всё приложение (`Root`) против подменённого сервера (`app/src/test/.../FakeServer.kt`), каждый тест — свой пользователь; эмулятор — ручная проверка на своей копии (см. «Эмулятор для своих проверок») |
 | Отказы API | клиент на 400/401/403/404/409/410/429/5xx не молчит: экран возвращается как был и показывает ошибку | так же |
 
 Правила вёрстки из `CLAUDE.md` действуют и здесь: ничего поверх нижней панели при любой прокрутке, ничего шире экрана,
