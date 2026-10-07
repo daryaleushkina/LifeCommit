@@ -176,7 +176,7 @@ struct GroupItemRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("gi-\(item.title)")
+            .accessibilityIdentifier("group.item")
             if let onPut {
                 Button(action: onPut) {
                     Text("+ \(t.gr.put)")
@@ -187,7 +187,7 @@ struct GroupItemRow: View {
                         .background(palette.accentSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(PressScale())
-                .accessibilityIdentifier("put-\(item.title)")
+                .accessibilityIdentifier("group.put")
             }
         }
         .padding(.leading, 16)
@@ -221,7 +221,7 @@ struct GroupItemRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("gi-\(item.title)")
+            .accessibilityIdentifier("group.item")
         }
         .padding(.leading, 8)
         .opacity(item.done ? 0.85 : 1)
@@ -236,6 +236,7 @@ struct GroupItemRow: View {
                 .buttonStyle(PressScale())
                 .accessibilityLabel(item.done ? t.todo.uncheck(item.title) : t.todo.check(item.title))
                 .accessibilityAddTraits(item.done ? .isSelected : [])
+                .accessibilityIdentifier("group.itemCheck")
         } else {
             circle(filled: item.done ? palette.accent.opacity(0.55) : nil, stroke: palette.line)
                 .accessibilityHidden(true)
@@ -289,7 +290,7 @@ struct GroupBlockView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("group-block-\(title)")
+                .accessibilityIdentifier("group.block")
 
                 VStack(spacing: 0) {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { index, it in
@@ -337,7 +338,7 @@ struct NoteToast: View {
                 onClose()
             }
             .accessibilityAddTraits(.isStaticText)
-            .accessibilityIdentifier("note")
+            .accessibilityIdentifier("group.note")
             .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }

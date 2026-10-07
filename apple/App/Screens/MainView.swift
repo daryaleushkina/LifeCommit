@@ -116,7 +116,7 @@ struct BackBar: View {
         }
         .buttonStyle(PressScale())
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityIdentifier("back")
+        .accessibilityIdentifier("nav.back")
     }
 }
 
@@ -163,7 +163,7 @@ struct ProfilePendingView: View {
                     .font(.onest(15))
                     .foregroundStyle(palette.warn)
                     .frame(maxWidth: .infinity, minHeight: 48)
-                    .accessibilityIdentifier("logout")
+                    .accessibilityIdentifier("me.logout")
             }
         }
         .confirmationDialog(t.logoutDeviceConfirm, isPresented: $confirm, titleVisibility: .visible) {

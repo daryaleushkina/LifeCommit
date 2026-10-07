@@ -72,7 +72,7 @@ struct TodoListView: View {
                     .frame(minHeight: 48)
                     .padding(.horizontal, 8)
                     .buttonStyle(.plain)
-                    .accessibilityIdentifier("laterLink")
+                    .accessibilityIdentifier("todo.later")
             }
         }
         .sheet(item: $editing) { todo in
@@ -86,7 +86,7 @@ struct TodoListView: View {
         Todos.swipe(todo).map { action in
             switch action {
             case .remove: SwipeAction(label: t.swipe.remove) { model.removeTodo(todo) }
-            case .hide: SwipeAction(label: t.swipe.hide, tone: .muted, icon: Glyph.hide, id: "swipe-hide") { model.hideTodo(todo) }
+            case .hide: SwipeAction(label: t.swipe.hide, tone: .muted, icon: Glyph.hide, id: "swipe.hide") { model.hideTodo(todo) }
             }
         }
     }
@@ -119,6 +119,7 @@ struct TodoListView: View {
         .background(palette.heat[0], in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(t.todo.showWhich)
+        .accessibilityIdentifier("todo.filter")
         .animation(.easeOut(duration: 0.2), value: onlyLeft)
     }
 
@@ -150,10 +151,11 @@ struct TodoListView: View {
                 .disabled(todo.id < 0)
                 .accessibilityLabel(todo.done ? t.todo.uncheck(todo.title) : t.todo.check(todo.title))
                 .accessibilityAddTraits(todo.done ? .isSelected : [])
+                .accessibilityIdentifier("todo.check")
             }
             Button { if todo.id > 0 { editing = todo } } label: { rowText(todo, note: note) }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("todo-\(todo.title)")
+                .accessibilityIdentifier("todo.row")
         }
         .padding(.leading, 8)
         .contentShape(Rectangle())
@@ -211,7 +213,7 @@ struct TodoListView: View {
                 .frame(minHeight: 52)
                 .padding(.horizontal, 20)
                 .accessibilityLabel(addLabel ?? t.todo.add)
-                .accessibilityIdentifier("todoField")
+                .accessibilityIdentifier("todo.input")
         } else {
             Button {
                 adding = true
@@ -227,6 +229,7 @@ struct TodoListView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("todo.add")
         }
     }
 

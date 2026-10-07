@@ -28,7 +28,7 @@ struct TabBar: View {
             .frame(width: 80)
             .offset(y: -26)
             .accessibilityLabel(t.voiceMic)
-            .accessibilityIdentifier("mic")
+            .accessibilityIdentifier("tab.mic")
             item(.groups, t.groups) { StrokeGlyph(d: Glyph.groupsTab) }
             item(.me, t.me) { StrokeGlyph(d: Glyph.meTab) }
         }
@@ -65,7 +65,7 @@ struct TabBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(active ? .isSelected : [])
-        .accessibilityIdentifier("tab-\(value)")
+        .accessibilityIdentifier("tab.\(value == .groups ? "together" : "\(value)")")
     }
 }
 

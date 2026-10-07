@@ -305,7 +305,8 @@ Telegram в браузер не переходят). Раньше чужая с�
 | --- | --- | --- |
 | Логика | Swift Testing в `LifeCommitKit` (`swift test`) | JUnit на JVM |
 | Экраны | снимки `swift-snapshot-testing`: iPhone и Mac, светлая и тёмная; эталоны в git, переснимать только при намеренной правке вида | Roborazzi на JVM (Robolectric) |
-| Сценарии | XCUITest против локального стенда, подменённый Telegram (см. «Вход») | Compose UI-тесты на Robolectric: всё приложение (`Root`) против подменённого сервера (`app/src/test/.../FakeServer.kt`), каждый тест — свой пользователь; эмулятор — ручная проверка |
+| Сценарии | XCUITest против локального стенда, подменённый Telegram (см. «Вход»); свой симулятор «LifeCommit iPhone 17 Pro iOS 26.x», гаснет после прогона | Compose UI-тесты на Robolectric: всё приложение (`Root`) против подменённого сервера (`app/src/test/.../FakeServer.kt`), каждый тест — свой пользователь; сквозные — Maestro на собранном APK, своя копия лёгкого `Test_API35` |
+| id кнопок | `accessibilityIdentifier` из `shared/ui-ids.json`; сверка — `apple/scripts/ui-ids.mjs --check` | `testTag` из `shared/ui-ids.json`, `testTagsAsResourceId` на корне |
 | Отказы API | клиент на 400/401/403/404/409/410/429/5xx не молчит: экран возвращается как был и показывает ошибку | так же |
 
 Правила вёрстки из `CLAUDE.md` действуют и здесь: ничего поверх нижней панели при любой прокрутке, ничего шире экрана,

@@ -94,14 +94,14 @@ struct GroupView: View {
             }
             Spacer(minLength: 0)
             IconButton(glyph: Glyph.gear, label: t.gr.settings, spinning: false) { settingsOpen = true }
-                .accessibilityIdentifier("groupSettings")
+                .accessibilityIdentifier("group.settings")
                 .frame(maxHeight: .infinity, alignment: .top)
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(.top, 20)
         .padding(.bottom, 16)
 
-        Segmented(options: [("items", t.gr.tabItems), ("people", t.gr.tabPeople)], selected: tab, label: group.title) { tab = $0 }
+        Segmented(options: [("items", t.gr.tabItems), ("people", t.gr.tabPeople)], selected: tab, label: group.title, ids: ["group.tab.items", "group.tab.people"]) { tab = $0 }
 
         if tab == "items" { items(group) } else { people(group) }
     }
@@ -174,7 +174,7 @@ struct GroupView: View {
         .padding(.top, 16)
         PrimaryButton(title: t.gr.invite, wide: true) { invite(group) }
             .padding(.top, 16)
-            .accessibilityIdentifier("inviteGroup")
+            .accessibilityIdentifier("group.invite")
         Text(t.gr.inviteHint).font(.onest(14)).foregroundStyle(palette.muted).frame(maxWidth: .infinity).padding(.top, 8)
     }
 
@@ -191,7 +191,7 @@ struct GroupView: View {
             .shadow(color: palette.accent.opacity(0.35), radius: 12, y: 10)
         }
         .buttonStyle(PressScale())
-        .accessibilityIdentifier("addGroupItem")
+        .accessibilityIdentifier("group.addItem")
     }
 
     /// «Позвать в группу»: свежая ссылка (7 дней) — в Telegram, человек выбирает чат сам.
@@ -238,7 +238,7 @@ struct PutSheet: View {
                     if clean != v { value = clean }
                 }
                 .accessibilityLabel(t.gr.putPh)
-                .accessibilityIdentifier("putValue")
+                .accessibilityIdentifier("put.value")
             if n > 0, let target = item.target {
                 Text(t.gr.goalOf(t.num((item.total ?? 0) + n), t.num(target)))
                     .font(.onest(14)).foregroundStyle(palette.muted).frame(maxWidth: .infinity).padding(.top, 10)
@@ -250,7 +250,7 @@ struct PutSheet: View {
             .disabled(!(n > 0))
             .opacity(n > 0 ? 1 : 0.4)
             .padding(.top, 16)
-            .accessibilityIdentifier("putDone")
+            .accessibilityIdentifier("put.done")
         }
         .presentationDetents([.medium])
         .onAppear { focused = true }
@@ -298,7 +298,7 @@ struct GroupSettingsSheet: View {
                     .onSubmit { tg.rename(groupId: group.id, title: title) }
                     .onChange(of: title) { _, v in if v.count > 60 { title = String(v.prefix(60)) } }
                     .accessibilityLabel(t.gr.name)
-                    .accessibilityIdentifier("groupName")
+                    .accessibilityIdentifier("groupSettings.name")
                 Toggle(isOn: Binding(get: { live.settings?.adminsOnlyEdit ?? false }, set: { tg.setAdminsOnly(groupId: group.id, $0) })) {
                     Text(t.gr.adminsOnly).font(.onest(16, .medium)).frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -308,7 +308,7 @@ struct GroupSettingsSheet: View {
                 .frame(minHeight: 56)
                 .background(palette.bg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .padding(.top, 10)
-                .accessibilityIdentifier("adminsOnly")
+                .accessibilityIdentifier("groupSettings.adminsOnly")
             } else {
                 Text(group.title).font(.onest(16)).foregroundStyle(palette.muted).padding(.horizontal, 4)
             }
@@ -322,12 +322,12 @@ struct GroupSettingsSheet: View {
                         .background(Color(hex: 0x2AABEE).opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     VStack(alignment: .leading, spacing: 0) {
                         Text(t.gr.chatLabel).font(.onest(13)).foregroundStyle(palette.muted)
-                        Text(chat).font(.onest(16, .semibold)).accessibilityIdentifier("chatTitle")
+                        Text(chat).font(.onest(16, .semibold)).accessibilityIdentifier("groupSettings.chatTitle")
                         if canManage {
                             HStack(spacing: 2) {
                                 Button(t.gr.chatOther) { connectChat() }.foregroundStyle(palette.accent)
                                 Text("·").foregroundStyle(palette.muted).accessibilityHidden(true)
-                                Button(t.gr.chatOff) { confirm = .chatOff }.foregroundStyle(palette.warn).accessibilityIdentifier("chatOff")
+                                Button(t.gr.chatOff) { confirm = .chatOff }.foregroundStyle(palette.warn).accessibilityIdentifier("groupSettings.chatOff")
                             }
                             .buttonStyle(.plain)
                             .font(.onest(14, .semibold))
@@ -349,7 +349,7 @@ struct GroupSettingsSheet: View {
                 }
                 .buttonStyle(PressScale())
                 .padding(.top, 20)
-                .accessibilityIdentifier("connectChat")
+                .accessibilityIdentifier("groupSettings.connectChat")
                 Text(t.gr.connectChatHint).font(.onest(14)).foregroundStyle(palette.muted).multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity).padding(.top, 8)
             }
@@ -361,12 +361,12 @@ struct GroupSettingsSheet: View {
             Button(t.gr.leave) { confirm = .leave }
                 .buttonStyle(.plain).font(.onest(15)).foregroundStyle(palette.warn)
                 .frame(maxWidth: .infinity, minHeight: 48).padding(.top, 20)
-                .accessibilityIdentifier("leaveGroup")
+                .accessibilityIdentifier("groupSettings.leave")
             if group.role == .owner {
                 Button(t.gr.removeGroup) { confirm = .delete }
                     .buttonStyle(.plain).font(.onest(15)).foregroundStyle(palette.danger)
                     .frame(maxWidth: .infinity, minHeight: 48)
-                    .accessibilityIdentifier("deleteGroup")
+                    .accessibilityIdentifier("groupSettings.delete")
             }
         }
         .onAppear { tg.clearSettingsFailed() }

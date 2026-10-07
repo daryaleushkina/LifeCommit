@@ -24,12 +24,11 @@ struct TogetherView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 PageHead(title: t.groups)
-                Segmented(options: [("groups", t.fr.tabGroups), ("friends", t.fr.tabFriends)], selected: section == "friends" ? "friends" : "groups", label: t.groups) {
+                Segmented(options: [("groups", t.fr.tabGroups), ("friends", t.fr.tabFriends)], selected: section == "friends" ? "friends" : "groups", label: t.groups, ids: ["together.groups", "together.friends"]) {
                     opened = nil
                     saved = $0
                 }
                     .padding(.top, 16)
-                    .accessibilityIdentifier("together-switch")
                 if section == "friends" {
                     FriendsPanel()
                 } else {
@@ -73,7 +72,7 @@ struct TogetherView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PressScale())
-            .accessibilityIdentifier("newGroup")
+            .accessibilityIdentifier("group.new")
         }
         .padding(.top, 20)
     }
@@ -118,7 +117,7 @@ struct GroupCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressScale())
-        .accessibilityIdentifier("group-\(group.title)")
+        .accessibilityIdentifier("group.card")
     }
 }
 
@@ -148,13 +147,13 @@ struct NewGroupSheet: View {
                 .submitLabel(.done)
                 .onSubmit { if valid && !busy { create() } }
                 .onChange(of: title) { _, v in if v.count > 60 { title = String(v.prefix(60)) } }
-                .accessibilityIdentifier("groupTitle")
+                .accessibilityIdentifier("groupNew.title")
             if failed { ErrorNote(text: t.error).padding(.top, 10) }
             PrimaryButton(title: t.gr.create, wide: true, busy: busy) { create() }
                 .disabled(!valid)
                 .opacity(valid ? 1 : 0.4)
                 .padding(.top, 16)
-                .accessibilityIdentifier("createGroup")
+                .accessibilityIdentifier("groupNew.create")
         }
         .presentationDetents([.medium])
         .onAppear { focused = true }

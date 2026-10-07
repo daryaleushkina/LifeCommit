@@ -77,6 +77,21 @@ enum StandError: Error {
     case http(String, String, Int, String)
 }
 
+extension XCUIApplication {
+    /// Элемент по id из shared/ui-ids.json. Строки списков (дело, друг, «Вернуть» у отложенной) — один id на все: нужная
+    /// выбирается по подписи; exact — подпись целиком (дни календаря: «7 октября» не должно найти «17 октября»).
+    func el(_ id: String, _ text: String? = nil, exact: Bool = false) -> XCUIElement {
+        let q = descendants(matching: .any).matching(identifier: id)
+        guard let text else { return q.firstMatch }
+        return q.matching(NSPredicate(format: exact ? "label == %@" : "label CONTAINS %@", text)).firstMatch
+    }
+
+    /// Карточка-контейнер (привычка) с этим текстом внутри: у контейнера своей подписи нет.
+    func card(_ id: String, _ text: String) -> XCUIElement {
+        descendants(matching: .any).matching(identifier: id).containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+}
+
 extension XCTestCase {
     /// Ждать, пока условие на сервере станет верным (сервер догоняет экран), — без пауз вслепую.
     func eventually(_ what: String, timeout: TimeInterval = 10, _ check: @escaping () throws -> Bool, file: StaticString = #filePath, line: UInt = #line) {

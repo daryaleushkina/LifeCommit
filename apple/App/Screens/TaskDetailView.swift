@@ -50,7 +50,7 @@ struct TaskDetailView: View {
                     }
                     .buttonStyle(PressScale())
                     .accessibilityLabel(t.editTask)
-                    .accessibilityIdentifier("edit")
+                    .accessibilityIdentifier("detail.edit")
                 }
                 .padding(.top, 16)
 
@@ -135,7 +135,7 @@ struct TaskDetailView: View {
                             Button { marking = day } label: { dayCell(label, cell: cell, today: isToday) }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(t.dayMonth(day))
-                                .accessibilityIdentifier("day-\(day)")
+                                .accessibilityIdentifier("detail.day")
                         } else {
                             dayCell(label, cell: cell, today: isToday).accessibilityHidden(true)
                         }

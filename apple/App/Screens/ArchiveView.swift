@@ -38,7 +38,8 @@ struct ArchiveView: View {
                                         .background(palette.bg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 }
                                 .buttonStyle(PressScale())
-                                .accessibilityIdentifier("restore-\(task.title)")
+                                .accessibilityLabel("\(t.restore): \(task.title)")
+                                .accessibilityIdentifier("archive.restore")
                             }
                             .padding(.leading, 18)
                             .padding(.trailing, 14)

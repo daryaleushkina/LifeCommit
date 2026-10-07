@@ -35,7 +35,7 @@ struct CalendarsSheet: View {
                         Text(c.googleSoon).font(.onest(13)).foregroundStyle(palette.muted)
                     } else {
                         ProviderButton(title: c.connect, busy: googleBusy) { Task { await signInGoogle() } }
-                            .accessibilityIdentifier("connectGoogle")
+                            .accessibilityIdentifier("calendars.connectGoogle")
                     }
                 }
             }
@@ -55,7 +55,7 @@ struct CalendarsSheet: View {
             ProviderRow(mark: "A", provider: .apple, title: c.apple, subtitle: accounts == nil ? nil : apple.map { $0.status == .ok ? status($0) : $0.login } ?? c.appleNeeds) {
                 if accounts != nil && apple == nil {
                     ProviderButton(title: c.connect, busy: false) { appleOpen = true }
-                        .accessibilityIdentifier("connectApple")
+                        .accessibilityIdentifier("calendars.connectApple")
                 }
             }
             if let apple, apple.status != .ok {
@@ -240,7 +240,7 @@ private struct AccountSettingsView: View {
                 Button(t.cal.disconnect, role: .destructive) { Task { await model.disconnectCalendar(account.provider) } }
                 Button(t.cancel, role: .cancel) {}
             }
-            .accessibilityIdentifier("disconnect-\(account.provider.rawValue)")
+            .accessibilityIdentifier("calendars.disconnect")
     }
 }
 
@@ -269,7 +269,7 @@ private struct GoogleSetupView: View {
         .disabled(busy || !any)
         .opacity(any ? 1 : 0.4)
         .padding(.top, 14)
-        .accessibilityIdentifier("googleDone")
+        .accessibilityIdentifier("calendars.googleDone")
     }
 }
 
@@ -310,14 +310,14 @@ struct AppleForm: View {
                 Text("\(c.openAppleId) ↗").font(.onest(15, .medium)).foregroundStyle(palette.accent).frame(maxWidth: .infinity, minHeight: 44)
             }
             .padding(.top, 4)
-            field(c.appleLogin, text: $login, email: true).accessibilityIdentifier("appleLogin")
-            field(c.applePassword, text: $password, email: false).padding(.top, 8).accessibilityIdentifier("applePassword")
+            field(c.appleLogin, text: $login, email: true).accessibilityIdentifier("calendars.appleLogin")
+            field(c.applePassword, text: $password, email: false).padding(.top, 8).accessibilityIdentifier("calendars.applePassword")
             if let error { ErrorNote(text: error).padding(.top, 10) }
             PrimaryButton(title: busy ? c.connecting : c.connect, wide: true, busy: busy) { Task { await submit() } }
                 .disabled(busy || !valid)
                 .opacity(valid ? 1 : 0.4)
                 .padding(.top, 14)
-                .accessibilityIdentifier("appleConnect")
+                .accessibilityIdentifier("calendars.appleSubmit")
         }
     }
 

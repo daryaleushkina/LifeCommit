@@ -32,7 +32,7 @@ final class TodayUITests: XCTestCase {
         app = stand.launch()
 
         // «Делать»: галочка; повторный тап снимает.
-        let gym = app.buttons["Сходить в спортзал — сделано"]
+        let gym = app.el("habit.done", "Сходить в спортзал")
         XCTAssertTrue(gym.waitForExistence(timeout: 15))
         gym.tap()
         eventually("спортзал отмечен") { try self.task(ids.gym)?["value"] as? Double == 1 }
@@ -40,26 +40,26 @@ final class TodayUITests: XCTestCase {
         eventually("отметка спортзала снята") { try self.task(ids.gym)?["value"] as? Double == 0 }
 
         // «Считать»: галочка — сделано целиком.
-        app.buttons["Пить воду — сделано"].tap()
+        app.el("habit.done", "Пить воду").tap()
         eventually("вода — 8 из 8") { try self.task(ids.water)?["value"] as? Double == 8 }
 
         // «Бросить»: «Да, получилось» — clean, под названием — «N дней без этого».
-        app.buttons["Да, получилось"].tap()
+        app.el("habit.yes").tap()
         eventually("не курить — получилось") { try self.task(ids.smoke)?["status"] as? String == "clean" }
         XCTAssertTrue(app.staticTexts["1 день без этого"].waitForExistence(timeout: 5))
 
         // Дело: кружок — сделано.
-        app.buttons["Сделано: Купить корм Тесле"].tap()
+        app.el("todo.check", "Сделано: Купить корм Тесле", exact: true).tap()
         eventually("дело сделано") { try self.stand.todos().first?["done"] as? Bool == true }
     }
 
     func testCountByTyping() throws {
         let ids = try seedHabits()
         app = stand.launch()
-        let pencil = app.buttons.matching(identifier: "Пить воду: ввести число").firstMatch
+        let pencil = app.el("habit.pencil", "Пить воду")
         XCTAssertTrue(pencil.waitForExistence(timeout: 15), "нет карандаша")
         pencil.tap()
-        let field = app.textFields["Пить воду: ввести число"]
+        let field = app.el("habit.countInput")
         XCTAssertTrue(field.waitForExistence(timeout: 5), "карандаш не открыл поле")
         field.typeText("5\n")
         eventually("вода — 5") { try self.task(ids.water)?["value"] as? Double == 5 }
@@ -71,10 +71,10 @@ final class TodayUITests: XCTestCase {
     func testAddTodoKeepsFieldOpen() throws {
         _ = try seedHabits()
         app = stand.launch()
-        let add = app.buttons["Дело на сегодня"]
+        let add = app.el("todo.add")
         XCTAssertTrue(add.waitForExistence(timeout: 15))
         add.tap()
-        let field = app.textFields["todoField"]
+        let field = app.textFields["todo.input"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("Купить молоко\n")
         // Поле осталось открытым — следующее дело сразу.
@@ -83,19 +83,19 @@ final class TodayUITests: XCTestCase {
             Set(try self.stand.todos().compactMap { $0["title"] as? String }).isSuperset(of: ["Купить молоко", "Позвонить маме"])
         }
         // Строка дела — кнопка (нажатие открывает шторку дела), её текст — подпись кнопки.
-        XCTAssertTrue(app.buttons["todo-Купить молоко"].exists)
+        XCTAssertTrue(app.el("todo.row", "Купить молоко").exists)
     }
 
     func testSwipeDeleteWithUndo() throws {
         let ids = try seedHabits()
         app = stand.launch()
-        let card = app.otherElements["task-Сходить в спортзал"].firstMatch
+        let card = app.card("habit.card", "Сходить в спортзал")
         XCTAssertTrue(card.waitForExistence(timeout: 15), "нет карточки привычки")
 
         // Короткий свайп — под строкой «Удалить»; нажали — строка пропала сразу, внизу «Вернуть»; вернули — сервер
         // ничего не узнал.
         drag(card, from: 0.9, to: 0.6)
-        let pill = app.buttons["swipe-delete"]
+        let pill = app.buttons["swipe.delete"]
         XCTAssertTrue(pill.waitForExistence(timeout: 5), "короткий свайп не открыл «Удалить»")
         pill.tap()
         let undo = app.buttons["undo"]
@@ -104,8 +104,8 @@ final class TodayUITests: XCTestCase {
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         // Сервер ничего не узнал — без ожидания вслепую: новое удаление сразу отправляет прежнее отложенное. Если бы
         // «Вернуть» его не отменило, спортзал ушёл бы на сервер раньше воды (её отправит удаление «Не курить»).
-        drag(app.otherElements["task-Пить воду"].firstMatch, from: 0.95, to: 0.05)
-        drag(app.otherElements["task-Не курить"].firstMatch, from: 0.95, to: 0.05)
+        drag(app.card("habit.card", "Пить воду"), from: 0.95, to: 0.05)
+        drag(app.card("habit.card", "Не курить"), from: 0.95, to: 0.05)
         eventually("вода удалена на сервере") { try self.task(ids.water) == nil }
         XCTAssertNotNil(try task(ids.gym), "вернули — привычка осталась на сервере")
 
@@ -113,7 +113,7 @@ final class TodayUITests: XCTestCase {
         drag(card, from: 0.95, to: 0.05)
         XCTAssertTrue(app.buttons["undo"].waitForExistence(timeout: 5), "свайп до конца не удалил")
         eventually("удалена на сервере", timeout: 12) { try self.task(ids.gym) == nil }
-        XCTAssertFalse(app.otherElements["task-Сходить в спортзал"].exists)
+        XCTAssertFalse(app.card("habit.card", "Сходить в спортзал").exists)
     }
 
     /// Провести пальцем по строке слева направо по доле её ширины (from → to), как человек: нажал и повёл.
@@ -126,28 +126,28 @@ final class TodayUITests: XCTestCase {
     func testFirstHabitThroughWhatDoIWant() throws {
         // Пустой человек — первый экран «Чего я хочу?».
         app = stand.launch()
-        let intent = app.buttons["intent-count"]
+        let intent = app.buttons["onboarding.intent.count"]
         XCTAssertTrue(intent.waitForExistence(timeout: 15))
         intent.tap()
-        let title = app.textFields["title"]
+        let title = app.textFields["editor.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
-        let save = app.buttons["save"]
+        let save = app.buttons["editor.save"]
         XCTAssertFalse(save.isEnabled, "без названия сохранить нельзя")
         title.tap()
         title.typeText("Читать")
         save.tap()
         eventually("привычка на сервере") { try self.stand.tasks().first?["title"] as? String == "Читать" }
-        XCTAssertTrue(app.buttons["Читать — сделано"].waitForExistence(timeout: 5), "после сохранения — «Сегодня» с новой привычкой")
+        XCTAssertTrue(app.el("habit.done", "Читать").waitForExistence(timeout: 5), "после сохранения — «Сегодня» с новой привычкой")
         XCTAssertEqual(try stand.tasks().first?["target"] as? Double, 10)
     }
 
     func testSkipOnboardingShowsToday() throws {
         app = stand.launch()
-        let skip = app.buttons["skip"]
+        let skip = app.buttons["onboarding.skip"]
         XCTAssertTrue(skip.waitForExistence(timeout: 15))
         skip.tap()
         XCTAssertTrue(app.staticTexts["На сегодня всё"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["addTask"].exists)
+        XCTAssertTrue(app.buttons["today.addTask"].exists)
     }
 
     /// Правила вёрстки, как checkScreen: ничего шире экрана; последнее на экране видно и не лежит под нижней панелью.
@@ -158,7 +158,7 @@ final class TodayUITests: XCTestCase {
         let archived = try stand.call("POST", "tasks", ["title": "Отложенная", "kind": "check", "target": 1]) as? [String: Any]
         try stand.call("POST", "tasks/\(archived?["id"] as? Int ?? 0)/archive")
         app = stand.launch()
-        XCTAssertTrue(app.buttons["Пить воду — сделано"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.el("habit.done", "Пить воду").waitForExistence(timeout: 15))
 
         let window = app.windows.firstMatch.frame
         for text in app.staticTexts.allElementsBoundByIndex where text.exists && !text.frame.isEmpty {
@@ -167,8 +167,8 @@ final class TodayUITests: XCTestCase {
         }
 
         // Список листается до конца, последнее («Отложенные · 1») — над нижней панелью и нажимается.
-        let last = app.buttons["archiveLink"]
-        let tabBar = app.buttons["tab-today"].frame
+        let last = app.buttons["today.archive"]
+        let tabBar = app.buttons["tab.today"].frame
         var tries = 0
         while !(last.exists && last.isHittable && last.frame.maxY <= tabBar.minY) && tries < 10 {
             app.swipeUp()
@@ -177,16 +177,16 @@ final class TodayUITests: XCTestCase {
         XCTAssertTrue(last.isHittable, "последнее на экране не видно")
         XCTAssertLessThanOrEqual(last.frame.maxY, tabBar.minY, "последнее лежит под нижней панелью")
         last.tap()
-        XCTAssertTrue(app.buttons["restore-Отложенная"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.el("archive.restore", "Отложенная").waitForExistence(timeout: 5))
     }
 
     func testSignOut() throws {
         app = stand.launch()
-        XCTAssertTrue(app.buttons["skip"].waitForExistence(timeout: 15))
-        app.buttons["skip"].tap()
-        app.buttons["tab-me"].tap()
-        app.buttons["logout"].tap()
+        XCTAssertTrue(app.buttons["onboarding.skip"].waitForExistence(timeout: 15))
+        app.buttons["onboarding.skip"].tap()
+        app.buttons["tab.me"].tap()
+        app.buttons["me.logout"].tap()
         app.buttons["Выйти"].tap()
-        XCTAssertTrue(app.buttons["signIn"].waitForExistence(timeout: 5), "после выхода — экран входа")
+        XCTAssertTrue(app.buttons["signin.telegram"].waitForExistence(timeout: 5), "после выхода — экран входа")
     }
 }
