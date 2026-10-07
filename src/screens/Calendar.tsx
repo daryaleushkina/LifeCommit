@@ -305,7 +305,8 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
         />
       )}
 
-      {/* Дела групп в этот день: отметить можно сегодня и в прошлые дни, будущие — только посмотреть. */}
+      {/* Дела групп в этот день: отметить можно сегодня и неделю назад (сервер раньше не принимает), остальное — только
+          посмотреть. */}
       {groupDays
         .filter((b) => b.day === selected)
         .map((b) => (
@@ -322,7 +323,7 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
               {b.items.map((it) => (
                 <GroupItemRow
                   key={it.id}
-                  item={selected > today ? { ...it, can_mark: false } : it}
+                  item={selected > today || selected < addDays(today, -7) ? { ...it, can_mark: false } : it}
                   members={b.group.members}
                   me={me}
                   onToggle={() => void markGroupItem(b.group.id, it)}

@@ -302,12 +302,30 @@ function cleanItem(body: ItemInput, today: string, memberIds: number[], partial:
     if (t !== null && !(t > 0 && t < 1e12)) throw bad('bad_target');
     out.target = t;
   }
-  if (body.unit !== undefined) out.unit = body.unit;
+  if (body.unit !== undefined) out.unit = cleanUnit(body.unit);
   if (body.goal_until !== undefined) out.goal_until = isDay(body.goal_until) ? body.goal_until : null;
   if (out.mode === 'goal' && !partial && !out.target) throw bad('no_target');
   // Очередь имеет смысл только у назначенного на нескольких.
   if (out.mode !== undefined && out.mode !== 'assign') out.rotate = false;
   return out;
+}
+
+/** Единица цели (docs/groups-goals.md): тип, три формы слова, валюта и значок — короткие строки; лишнее отбрасывается.
+ *  Кривую не храним: её не прочли бы приложения, и «Сегодня» не загрузилось бы у всей группы. */
+function cleanUnit(raw: unknown): GoalUnit | null {
+  if (raw === null) return null;
+  const short = (v: unknown, max: number): v is string => typeof v === 'string' && v.trim().length > 0 && v.length <= max;
+  const u = typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  const forms = u && Array.isArray(u.forms) ? (u.forms as unknown[]) : null;
+  if (!u || !short(u.type, 32) || !forms || forms.length !== 3 || !forms.every((f) => short(f, 40))) throw bad('bad_unit');
+  if (u.currency != null && !short(u.currency, 8)) throw bad('bad_unit');
+  if (u.icon != null && !short(u.icon, 16)) throw bad('bad_unit');
+  return {
+    type: u.type as string,
+    forms: forms as [string, string, string],
+    ...(u.currency != null ? { currency: u.currency as string } : {}),
+    ...(u.icon != null ? { icon: u.icon as string } : {}),
+  };
 }
 
 async function memberIds(sb: SupabaseClient, groupId: number): Promise<number[]> {
@@ -388,9 +406,15 @@ export async function markItem(sb: SupabaseClient, user: UserRow, groupIdNum: nu
 }
 
 groups.put('/groups/:id/items/:item/mark', async (c) => {
-  const body = await c.req.json<{ done?: boolean; day?: string }>();
+  const body = await c.req.json<{ done?: boolean; day?: unknown }>();
+  // День — сегодня или неделя назад. Другой — отказ, а не тихая отметка «за сегодня» (решение владелицы 07.10.2026).
+  // Кнопки бота в чате передают день своего сообщения и идут мимо — для них markItem по-прежнему берёт сегодня.
+  if (body.day !== undefined) {
+    const today = todayOf(c.get('user'));
+    if (!isDay(body.day) || body.day > today || body.day < addDays(today, -7)) throw bad('bad_day');
+  }
   const gid = groupId(c.req.param('id'));
-  const res = await markItem(c.get('sb'), c.get('user'), gid, groupId(c.req.param('item')), body.done !== false, body.day);
+  const res = await markItem(c.get('sb'), c.get('user'), gid, groupId(c.req.param('item')), body.done !== false, body.day as string | undefined);
   if (res === 'forbidden') throw new HTTPException(403, { message: 'not_yours' });
   // Сообщение «Сегодня в группе» в чате — тоже обновить.
   c.executionCtx.waitUntil(refreshChat(c.env, gid));

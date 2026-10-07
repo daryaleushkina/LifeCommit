@@ -11,15 +11,6 @@ extension Glyph {
     static let telegram = "M21 4L3 11l6 2.5M21 4l-3 16-9-6.5M21 4L9 13.5V19l3-3.5"
 }
 
-/// Ссылка «поделиться» в Telegram (t.me/share/url) — как в мини-аппе: человек выбирает чат сам.
-enum TelegramShare {
-    static func url(link: String, text: String) -> URL? {
-        var c = URLComponents(string: "https://t.me/share/url")
-        c?.queryItems = [URLQueryItem(name: "url", value: link), URLQueryItem(name: "text", value: text)]
-        return c?.url
-    }
-}
-
 struct GroupView: View {
     let groupId: Int
     @Environment(AppModel.self) private var model
@@ -117,8 +108,8 @@ struct GroupView: View {
 
     @ViewBuilder private func items(_ group: GroupToday) -> some View {
         let today = model.today.day
-        let goals = GroupLogic.goals(group.items).filter { !removed($0) }
-        let list = GroupLogic.screenOrder(group.items).filter { !removed($0) }
+        let goals = GroupLogic.goals(group.items).filter { !removed($0, today) }
+        let list = GroupLogic.screenOrder(group.items).filter { !removed($0, today) }
         let soon = GroupLogic.soon(group.upcoming ?? [])
         if !goals.isEmpty {
             card(goals) { it in
@@ -135,7 +126,7 @@ struct GroupView: View {
                 GroupItemRow(item: it, members: group.members, onToggle: { Task { await tg.mark(groupId: group.id, it) } }, onOpen: { editing = .edit(it) }, swipe: (group.id, today))
             }
         }
-        let soonShown = soon.map { b in (b, b.items.filter { !removed($0) }) }.filter { !$0.1.isEmpty }
+        let soonShown = soon.map { b in (b, b.items.filter { !removed($0, b.day) }) }.filter { !$0.1.isEmpty }
         if !soonShown.isEmpty {
             SectionLabel(text: t.gr.soon).padding(.horizontal, 4).padding(.top, 24).padding(.bottom, 4)
             ForEach(soonShown, id: \.0.day) { block, items in
@@ -148,7 +139,7 @@ struct GroupView: View {
         }
     }
 
-    private func removed(_ it: GroupDayItem) -> Bool { model.isRemoved(TogetherModel.removalKey(groupId, it.id)) }
+    private func removed(_ it: GroupDayItem, _ day: String) -> Bool { TogetherModel.isRemoved(model, groupId, it.id, day: day) }
 
     private func card(_ items: [GroupDayItem], @ViewBuilder row: @escaping (GroupDayItem) -> some View) -> some View {
         VStack(spacing: 0) {
@@ -208,7 +199,7 @@ struct GroupView: View {
         Task {
             do {
                 let link = try await tg.inviteLink(groupId: group.id)
-                if let url = TelegramShare.url(link: link, text: "\(group.title) · LifeCommit") { openURL(url) }
+                if let url = Links.telegramShare(link: link, text: "\(group.title) · LifeCommit") { openURL(url) }
                 tg.note = TogetherModel.Note(groupId: group.id, text: t.gr.inviteSent)
             } catch {
                 if (error as? APIError)?.isSignedOut == true { return model.signOutLocally() }
@@ -363,6 +354,10 @@ struct GroupSettingsSheet: View {
                     .frame(maxWidth: .infinity).padding(.top, 8)
             }
 
+            if tg.settingsFailed == group.id {
+                ErrorNote(text: t.error).padding(.top, 12).onTapGesture { tg.clearSettingsFailed() }
+            }
+
             Button(t.gr.leave) { confirm = .leave }
                 .buttonStyle(.plain).font(.onest(15)).foregroundStyle(palette.warn)
                 .frame(maxWidth: .infinity, minHeight: 48).padding(.top, 20)
@@ -374,6 +369,7 @@ struct GroupSettingsSheet: View {
                     .accessibilityIdentifier("deleteGroup")
             }
         }
+        .onAppear { tg.clearSettingsFailed() }
         // Закрыли шторку — новое название сохраняется (как onBlur в мини-аппе); запрос идёт в модели, не в шторке.
         .onDisappear { if canManage { tg.rename(groupId: group.id, title: title) } }
         .confirmationDialog(confirmText, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {

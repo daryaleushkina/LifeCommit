@@ -198,8 +198,9 @@ struct GroupItemFormTests {
         f.rotate = true
         f.repeatRule = .daily
         f.time = "19:00"
+        // Люди — в порядке выбора: по нему идёт очередь.
         #expect(f.input(members: members, today: "2026-10-06") == GroupItemInput(
-            title: "Помыть посуду", mode: .assign, day: "2026-10-06", time: "19:00", rrule: "FREQ=DAILY", assignees: [1, 2], rotate: true
+            title: "Помыть посуду", mode: .assign, day: "2026-10-06", time: "19:00", rrule: "FREQ=DAILY", assignees: [2, 1], rotate: true
         ))
         f.mode = .one
         // «Кто-то один»: люди и очередь не уходят.
@@ -218,11 +219,73 @@ struct GroupItemFormTests {
         let g = try APIClient.decoder.decode(GroupToday.self, from: fixture("group"))
         let dishes = try #require(g.items.first { $0.title == "Помыть посуду" })
         let f = GroupItemForm(item: dishes, me: g.members[0].id)
-        #expect(f.mode == .assign && f.rotate && f.repeatRule == .daily && f.people == Set(dishes.assignees) && f.day == "2026-10-06")
+        #expect(f.mode == .assign && f.rotate && f.repeatRule == .daily && f.people == dishes.assignees && f.day == "2026-10-06")
         let goal = try #require(g.items.first { $0.mode == .goal })
         #expect(GroupItemForm(item: goal, me: 1).target == "150000")
         let trash = try #require(g.items.first { $0.mode == .one })
         #expect(GroupItemForm(item: trash, me: 7).people == [7] && GroupItemForm(item: trash, me: 7).time == "19:00")
+        // «Семейный ужин» — мероприятие для всех (all_members): шторка открывается с «Все», и сохранение не сужает его до
+        // одного человека — уходит all_members и пустой список людей.
+        let dinner = try #require(g.upcoming?.flatMap(\.items).first { $0.title == "Семейный ужин" })
+        #expect(dinner.allMembers)
+        let form = GroupItemForm(item: dinner, me: g.members[0].id)
+        #expect(form.all && form.chosen(g.members) == g.members.map(\.id))
+        let input = form.input(members: g.members, today: "2026-10-06")
+        #expect(input.allMembers && input.assignees.isEmpty && input.mode == .event)
+    }
+
+    @Test("«Все»: назначить — всем и будущим, по очереди среди всех; мероприятие — всем; «кто-то один» — «Все» не уходит")
+    func all() {
+        var f = GroupItemForm(me: 1, today: "2026-10-06")
+        f.title = "Помыть посуду"
+        f.mode = .assign
+        f.people = [1]
+        f.all = true
+        f.rotate = true
+        let assign = f.input(members: members, today: "2026-10-06")
+        #expect(assign.allMembers && assign.assignees.isEmpty && assign.rotate, "очередь — среди троих, хотя отмечен один")
+        f.mode = .event
+        let event = f.input(members: members, today: "2026-10-06")
+        #expect(event.allMembers && event.assignees.isEmpty && !event.rotate)
+        f.mode = .one
+        let one = f.input(members: members, today: "2026-10-06")
+        #expect(!one.allMembers && one.assignees.isEmpty)
+        // Сняли «Все» — уходят отмеченные, а не все.
+        f.mode = .assign
+        f.all = false
+        f.people = [3, 1]
+        let some = f.input(members: members, today: "2026-10-06")
+        #expect(!some.allMembers && some.assignees == [3, 1] && some.rotate)
+    }
+
+    @Test("правка «по очереди»: люди уходят в порядке дела, а не вступления в группу (по нему сервер считает очередь)")
+    func assigneesOrder() {
+        let item = GroupDayItem(id: 3, title: "Посуда", mode: .assign, recurring: true, people: [3], rotate: true, turn: 3, start: "2026-10-06", rrule: "FREQ=DAILY", assignees: [3, 1])
+        var f = GroupItemForm(item: item, me: 1)
+        #expect(f.input(members: members, today: "2026-10-06").assignees == [3, 1])
+        // Новый человек — в конец, снятый — уходит, порядок остальных тот же.
+        f.toggle(2, members: members)
+        f.toggle(3, members: members)
+        #expect(f.input(members: members, today: "2026-10-06").assignees == [1, 2])
+        // Ушедший из группы не уходит на сервер.
+        let gone = GroupItemForm(item: GroupDayItem(id: 4, title: "x", mode: .assign, start: "2026-10-06", assignees: [9, 1]), me: 1)
+        #expect(gone.input(members: members, today: "2026-10-06").assignees == [1])
+    }
+
+    @Test("повтор не меняли — правило уходит как было («вт и чт» из голоса); поменяли — собирается заново")
+    func keepsRule() {
+        let voice = GroupDayItem(id: 5, title: "Мусор", mode: .one, recurring: true, start: "2026-09-28", rrule: "FREQ=WEEKLY;BYDAY=TU,TH")
+        var f = GroupItemForm(item: voice, me: 1)
+        #expect(f.repeatRule == .weekly)
+        f.title = "Вынести мусор"
+        #expect(f.input(members: members, today: "2026-10-06").rrule == "FREQ=WEEKLY;BYDAY=TU,TH")
+        f.day = "2026-10-07"
+        #expect(f.input(members: members, today: "2026-10-06").rrule == "FREQ=WEEKLY;BYDAY=WE", "сменили день «раз в неделю» — правило по новому дню")
+        f.day = "2026-09-28"
+        f.repeatRule = .daily
+        #expect(f.input(members: members, today: "2026-10-06").rrule == "FREQ=DAILY")
+        let interval = GroupItemForm(item: GroupDayItem(id: 6, title: "x", mode: .one, recurring: true, start: "2026-09-28", rrule: "FREQ=DAILY;INTERVAL=2"), me: 1)
+        #expect(interval.input(members: members, today: "2026-10-06").rrule == "FREQ=DAILY;INTERVAL=2")
     }
 
     @Test("тело запроса: пустое время, повтор, цель — явным null (иначе правка оставила бы старое)")
@@ -232,6 +295,28 @@ struct GroupItemFormTests {
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(object["time"] is NSNull && object["rrule"] is NSNull && object["target"] is NSNull && object["goal_until"] is NSNull)
         #expect(object["all_members"] as? Bool == true && object["mode"] as? String == "event" && (object["assignees"] as? [Int]) == [])
+    }
+}
+
+@Suite("Вместе: разбор ответа терпит чужое")
+struct TogetherTolerantTests {
+    static func item(_ extra: String) -> String {
+        #"{"id":1,"title":"Отпуск","mode":"goal","time":null,"duration_min":null,"due_day":null,"carried":false,"recurring":false,"people":[1],"all_members":false,"rotate":false,"turn":null,"for_me":true,"can_mark":false,"done":false,"done_by":[],"target":100,"total":5,"goal_until":null,"start":"2026-10-06","rrule":null,"assignees":[]"# + extra + "}"
+    }
+
+    @Test("кривая единица цели — без единицы, а не сбой всего «Сегодня»; незнакомый вид дела пропускается; незнакомая роль — участник")
+    func tolerant() throws {
+        let json = #"{"id":3,"title":"Семья","kind":"family","color":null,"role":"guest","members":[],"planned":0,"done":0,"items":["# +
+            Self.item(#","unit":{"type":"x"}"#) + "," + Self.item(#","unit":5"#) + "," +
+            Self.item(#","unit":{"type":"money","forms":["₽","₽","₽"],"currency":"₽"}"#) + "," +
+            Self.item(#","unit":null"#).replacingOccurrences(of: #""mode":"goal""#, with: #""mode":"quest""#) + "]}"
+        let g = try APIClient.decoder.decode(GroupToday.self, from: Data(json.utf8))
+        #expect(g.role == .member)
+        #expect(g.items.count == 3, "незнакомый вид дела пропущен, остальные на месте")
+        #expect(g.items[0].unit == nil && g.items[1].unit == nil)
+        #expect(g.items[2].unit?.currency == "₽")
+        let block = try APIClient.decoder.decode(GroupDayBlock.self, from: Data((#"{"day":"2026-10-06","group":{"id":3,"title":"Семья","kind":"family","members":[]},"items":["# + Self.item(#","unit":{"type":"x"}"#) + "]}").utf8))
+        #expect(block.items.first?.unit == nil)
     }
 }
 
@@ -294,6 +379,39 @@ struct TogetherMiscTests {
         #expect(FriendsLogic.habitNote(FriendHabit(id: 1, title: "", kind: .abstain, status: .clean, cleanDays: 5), strings: t) == ("5 дней без этого", true))
         #expect(FriendsLogic.habitNote(FriendHabit(id: 1, title: "", kind: .abstain, cleanDays: 0), strings: t) == (nil, false))
         #expect(!FriendsLogic.searchable("@ann") && FriendsLogic.searchable("@anna") && FriendsLogic.searchable("anna"))
+    }
+
+    @Test("свайп по общему делу: повторяющееся — спросить «только сегодня или у всех», разовое и цель — сразу")
+    func asksRemoval() {
+        #expect(GroupLogic.asksRemoval(GroupDayItem(id: 1, title: "", mode: .one, recurring: true, start: "2026-10-06")))
+        #expect(GroupLogic.asksRemoval(GroupDayItem(id: 1, title: "", mode: .event, recurring: true, start: "2026-10-06")))
+        #expect(!GroupLogic.asksRemoval(GroupDayItem(id: 1, title: "", mode: .one, start: "2026-10-06")))
+        #expect(!GroupLogic.asksRemoval(GroupDayItem(id: 1, title: "", mode: .goal, recurring: true, start: "2026-10-06")))
+    }
+
+    @Test("отметить в дне календаря — сегодня и неделю назад; раньше и в будущем — нет (сервер не примет)")
+    func markWindow() {
+        #expect(GroupLogic.canMark(on: "2026-10-06", today: "2026-10-06"))
+        #expect(GroupLogic.canMark(on: "2026-09-29", today: "2026-10-06"))
+        #expect(!GroupLogic.canMark(on: "2026-09-28", today: "2026-10-06"))
+        #expect(!GroupLogic.canMark(on: "2026-10-07", today: "2026-10-06"))
+    }
+
+    @Test("ссылка «поделиться» в Telegram: «+», «&» и «=» в названии не ломают текст")
+    func telegramShare() throws {
+        let url = try #require(Links.telegramShare(link: "https://t.me/LifeCommit_bot?startapp=g_abc", text: "C++ & co = клуб · LifeCommit"))
+        #expect(url.absoluteString.hasPrefix("https://t.me/share/url?url=https%3A%2F%2Ft.me%2FLifeCommit_bot%3Fstartapp%3Dg_abc&text="))
+        #expect(url.absoluteString.contains("C%2B%2B%20%26%20co%20%3D%20"))
+        let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        #expect(items.first { $0.name == "text" }?.value == "C++ & co = клуб · LifeCommit")
+        #expect(items.first { $0.name == "url" }?.value == "https://t.me/LifeCommit_bot?startapp=g_abc")
+    }
+
+    @Test("короткое название месяца для карты года: «окт», «Oct»")
+    func monthShort() {
+        #expect(Strings.ru.monthShort("2026-10") == "окт")
+        #expect(Strings.en.monthShort("2026-10") == "Oct")
+        #expect(Strings.ru.monthShort("2026-05") == "мая" || Strings.ru.monthShort("2026-05") == "май")
     }
 
     @Test("тексты: склонения и числа как в мини-аппе")

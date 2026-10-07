@@ -138,6 +138,7 @@ struct TogetherModelTests {
         #expect(m.together.details[1]?.title == "Семья 🏡")
         await until("название вернулось") { m.together.details[1]?.title == "Семья" }
         #expect(m.together.note?.text == Strings.ru.error)
+        #expect(m.together.settingsFailed == 1, "ошибка видна и в открытой шторке настроек, а не только под ней")
         m.together.setAdminsOnly(groupId: 1, true)
         #expect(m.together.details[1]?.settings?.adminsOnlyEdit == true)
         await until("переключатель вернулся") { m.together.details[1]?.settings?.adminsOnlyEdit == false }
@@ -153,6 +154,7 @@ struct TogetherModelTests {
         server.fail("DELETE groups/1/chat")
         await m.together.disconnectChat(groupId: 1)
         #expect(m.together.details[1]?.settings?.tgChatTitle == "Семейный чат" && m.together.note?.text == Strings.ru.error)
+        #expect(m.together.settingsFailed == 1)
         await m.together.disconnectChat(groupId: 1)
         #expect(m.together.details[1]?.settings?.tgChatTitle == nil)
     }
@@ -249,8 +251,10 @@ struct TogetherModelTests {
         m.together.promptIfNeeded()
         #expect(!m.together.showOpen)
         server.fail("POST friends/prompted")
+        let reads = server.calls("GET friends").count
         m.together.saveShown(nil)
-        await server.seen("POST friends/prompted")
+        // Задача модели дошла до конца: после служебной отметки друзья перечитаны.
+        await server.seen("GET friends", times: reads + 1)
         #expect(m.together.showFailed == nil && !m.together.showOpen)
     }
 
@@ -290,6 +294,131 @@ struct TogetherModelTests {
         let id = try await m.together.join(code: "abc234xyz9")
         #expect(id == 1 && m.together.details[1]?.title == "Семья")
         await server.seen("GET today")
+    }
+
+    @Test("удалили общее дело: после «Вернуть» строка не мелькает — скрыта, пока экраны не перечитаны без неё")
+    func removalNoFlash() async {
+        let (server, m) = setup()
+        await m.together.loadGroup(1)
+        m.together.removeItem(groupId: 1, Self.trash(), skipDay: nil)
+        await m.flushRemoval()?.value
+        #expect(!m.isRemoved(TogetherModel.removalKey(1, 11)))
+        #expect(!m.today.groups[0].items.contains { $0.id == 11 }, "«Сегодня» уже без дела, когда строка перестала быть скрытой")
+        #expect(!(m.together.details[1]?.items.contains { $0.id == 11 } ?? true), "экран группы — тоже")
+        #expect(server.calls("DELETE groups/1/items/11").count == 1)
+    }
+
+    @Test("«только сегодня» прячет один день: в другие дни и на «Сегодня» дело видно, пока идёт «Вернуть»")
+    func skipHidesOneDay() {
+        let (_, m) = setup()
+        m.together.removeItem(groupId: 1, Self.dishes(), skipDay: "2026-10-07")
+        #expect(m.isRemoved(TogetherModel.removalKey(1, 12, day: "2026-10-07")))
+        #expect(!m.isRemoved(TogetherModel.removalKey(1, 12)))
+        #expect(!m.isRemoved(TogetherModel.removalKey(1, 12, day: Self.day)))
+        m.undoRemoval()
+    }
+
+    @Test("две отметки подряд: перечитка после первой, пока вторая ещё у сервера, не снимает вторую галочку")
+    func twoMarks() async {
+        let second = GroupDayItem(id: 13, title: "Позвонить бабушке", mode: .one, people: [Self.me, 5], canMark: true, start: Self.day)
+        let (server, m) = setup(Self.family([Self.trash(), second]))
+        await m.together.loadGroup(1)
+        let held = server.hold("PUT groups/1/items/13/mark")
+        let b = Task { await m.together.mark(groupId: 1, second) }
+        await server.seen("PUT groups/1/items/13/mark")
+        // Первая отметка дошла и перечитала экран, пока вторая ещё идёт.
+        await m.together.mark(groupId: 1, Self.trash())
+        #expect(m.together.details[1]?.items.first { $0.id == 13 }?.done == true, "вторая галочка на месте")
+        await held.open()
+        await b.value
+        #expect(m.together.details[1]?.items.first { $0.id == 13 }?.done == true)
+    }
+
+    @Test("проверка чата, ушедшая до «Отключить», не возвращает отключённый чат")
+    func checkChatAfterDisconnect() async {
+        let (server, m) = setup(Self.family(chat: "Семейный чат"))
+        await m.together.loadGroup(1)
+        let check = server.hold("POST groups/1/chat/check")
+        let checking = Task { await m.together.checkChat(groupId: 1) }
+        await server.seen("POST groups/1/chat/check")
+        server.answer("POST groups/1/chat/check", 200, ["tg_chat_title": "Семейный чат"])
+        await m.together.disconnectChat(groupId: 1)
+        await check.open()
+        await checking.value
+        #expect(m.together.details[1]?.settings?.tgChatTitle == nil)
+    }
+
+    @Test("отметка на «Сегодня» при плохой связи: фоновое чтение группы не пишет «группа не найдена»")
+    func backgroundLoadIsQuiet() async {
+        let (server, m) = setup()
+        server.fail("GET groups/1", status: 0, code: "")
+        await m.markGroupOnToday(groupId: 1, Self.trash())
+        #expect(!m.together.missing.contains(1))
+        await m.together.loadGroup(42)
+        #expect(m.together.missing.contains(42), "открытый экран группы, которой нет, по-прежнему говорит «не найдена»")
+    }
+
+    @Test("вступил новичок (первый экран «Чего я хочу?») — после «Вступить» не возвращаемся в него")
+    func joinEndsOnboarding() async throws {
+        let server = FakeServer(today: TodayResponse(day: Self.day))
+        server.groups.withLock { $0[1] = Self.family() }
+        server.answer("POST invites/abc234xyz9/join", 200, ["id": 1])
+        let m = AppModel(api: server.api, tokens: MemoryTokenStore())
+        m.showForTests(user: server.user, today: server.today, onboarding: true)
+        _ = try await m.together.join(code: "abc234xyz9")
+        #expect(!m.onboarding)
+    }
+
+    @Test("приглашение пришло при запуске, а ключ протух — после нового входа оно всё равно открывается")
+    func inviteSurvivesSignOut() async throws {
+        let server = FakeServer(today: TodayResponse(day: Self.day))
+        let m = AppModel(api: server.api, tokens: MemoryTokenStore())
+        m.api.setCredential(.session("old"))
+        m.openInvite(InviteLink(kind: .join, code: "abc234xyz9"))
+        server.fail("POST session", status: 401, code: "bad_session")
+        await m.load()
+        #expect(m.phase == .signedOut)
+        m.api.setCredential(.session("new"))
+        await m.load()
+        await until("экран приглашения открыт") { m.path == [.join("abc234xyz9")] }
+    }
+
+    @Test("«+ Положить»: вклад уходит и сумма перечитана; не дошёл — подсказка, сумма как была")
+    func put() async {
+        let goal = GroupDayItem(id: 14, title: "Отпуск", mode: .goal, people: [Self.me, 5], target: 150_000, total: 0, start: Self.day)
+        let (server, m) = setup(Self.family([goal]))
+        await m.together.loadGroup(1)
+        await m.together.put(groupId: 1, itemId: 14, amount: 5000)
+        #expect(server.calls("POST groups/1/items/14/entries").first?.json["amount"] as? Int == 5000)
+        #expect(m.together.details[1]?.items.first?.total == 5000)
+        #expect(m.together.note == nil)
+        server.fail("POST groups/1/items/14/entries")
+        await m.together.put(groupId: 1, itemId: 14, amount: 1000)
+        #expect(m.together.note == TogetherModel.Note(groupId: 1, text: Strings.ru.error))
+        #expect(m.together.details[1]?.items.first?.total == 5000)
+    }
+
+    @Test("друзья не загрузились, а показать нечего — ошибка, а не «пока нет друзей»; своя заявка не отменилась — сказано")
+    func friendsFailures() async {
+        let (server, m) = setup()
+        await m.together.reloadFriends()
+        #expect(m.together.friendsFailed && m.together.friends == nil)
+        server.friends.withLock { $0 = FriendsResponse(outgoing: [Person(id: 10, firstName: "Коля")]) }
+        await m.together.reloadFriends()
+        #expect(!m.together.friendsFailed && m.together.friends?.outgoing.count == 1)
+        server.fail("DELETE friends/requests/10")
+        m.together.cancelRequest(10)
+        await until("строка ошибки") { m.together.cancelFailed }
+        #expect(m.together.friends?.outgoing.count == 1)
+    }
+
+    @Test("проверка чата: удалённый в Telegram чат пропадает из настроек")
+    func checkChatClears() async {
+        let (server, m) = setup(Self.family(chat: "Семейный чат"))
+        await m.together.loadGroup(1)
+        server.answer("POST groups/1/chat/check", 200, ["tg_chat_title": NSNull()])
+        await m.together.checkChat(groupId: 1)
+        #expect(m.together.details[1]?.settings?.tgChatTitle == nil)
     }
 
     @Test("вышли — группы и друзья прошлого человека забыты; ответ, ушедший до выхода, ничего не пишет")

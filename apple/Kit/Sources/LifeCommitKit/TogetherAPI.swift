@@ -19,6 +19,61 @@ public enum GroupMode: String, Codable, Sendable, CaseIterable {
 
 public enum GroupRole: String, Codable, Sendable {
     case owner, admin, member
+
+    /// Незнакомая роль — просто участник (меньше прав на экране; сервер всё равно проверяет сам).
+    public init(from decoder: Decoder) throws {
+        self = GroupRole(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .member
+    }
+}
+
+/// Поле, которое при непонятном значении становится пустым, а не роняет весь ответ (единица цели — её пишут клиенты).
+@propertyWrapper
+public struct Lossy<Value: Codable & Sendable & Equatable>: Codable, Sendable, Equatable {
+    public var wrappedValue: Value?
+
+    public init(wrappedValue: Value?) { self.wrappedValue = wrappedValue }
+
+    public init(from decoder: Decoder) throws {
+        wrappedValue = try? decoder.singleValueContainer().decode(Value.self)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(wrappedValue)
+    }
+}
+
+/// Список, из которого непонятные элементы (дело незнакомого вида) выпадают, а остальные остаются.
+@propertyWrapper
+public struct LossyList<Element: Codable & Sendable & Equatable>: Codable, Sendable, Equatable {
+    public var wrappedValue: [Element]
+
+    public init(wrappedValue: [Element]) { self.wrappedValue = wrappedValue }
+
+    public init(from decoder: Decoder) throws {
+        var c = try decoder.unkeyedContainer()
+        var out: [Element] = []
+        while !c.isAtEnd {
+            if let x = try? c.decode(Element.self) {
+                out.append(x)
+            } else {
+                // Пропустить непонятный элемент: без этого контейнер стоял бы на нём.
+                _ = try c.decode(JSONValue.self)
+            }
+        }
+        wrappedValue = out
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        try wrappedValue.encode(to: encoder)
+    }
+}
+
+public extension KeyedDecodingContainer {
+    /// Нет поля — пусто (как у обычного необязательного).
+    func decode<V>(_ type: Lossy<V>.Type, forKey key: Key) throws -> Lossy<V> {
+        try decodeIfPresent(type, forKey: key) ?? Lossy(wrappedValue: nil)
+    }
 }
 
 public struct GroupMember: Codable, Sendable, Equatable, Identifiable {
@@ -78,7 +133,8 @@ public struct GroupDayItem: Codable, Sendable, Equatable, Identifiable {
     public var doneBy: [Int]
     public var target: Double?
     public var total: Double?
-    public var unit: GoalUnit?
+    /// Непонятная единица (её пишут клиенты, сервер раньше не проверял) — без единицы, а не сбой всего «Сегодня».
+    @Lossy public var unit: GoalUnit?
     public var goalUntil: String?
     /// Как задано (для правки): первый день, повтор, выбранные люди.
     public var start: String
@@ -137,7 +193,7 @@ public struct GroupToday: Codable, Sendable, Equatable, Identifiable {
     public var kind: GroupKind
     public var role: GroupRole
     public var members: [GroupMember]
-    public var items: [GroupDayItem]
+    @LossyList public var items: [GroupDayItem]
     /// Сколько раз сегодня надо сделать на всю группу и сколько сделано (мероприятия и цели не считаем).
     public var planned: Int
     public var done: Int
@@ -181,7 +237,7 @@ public struct GroupDayBlock: Codable, Sendable, Equatable {
 
     public var day: String
     public var group: Group
-    public var items: [GroupDayItem]
+    @LossyList public var items: [GroupDayItem]
 
     public init(day: String, group: Group, items: [GroupDayItem]) {
         self.day = day

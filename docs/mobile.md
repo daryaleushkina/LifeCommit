@@ -231,9 +231,14 @@ Telegram в браузер не переходят). Раньше чужая с�
 `GET /groups` → `GroupToday[]`; `POST /groups {title, kind?}`; `GET|PATCH|DELETE /groups/:id`; `POST /groups/:id/chat/check`;
 `DELETE /groups/:id/chat`; `POST /groups/:id/leave`; `POST /groups/:id/invite` → `{code, link, expires_at}`;
 `GET /invites/:code`, `POST /invites/:code/join`; `POST|PATCH|DELETE /groups/:id/items[/:item]`;
-`POST /groups/:id/items/:item/skip {day}`; `PUT /groups/:id/items/:item/mark {done?, day?}` → `{ok, taken}`;
-`POST /groups/:id/items/:item/entries {amount}`. Ошибки: 403 `forbidden` `admins_only` `not_yours`; 404; 410
-`invite_expired`; 400 `no_title` `bad_mode` `bad_time` `bad_repeat` `bad_target` `no_target` `bad_day` `bad_amount`.
+`POST /groups/:id/items/:item/skip {day}`; `PUT /groups/:id/items/:item/mark {done?, day?}` → `{ok, taken}` (`day` —
+сегодня или до 7 дней назад, иначе 400 `bad_day`, решение владелицы 07.10.2026: раньше сервер тихо отмечал сегодня;
+клиенты дают отметить в календаре только эти дни); `POST /groups/:id/items/:item/entries {amount}`. Единица цели `unit`
+— null или `{type ≤32, forms: ровно 3 строки ≤40, currency? ≤8, icon? ≤16}`, лишние поля отбрасываются, кривая — 400
+`bad_unit`. Ошибки: 403 `forbidden` `admins_only` `not_yours`; 404; 410 `invite_expired`; 400 `no_title` `bad_mode`
+`bad_time` `bad_repeat` `bad_target` `no_target` `bad_day` `bad_amount` `bad_unit`. Правка дела: повтор, который не
+меняли, уходит как был (шторка показывает «вт и чт» как «раз в неделю»); `assignees` — в порядке дела (по нему идёт
+очередь).
 Кто делает сегодня (`for_me`, `can_mark`, `turn`, `done`) сервер присылает уже посчитанным.
 
 ### Ссылки-приглашения
@@ -243,7 +248,9 @@ Telegram в браузер не переходят). Раньше чужая с�
 `lifecommit://friend/<код>` и «Открыть в Telegram» → `t.me/…?startapp=g_<код>` / `f_<код>`. Код — только
 `[A-Za-z0-9_-]{4,64}`, иначе 404 «Ссылка не работает»; клиенты сверяют его так же (`InviteLink` в Kit,
 `AppModel.invitePath` на Android) — в путь API ничего постороннего не попадает. iOS/Mac открывают `lifecommit://`
-со страницы; universal links для `/j/` и `/f/` — когда будет Team ID (файл `apple-app-site-association`). Поле `link`
+со страницы; universal links для `/j/` и `/f/` — когда будет Team ID (файл `apple-app-site-association`). В
+`assetlinks.json` сейчас отпечаток upload-ключа (им подписаны и debug, и release на Маке); в Google Play с App Signing
+приложение переподписывает Play — его отпечаток добавить в `ANDROID_APP.fingerprints` до выпуска. Поле `link`
 в ответах (`POST /groups/:id/invite`, `GET /friends`) пока ведёт в Telegram.
 
 ### Друзья

@@ -279,6 +279,20 @@ describe('день', () => {
     await expect.element(page.getByRole('button', { name: 'Сделано: Завтра в группе' })).not.toBeInTheDocument();
   });
 
+  // Сервер принимает отметку задним числом только за неделю (решение владелицы 07.10.2026): раньше — без галочки.
+  it('групповое дело неделю назад отмечается, раньше — только посмотреть', async () => {
+    blocks = [
+      { day: '2026-09-26', group: family, items: [item({ title: 'Неделю назад' })] },
+      { day: '2026-09-25', group: family, items: [item({ id: 2, title: 'Восемь дней назад' })] },
+    ];
+    await setup();
+    for (let i = 0; i < 7; i++) await page.getByRole('button', { name: 'Предыдущий день' }).click();
+    await expect.element(page.getByRole('button', { name: 'Сделано: Неделю назад' })).toBeVisible();
+    await page.getByRole('button', { name: 'Предыдущий день' }).click();
+    await expect.element(title('Восемь дней назад')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Сделано: Восемь дней назад' })).not.toBeInTheDocument();
+  });
+
   it('групповое дело свайпом — удаление, экран группы сброшен, день перечитан', async () => {
     caches.groups.set(10, {} as never);
     const { onChanged } = await setup();

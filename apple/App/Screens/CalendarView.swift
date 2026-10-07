@@ -70,7 +70,7 @@ struct CalendarView: View {
                 ForEach(groupDays.filter { $0.day == selected }, id: \.group.id) { block in
                     GroupBlockView(
                         groupId: block.group.id, title: block.group.title, members: block.group.members, items: block.items,
-                        canMark: selected <= today, day: selected
+                        canMark: GroupLogic.canMark(on: selected, today: today), day: selected
                     ) { item in Task { await model.markGroupOnDay(groupId: block.group.id, item, day: selected) } }
                 }
             }
