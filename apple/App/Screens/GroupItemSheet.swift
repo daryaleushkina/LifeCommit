@@ -62,7 +62,7 @@ struct GroupItemSheet: View {
                 .background(palette.bg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .focused($titleFocused)
                 .onChange(of: form.title) { _, v in if v.count > 120 { form.title = String(v.prefix(120)) } }
-                .accessibilityIdentifier("itemTitle")
+                .accessibilityIdentifier("groupItem.title")
 
             Text(g.who).font(.onest(15, .semibold)).foregroundStyle(palette.muted).padding(.horizontal, 4).padding(.top, 18).padding(.bottom, 8)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
@@ -84,7 +84,7 @@ struct GroupItemSheet: View {
                 .disabled(!form.valid(members))
                 .opacity(form.valid(members) ? 1 : 0.4)
                 .padding(.top, 16)
-                .accessibilityIdentifier("saveItem")
+                .accessibilityIdentifier("groupItem.save")
             if let item {
                 Button(g.remove, role: .destructive) {
                     model.together.removeItem(groupId: group.id, item, skipDay: nil)
@@ -95,7 +95,7 @@ struct GroupItemSheet: View {
                 .foregroundStyle(palette.danger)
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .disabled(busy)
-                .accessibilityIdentifier("removeItem")
+                .accessibilityIdentifier("groupItem.delete")
             }
         }
         .presentationDetents([.large])
@@ -154,13 +154,13 @@ struct GroupItemSheet: View {
         }
         .buttonStyle(PressScale())
         .accessibilityAddTraits(on ? .isSelected : [])
-        .accessibilityIdentifier("mode-\(mode.rawValue)")
+        .accessibilityIdentifier("groupItem.mode.\(mode.rawValue)")
     }
 
     private func people(_ members: [GroupMember]) -> some View {
         FlowRow(spacing: 8) {
             chip(on: form.all, label: g.all, avatar: nil) { form.all.toggle() }
-                .accessibilityIdentifier("chip-all")
+                .accessibilityIdentifier("groupItem.all")
             ForEach(members) { m in
                 chip(on: form.all || form.people.contains(m.id), label: m.id == me ? g.me : m.name, avatar: m) {
                     form.toggle(m.id, members: members)
@@ -201,19 +201,19 @@ struct GroupItemSheet: View {
             .tint(palette.accent)
             .padding(.horizontal, 18)
             .frame(minHeight: 60)
-            .accessibilityIdentifier("rotate")
+            .accessibilityIdentifier("groupItem.rotate")
             Divider().overlay(palette.line)
         }
         SheetRow(label: g.repeatLabel, value: g.repeats[form.repeatRule] ?? "") { repeatOpen = true }
-            .accessibilityIdentifier("itemRepeat")
+            .accessibilityIdentifier("groupItem.repeat")
         if form.repeatRule.hasDay {
             Divider().overlay(palette.line)
             SheetRow(label: g.date, value: form.day == today ? t.today : t.dayMonth(form.day)) { dayOpen = true }
-                .accessibilityIdentifier("itemDay")
+                .accessibilityIdentifier("groupItem.day")
         }
         Divider().overlay(palette.line)
         SheetRow(label: g.time, value: form.time ?? g.allDay) { timeOpen = true }
-            .accessibilityIdentifier("itemTime")
+            .accessibilityIdentifier("groupItem.time")
     }
 
     @ViewBuilder private var goalRows: some View {
@@ -231,7 +231,7 @@ struct GroupItemSheet: View {
                     if clean != v { form.target = clean }
                 }
                 .accessibilityLabel(g.target)
-                .accessibilityIdentifier("itemTarget")
+                .accessibilityIdentifier("groupItem.target")
         }
         .padding(.horizontal, 18)
         .frame(minHeight: 56)

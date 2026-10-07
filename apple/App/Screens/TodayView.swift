@@ -21,7 +21,7 @@ struct TodayView: View {
                     ErrorNote(text: banner)
                         .padding(.top, 12)
                         .onTapGesture { model.banner = nil }
-                        .accessibilityIdentifier("banner")
+                        .accessibilityIdentifier("today.banner")
                 }
 
                 TodoListView(todos: data.todos, later: data.todosLater, filterable: true) { title in Task { await model.addTodo(title) } }
@@ -46,7 +46,7 @@ struct TodayView: View {
                             }
                             // Карточка — один контейнер: подпись у неё, а не у каждой кнопки внутри.
                             .accessibilityElement(children: .contain)
-                            .accessibilityIdentifier("task-\(task.title)")
+                            .accessibilityIdentifier("habit.card")
                         }
                     }
                 }
@@ -73,14 +73,14 @@ struct TodayView: View {
                 if data.canAddTask {
                     LinkButton(title: t.addTask, icon: Glyph.plus) { model.path.append(.pick) }
                         .padding(.top, 4)
-                        .accessibilityIdentifier("addTask")
+                        .accessibilityIdentifier("today.addTask")
                 } else {
                     Text(t.limitReached(data.limits.maxTasks ?? 0)).font(.onest(14)).foregroundStyle(palette.muted).padding(.top, 12)
                 }
 
                 if !data.archived.isEmpty {
                     LinkButton(title: t.archivedLink(data.archived.count), icon: nil) { model.path.append(.archive) }
-                        .accessibilityIdentifier("archiveLink")
+                        .accessibilityIdentifier("today.archive")
                 }
             }
             .padding(.horizontal, 20)

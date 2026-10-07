@@ -34,7 +34,7 @@ struct OnboardingView: View {
                             .glassCard()
                         }
                         .buttonStyle(PressScale())
-                        .accessibilityIdentifier("intent-\(kind.rawValue)")
+                        .accessibilityIdentifier("onboarding.intent.\(kind.rawValue)")
                     }
                 }
                 .padding(.top, 28)
@@ -44,7 +44,7 @@ struct OnboardingView: View {
                         .foregroundStyle(palette.muted)
                         .frame(maxWidth: .infinity, minHeight: 48)
                         .padding(.top, 20)
-                        .accessibilityIdentifier("skip")
+                        .accessibilityIdentifier("onboarding.skip")
                 }
             }
             .padding(.horizontal, 20)

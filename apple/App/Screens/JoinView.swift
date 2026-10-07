@@ -29,7 +29,7 @@ struct JoinView: View {
                 BackBar().padding(.top, 8)
                 if let problem {
                     Text(problem).font(.onest(15)).foregroundStyle(palette.muted).multilineTextAlignment(.center).padding(.top, 64)
-                        .accessibilityIdentifier("joinProblem")
+                        .accessibilityIdentifier("join.problem")
                     PrimaryButton(title: j.later) { dismiss() }.padding(.top, 20)
                 } else if let inv {
                     content(inv)
@@ -82,7 +82,7 @@ struct JoinView: View {
         if inv.member {
             PrimaryButton(title: j.open, wide: true) { model.path = [.group(inv.group.id)] }.padding(.top, 24)
         } else {
-            PrimaryButton(title: j.btn, wide: true, busy: busy) { join() }.padding(.top, 24).accessibilityIdentifier("joinGroup")
+            PrimaryButton(title: j.btn, wide: true, busy: busy) { join() }.padding(.top, 24).accessibilityIdentifier("join.join")
         }
         Button(inv.member ? j.already : j.later) { dismiss() }
             .buttonStyle(.plain).font(.onest(15)).foregroundStyle(palette.muted).frame(minHeight: 48).padding(.top, 12)

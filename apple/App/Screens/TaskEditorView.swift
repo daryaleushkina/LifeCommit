@@ -75,7 +75,7 @@ struct TaskEditorView: View {
                     .glassCard(radius: 16)
                     .padding(.top, 14)
                     .onChange(of: form.title) { _, v in if v.count > 80 { form.title = String(v.prefix(80)) } }
-                    .accessibilityIdentifier("title")
+                    .accessibilityIdentifier("editor.title")
 
                 VStack(spacing: 0) {
                     if kind == .abstain {
@@ -89,7 +89,7 @@ struct TaskEditorView: View {
                             MiniStepper(label: t.goal, value: Int(form.target), range: 1...100_000, down: Int(form.target) > 20 ? 5 : 1, up: Int(form.target) >= 20 ? 5 : 1) {
                                 form.target = Double($0)
                             }
-                            .accessibilityIdentifier("goal")
+                            .accessibilityIdentifier("editor.goal")
                         }
                         .padding(.leading, 18)
                         .padding(.trailing, 14)
@@ -109,16 +109,16 @@ struct TaskEditorView: View {
                     .disabled(!valid)
                     .opacity(valid ? 1 : 0.4)
                     .padding(.top, 20)
-                    .accessibilityIdentifier("save")
+                    .accessibilityIdentifier("editor.save")
 
                 if !isNew {
                     HStack(spacing: 12) {
                         Button(t.postpone) { Task { await postpone() } }
                             .foregroundStyle(palette.muted)
-                            .accessibilityIdentifier("postpone")
+                            .accessibilityIdentifier("editor.postpone")
                         Button(t.deleteTask) { confirmDelete = true }
                             .foregroundStyle(palette.danger)
-                            .accessibilityIdentifier("delete")
+                            .accessibilityIdentifier("editor.delete")
                     }
                     .font(.onest(15))
                     .frame(maxWidth: .infinity, minHeight: 48)

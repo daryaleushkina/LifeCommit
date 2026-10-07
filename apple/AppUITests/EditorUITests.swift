@@ -26,10 +26,10 @@ final class EditorUITests: XCTestCase {
         let card = app.buttons[title]
         XCTAssertTrue(card.waitForExistence(timeout: 15), "нет привычки «\(title)» на «Сегодня»")
         card.tap()
-        let pencil = app.buttons["edit"]
+        let pencil = app.buttons["detail.edit"]
         XCTAssertTrue(pencil.waitForExistence(timeout: 5), "нет карандаша на экране привычки")
         pencil.tap()
-        XCTAssertTrue(app.textFields["title"].waitForExistence(timeout: 5), "редактор не открылся")
+        XCTAssertTrue(app.textFields["editor.title"].waitForExistence(timeout: 5), "редактор не открылся")
     }
 
     func testRenamePostponeRestoreDelete() throws {
@@ -39,24 +39,24 @@ final class EditorUITests: XCTestCase {
 
         // Переименовать: на сервере новое название, на «Сегодня» — тоже.
         openEditor("Читать")
-        let field = app.textFields["title"]
+        let field = app.textFields["editor.title"]
         field.tap()
         field.typeText(" книги")
-        app.buttons["save"].tap()
+        app.buttons["editor.save"].tap()
         eventually("переименована на сервере") { try self.task(id)?["title"] as? String == "Читать книги" }
         XCTAssertTrue(app.buttons["Читать книги"].waitForExistence(timeout: 5), "на «Сегодня» старое название")
 
         // «Отложить»: с «Сегодня» пропала, на сервере — в отложенных; внизу «Отложенные · 1».
         openEditor("Читать книги")
-        app.buttons["postpone"].tap()
+        app.buttons["editor.postpone"].tap()
         eventually("отложена на сервере") { try self.archived().contains { $0["id"] as? Int == id } }
-        let archive = app.buttons["archiveLink"]
+        let archive = app.buttons["today.archive"]
         XCTAssertTrue(archive.waitForExistence(timeout: 5), "нет ссылки «Отложенные»")
         XCTAssertFalse(app.buttons["Читать книги"].exists, "отложенная осталась на «Сегодня»")
 
         // «Вернуть» из «Отложенных» — снова на «Сегодня» и в списке привычек на сервере.
         archive.tap()
-        let restore = app.buttons["restore-Читать книги"]
+        let restore = app.el("archive.restore", "Читать книги")
         XCTAssertTrue(restore.waitForExistence(timeout: 5), "нет «Вернуть» в «Отложенных»")
         restore.tap()
         eventually("вернулась на сервере") { try self.task(id) != nil }
@@ -64,12 +64,12 @@ final class EditorUITests: XCTestCase {
 
         // «Удалить» — с подтверждением; насовсем: ни в привычках, ни в отложенных.
         openEditor("Читать книги")
-        app.buttons["delete"].tap()
+        app.buttons["editor.delete"].tap()
         let confirm = app.buttons["Удалить"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "нет подтверждения удаления")
         confirm.tap()
         eventually("удалена на сервере") { try self.task(id) == nil && !self.archived().contains { $0["id"] as? Int == id } }
-        XCTAssertTrue(app.buttons["addTask"].waitForExistence(timeout: 5) || app.buttons["intent-count"].waitForExistence(timeout: 5), "после удаления не вернулись на «Сегодня»")
+        XCTAssertTrue(app.buttons["today.addTask"].waitForExistence(timeout: 5) || app.buttons["onboarding.intent.count"].waitForExistence(timeout: 5), "после удаления не вернулись на «Сегодня»")
         XCTAssertFalse(app.buttons["Читать книги"].exists)
     }
 }

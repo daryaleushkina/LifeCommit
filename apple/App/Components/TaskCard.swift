@@ -12,6 +12,8 @@ struct RoundButton: View {
     let kind: Kind
     var state: State = .normal
     let label: String
+    /// id для сквозных проверок (shared/ui-ids.json).
+    var id: String?
     let action: () -> Void
     @Environment(\.palette) private var palette
 
@@ -31,6 +33,7 @@ struct RoundButton: View {
         .buttonStyle(PressScale())
         .accessibilityLabel(label)
         .accessibilityAddTraits(kind != .edit && state == .on ? .isSelected : [])
+        .accessibilityIdentifier(id ?? "")
     }
 
     private var background: Color {
@@ -140,6 +143,7 @@ struct TaskCard: View {
                     #endif
                     .onSubmit(commit)
                     .accessibilityLabel("\(task.title): \(t.enterValue)")
+                    .accessibilityIdentifier("habit.countInput")
                 Text(rest).font(.onest(14)).foregroundStyle(palette.muted)
             }
             .frame(minHeight: 28)
@@ -163,13 +167,13 @@ struct TaskCard: View {
             doneButton
         case .count:
             HStack(spacing: 8) {
-                RoundButton(kind: .edit, label: "\(task.title): \(t.enterValue)", action: startEditing)
+                RoundButton(kind: .edit, label: "\(task.title): \(t.enterValue)", id: "habit.pencil", action: startEditing)
                 doneButton
             }
         case .abstain:
             HStack(spacing: 8) {
-                RoundButton(kind: .no, state: state(.slip), label: t.answerNo) { pick(.slip) }
-                RoundButton(kind: .ok, state: state(.clean), label: t.answerYes) { pick(.clean) }
+                RoundButton(kind: .no, state: state(.slip), label: t.answerNo, id: "habit.no") { pick(.slip) }
+                RoundButton(kind: .ok, state: state(.clean), label: t.answerYes, id: "habit.yes") { pick(.clean) }
             }
         }
     }
@@ -177,7 +181,7 @@ struct TaskCard: View {
     /// Галочка «сделано целиком»: повторный тап снимает.
     private var doneButton: some View {
         let done = task.isDone
-        return RoundButton(kind: .ok, state: done ? .on : .normal, label: "\(task.title) — \(t.markDone.lowercased(with: t.locale))") {
+        return RoundButton(kind: .ok, state: done ? .on : .normal, label: "\(task.title) — \(t.markDone.lowercased(with: t.locale))", id: "habit.done") {
             onLog(done ? nil : (task.kind == .count ? task.target : 1), nil)
         }
     }

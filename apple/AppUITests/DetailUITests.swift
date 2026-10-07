@@ -1,5 +1,6 @@
 // Экран привычки как человек: открыть с «Сегодня», отметить сегодня, отметить прошедший день задним числом и убрать
 // отметку, перейти в редактор. Проверка — на экране и в базе.
+import LifeCommitKit
 import XCTest
 
 @MainActor
@@ -33,7 +34,7 @@ final class DetailUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Каждый день"].waitForExistence(timeout: 5), "нет подписи «как часто»")
 
         // Отметка «сегодня» с экрана привычки — та же, что на «Сегодня».
-        app.buttons["Сходить в спортзал — сделано"].tap()
+        app.el("habit.done", "Сходить в спортзал").tap()
         eventually("сегодня отмечено") { try self.history(id).contains { $0["day"] as? String == today && $0["value"] as? Double == 1 } }
 
         // Прошедший день — задним числом (привычка новая, но месяц назад отмечать можно).
@@ -43,7 +44,7 @@ final class DetailUITests: XCTestCase {
         let yesterday = fmt.string(from: past)
         // Вчера — прошлый месяц (сегодня 1-е): листаем календарь назад.
         if yesterday.prefix(7) != today.prefix(7) { app.buttons["Предыдущий месяц"].tap() }
-        let cell = app.buttons["day-\(yesterday)"]
+        let cell = app.el("detail.day", Strings.ru.dayMonth(yesterday), exact: true)
         XCTAssertTrue(cell.waitForExistence(timeout: 5), "вчерашний день нельзя нажать")
         cell.tap()
         app.buttons["Сделано"].tap()
@@ -55,8 +56,8 @@ final class DetailUITests: XCTestCase {
         eventually("отметка за вчера снята") { try !self.history(id).contains { $0["day"] as? String == yesterday } }
 
         // Карандаш — редактор этой привычки.
-        app.buttons["edit"].tap()
-        XCTAssertTrue(app.textFields["title"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.textFields["title"].value as? String, "Сходить в спортзал")
+        app.buttons["detail.edit"].tap()
+        XCTAssertTrue(app.textFields["editor.title"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.textFields["editor.title"].value as? String, "Сходить в спортзал")
     }
 }

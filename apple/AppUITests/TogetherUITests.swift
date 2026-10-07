@@ -23,10 +23,10 @@ final class TogetherUITests: XCTestCase {
     /// Пустой человек: первый экран «Чего я хочу?» — пропустить и открыть «Вместе».
     private func openTogether() {
         app = stand.launch()
-        let skip = app.buttons["skip"]
+        let skip = app.buttons["onboarding.skip"]
         XCTAssertTrue(skip.waitForExistence(timeout: 15))
         skip.tap()
-        app.buttons["tab-groups"].tap()
+        app.buttons["tab.together"].tap()
     }
 
     private func groups(_ s: Stand) throws -> [[String: Any]] { try s.call("GET", "groups") as? [[String: Any]] ?? [] }
@@ -34,26 +34,26 @@ final class TogetherUITests: XCTestCase {
     func testCreateGroupAddItemAndMark() throws {
         openTogether()
         // Раздел «Группы · Друзья» запоминается на устройстве — выбираем явно.
-        let section = app.buttons["Группы"]
+        let section = app.el("together.groups")
         XCTAssertTrue(section.waitForExistence(timeout: 10))
         section.tap()
-        let create = app.buttons["newGroup"]
+        let create = app.buttons["group.new"]
         XCTAssertTrue(create.waitForExistence(timeout: 10))
         create.tap()
-        let title = app.textFields["groupTitle"]
+        let title = app.textFields["groupNew.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         title.typeText("Семья")
-        app.buttons["createGroup"].tap()
+        app.buttons["groupNew.create"].tap()
         // Сразу экран новой группы.
         XCTAssertTrue(app.staticTexts["Семья"].waitForExistence(timeout: 10))
         eventually("группа на сервере") { try self.groups(self.stand).first?["title"] as? String == "Семья" }
 
-        app.buttons["addGroupItem"].tap()
-        let item = app.textFields["itemTitle"]
+        app.buttons["group.addItem"].tap()
+        let item = app.textFields["groupItem.title"]
         XCTAssertTrue(item.waitForExistence(timeout: 5))
         item.typeText("Вынести мусор")
-        app.buttons["saveItem"].tap()
-        let check = app.buttons["Сделано: Вынести мусор"]
+        app.buttons["groupItem.save"].tap()
+        let check = app.el("group.itemCheck", "Сделано: Вынести мусор", exact: true)
         XCTAssertTrue(check.waitForExistence(timeout: 10), "дело появилось на экране группы с галочкой")
         eventually("дело на сервере") {
             let items = try self.groups(self.stand).first?["items"] as? [[String: Any]] ?? []
@@ -65,12 +65,12 @@ final class TogetherUITests: XCTestCase {
             let items = try self.groups(self.stand).first?["items"] as? [[String: Any]] ?? []
             return items.first { $0["title"] as? String == "Вынести мусор" }?["done"] as? Bool == true
         }
-        XCTAssertTrue(app.buttons["Не сделано: Вынести мусор"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.el("group.itemCheck", "Не сделано: Вынести мусор", exact: true).waitForExistence(timeout: 5))
 
         // На «Сегодня» — блок группы с этим делом.
-        app.buttons["back"].tap()
-        app.buttons["tab-today"].tap()
-        XCTAssertTrue(app.buttons["group-block-Семья"].waitForExistence(timeout: 10))
+        app.buttons["nav.back"].tap()
+        app.buttons["tab.today"].tap()
+        XCTAssertTrue(app.el("group.block", "Семья").waitForExistence(timeout: 10))
     }
 
     func testAcceptFriendRequest() throws {
@@ -80,13 +80,13 @@ final class TogetherUITests: XCTestCase {
         try friend.call("POST", "friends/requests", ["username": "u\(stand.userId)"])
 
         openTogether()
-        let switcher = app.buttons["Друзья"]
+        let switcher = app.el("together.friends")
         XCTAssertTrue(switcher.waitForExistence(timeout: 10))
         switcher.tap()
-        let requests = app.buttons["requestsRow"]
+        let requests = app.buttons["friends.requests"]
         XCTAssertTrue(requests.waitForExistence(timeout: 10), "нет строки «Заявки · 1»")
         requests.tap()
-        let accept = app.buttons.matching(identifier: "accept-Даша").firstMatch
+        let accept = app.el("request.accept", "Даша")
         XCTAssertTrue(accept.waitForExistence(timeout: 10))
         accept.tap()
         eventually("друзья на сервере") {
@@ -94,11 +94,11 @@ final class TogetherUITests: XCTestCase {
             return (list?["friends"] as? [[String: Any]] ?? []).contains { $0["id"] as? Int == friend.userId }
         }
         // Первый друг — один раз спрашиваем, что ему показать; «Назад» ничего не меняет.
-        app.buttons["back"].tap()
-        let showBack = app.buttons["showBack"]
+        app.buttons["nav.back"].tap()
+        let showBack = app.buttons["show.back"]
         XCTAssertTrue(showBack.waitForExistence(timeout: 10), "нет «Что показать друзьям?»")
         showBack.tap()
-        XCTAssertTrue(app.buttons["friend-Даша"].waitForExistence(timeout: 10), "друг в списке")
+        XCTAssertTrue(app.el("friend.row", "Даша").waitForExistence(timeout: 10), "друг в списке")
     }
 
     func testJoinByInviteLink() throws {
@@ -112,11 +112,11 @@ final class TogetherUITests: XCTestCase {
 
         openTogether()
         app.open(try XCTUnwrap(URL(string: "lifecommit://join/\(code)")))
-        let join = app.buttons["joinGroup"]
+        let join = app.buttons["join.join"]
         XCTAssertTrue(join.waitForExistence(timeout: 15), "ссылка не открыла приглашение")
         XCTAssertTrue(app.staticTexts["Бег по выходным"].exists)
         join.tap()
-        XCTAssertTrue(app.buttons["groupSettings"].waitForExistence(timeout: 10), "после вступления — экран группы")
+        XCTAssertTrue(app.buttons["group.settings"].waitForExistence(timeout: 10), "после вступления — экран группы")
         eventually("в группе на сервере") { try self.groups(self.stand).contains { $0["id"] as? Int == groupId } }
 
         // Чужой код — «Приглашение не найдено.», а не пустой экран.

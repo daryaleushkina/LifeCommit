@@ -35,7 +35,7 @@ struct CalendarView: View {
                     if !accounts.isEmpty { chips(accounts) }
                 }
 
-                Segmented(options: CalendarMode.allCases.map { ($0, $0 == .day ? t.cal.day : t.cal.month) }, selected: mode, label: t.calendar) { mode = $0 }
+                Segmented(options: CalendarMode.allCases.map { ($0, $0 == .day ? t.cal.day : t.cal.month) }, selected: mode, label: t.calendar, ids: CalendarMode.allCases.map { "calendar.mode.\($0.rawValue)" }) { mode = $0 }
                     .padding(.top, 16)
 
                 monthNav(selected: selected)
@@ -43,6 +43,7 @@ struct CalendarView: View {
                 // Место под «К сегодня» есть всегда: появилась ссылка — список не съезжает.
                 if mode == .day {
                     Button(t.cal.backToToday) { picked = today }
+                        .accessibilityIdentifier("calendar.today")
                         .font(.onest(14, .medium))
                         .foregroundStyle(palette.muted)
                         .frame(maxWidth: .infinity, minHeight: 32)
@@ -106,10 +107,10 @@ struct CalendarView: View {
             if !(model.accounts ?? []).isEmpty {
                 IconButton(glyph: Glyph.refresh, label: t.cal.refresh, spinning: model.calendarSyncing) { Task { await model.syncCalendars() } }
                     .disabled(model.calendarSyncing)
-                    .accessibilityIdentifier("calRefresh")
+                    .accessibilityIdentifier("calendar.refresh")
             }
             IconButton(glyph: Glyph.gear, label: t.cal.sheetTitle, spinning: false) { model.calendarsSheetOpen = true }
-                .accessibilityIdentifier("calSettings")
+                .accessibilityIdentifier("calendar.settings")
         }
         .padding(.top, 24)
     }
@@ -179,10 +180,12 @@ struct CalendarView: View {
         let title = mode == .day ? t.weekdayLong(selected) : t.monthYear(Months.of(selected))
         return HStack {
             navButton("‹", label: mode == .day ? t.cal.prevDay : t.prevMonth) { picked = CalendarDays.shift(mode, selected, by: -1) }
+                .accessibilityIdentifier("calendar.prev")
             Text(title.prefix(1).uppercased(with: t.locale) + title.dropFirst())
                 .font(.onest(15, .semibold))
                 .frame(maxWidth: .infinity)
             navButton("›", label: mode == .day ? t.cal.nextDay : t.nextMonth) { picked = CalendarDays.shift(mode, selected, by: 1) }
+                .accessibilityIdentifier("calendar.next")
         }
         .frame(minHeight: 44)
         .padding(.top, 10)
@@ -236,7 +239,7 @@ struct CalendarView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(t.weekdayLong(day))
                 .accessibilityAddTraits(on ? .isSelected : [])
-                .accessibilityIdentifier("cal-\(day)")
+                .accessibilityIdentifier("calendar.day")
             }
         }
         .padding(.top, 4)

@@ -43,7 +43,7 @@ struct SignInView: View {
             }
             .buttonStyle(PressScale())
             .disabled(model.signingIn)
-            .accessibilityIdentifier("signIn")
+            .accessibilityIdentifier("signin.telegram")
         }
         .padding(.horizontal, 20)
         .onOpenURL { url in

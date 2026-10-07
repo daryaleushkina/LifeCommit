@@ -32,7 +32,7 @@ struct FriendsPanel: View {
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
                         #endif
-                        .accessibilityIdentifier("friendSearch")
+                        .accessibilityIdentifier("friends.search")
                 }
                 .padding(.horizontal, 14)
                 .frame(height: 48)
@@ -44,7 +44,7 @@ struct FriendsPanel: View {
                 }
                 .buttonStyle(PressScale())
                 .accessibilityLabel(t.fr.invite)
-                .accessibilityIdentifier("inviteFriend")
+                .accessibilityIdentifier("friends.invite")
             }
             .padding(.top, 14)
 
@@ -88,7 +88,7 @@ struct FriendsPanel: View {
             }
             .buttonStyle(PressScale())
             .padding(.top, 12)
-            .accessibilityIdentifier("requestsRow")
+            .accessibilityIdentifier("friends.requests")
         }
         if tg.cancelFailed {
             ErrorNote(text: t.error).padding(.top, 12).onTapGesture { tg.cancelFailed = false }
@@ -115,7 +115,8 @@ struct FriendsPanel: View {
                         Button(t.fr.cancel) { tg.cancelRequest(p.id) }
                             .buttonStyle(.plain).font(.onest(15, .medium)).foregroundStyle(palette.muted)
                             .padding(.horizontal, 8).frame(minHeight: 44)
-                            .accessibilityIdentifier("cancel-\(p.firstName)")
+                            .accessibilityLabel("\(t.fr.cancel): \(p.firstName)")
+                            .accessibilityIdentifier("friend.cancel")
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -159,7 +160,7 @@ struct FriendRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressScale())
-        .accessibilityIdentifier("friend-\(friend.firstName)")
+        .accessibilityIdentifier("friend.row")
     }
 }
 
@@ -185,7 +186,7 @@ struct AddFriendSheet: View {
             }
             .disabled(link.isEmpty)
             .opacity(link.isEmpty ? 0.4 : 1)
-            .accessibilityIdentifier("sendLink")
+            .accessibilityIdentifier("friendAdd.sendLink")
             TextField(t.fr.usernamePh, text: $name)
                 .textFieldStyle(.plain)
                 .font(.onest(17, .medium))
@@ -198,7 +199,7 @@ struct AddFriendSheet: View {
                 .frame(height: 52)
                 .background(palette.bg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .padding(.top, 10)
-                .accessibilityIdentifier("findUsername")
+                .accessibilityIdentifier("friendAdd.username")
             if let problem { Text(problem).font(.onest(14)).foregroundStyle(palette.muted).padding(.horizontal, 4).padding(.top, 12) }
             if let found {
                 HStack(spacing: 12) {
@@ -210,7 +211,7 @@ struct AddFriendSheet: View {
                     Spacer(minLength: 0)
                     if found.status == .none || found.status == .incoming {
                         PrimaryButton(title: t.fr.call, busy: busy) { call(found.person) }
-                            .accessibilityIdentifier("callFriend")
+                            .accessibilityIdentifier("friendAdd.call")
                     } else {
                         Text(t.fr.status[found.status] ?? "").font(.onest(14)).foregroundStyle(palette.muted)
                     }
@@ -295,14 +296,16 @@ struct RequestsView: View {
                             }
                             HStack(spacing: 8) {
                                 PrimaryButton(title: t.fr.accept, wide: true) { tg.answer(p.id, accept: true) }
-                                    .accessibilityIdentifier("accept-\(p.firstName)")
+                                    .accessibilityLabel("\(t.fr.accept): \(p.firstName)")
+                                    .accessibilityIdentifier("request.accept")
                                 Button { tg.answer(p.id, accept: false) } label: {
                                     Text(t.fr.decline).font(.onest(17, .bold)).foregroundStyle(palette.text)
                                         .frame(maxWidth: .infinity, minHeight: 48)
                                         .background(palette.bg, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 }
                                 .buttonStyle(PressScale())
-                                .accessibilityIdentifier("decline-\(p.firstName)")
+                                .accessibilityLabel("\(t.fr.decline): \(p.firstName)")
+                                .accessibilityIdentifier("request.decline")
                             }
                         }
                         .padding(14)
@@ -410,8 +413,8 @@ struct FriendView: View {
 
         if leaveFailed { ErrorNote(text: t.error).padding(.top, 16).onTapGesture { leaveFailed = false } }
         HStack(spacing: 12) {
-            Button(t.fr.remove) { confirm = false }.foregroundStyle(palette.muted).accessibilityIdentifier("removeFriend")
-            Button(t.fr.block) { confirm = true }.foregroundStyle(palette.warn).accessibilityIdentifier("blockFriend")
+            Button(t.fr.remove) { confirm = false }.foregroundStyle(palette.muted).accessibilityIdentifier("friend.remove")
+            Button(t.fr.block) { confirm = true }.foregroundStyle(palette.warn).accessibilityIdentifier("friend.block")
         }
         .buttonStyle(.plain)
         .font(.onest(15))
@@ -499,7 +502,7 @@ struct FriendLinkView: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 48)
         if who.status == .none || who.status == .incoming {
-            PrimaryButton(title: t.fr.linkBtn, wide: true, busy: busy) { ask(who) }.padding(.top, 24).accessibilityIdentifier("wantFriend")
+            PrimaryButton(title: t.fr.linkBtn, wide: true, busy: busy) { ask(who) }.padding(.top, 24).accessibilityIdentifier("friendLink.want")
         } else {
             PrimaryButton(title: t.fr.open, wide: true) {
                 if who.status == .friends || who.status == .sent {
@@ -558,7 +561,7 @@ struct ShowSheet: View {
                     .frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("showBack")
+                .accessibilityIdentifier("show.back")
                 Spacer()
             }
             HStack(alignment: .center, spacing: 12) {
@@ -571,7 +574,7 @@ struct ShowSheet: View {
                         .foregroundStyle(all ? palette.muted : palette.accent)
                         .frame(minHeight: 44)
                         .accessibilityAddTraits(all ? .isSelected : [])
-                        .accessibilityIdentifier("selectAll")
+                        .accessibilityIdentifier("show.selectAll")
                 }
             }
             .padding(.top, 8)
@@ -593,7 +596,7 @@ struct ShowSheet: View {
             if model.together.showFailed != nil { ErrorNote(text: t.error).padding(.top, 8) }
             PrimaryButton(title: t.done, wide: true) { model.together.saveShown(Array(picked)) }
                 .padding(.top, 12)
-                .accessibilityIdentifier("showDone")
+                .accessibilityIdentifier("show.done")
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
@@ -629,6 +632,6 @@ struct ShowSheet: View {
         }
         .buttonStyle(PressScale())
         .accessibilityAddTraits(on ? .isSelected : [])
-        .accessibilityIdentifier("show-\(h.title)")
+        .accessibilityIdentifier("show.tile")
     }
 }

@@ -10,7 +10,7 @@ struct SwipeAction {
     var tone: Tone = .danger
     var icon: String = Glyph.trash
     /// Для UI-тестов.
-    var id = "swipe-delete"
+    var id = "swipe.delete"
     let run: () -> Void
 }
 

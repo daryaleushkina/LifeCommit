@@ -45,7 +45,7 @@ struct TodoSheet: View {
                 .frame(height: 52)
                 .background(palette.bg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .onChange(of: title) { _, v in if v.count > 120 { title = String(v.prefix(120)) } }
-                .accessibilityIdentifier("todoTitle")
+                .accessibilityIdentifier("todoSheet.title")
 
             if todo.source != nil, let details = todo.details { EventDetailsView(details: details).padding(.top, 10) }
 
@@ -62,7 +62,7 @@ struct TodoSheet: View {
                     Divider().overlay(palette.line)
                 }
                 SheetRow(label: s.time, value: time ?? s.allDay) { timeOpen = true }
-                    .accessibilityIdentifier("todoTime")
+                    .accessibilityIdentifier("todoSheet.time")
                 // Своё дело: место можно вписать или поправить, оно уйдёт в календарь телефона.
                 if todo.source == nil {
                     Divider().overlay(palette.line)
@@ -111,7 +111,7 @@ struct TodoSheet: View {
             .disabled(!valid)
             .opacity(valid ? 1 : 0.4)
             .padding(.top, 16)
-            .accessibilityIdentifier("todoDone")
+            .accessibilityIdentifier("todoSheet.done")
 
             if let onDelete {
                 Button(todo.source != nil ? s.deleteEvent : s.delete, role: .destructive) {
@@ -122,7 +122,7 @@ struct TodoSheet: View {
                 .font(.onest(15, .medium))
                 .foregroundStyle(palette.danger)
                 .frame(maxWidth: .infinity, minHeight: 48)
-                .accessibilityIdentifier("todoDelete")
+                .accessibilityIdentifier("todoSheet.delete")
             }
         }
         .sheet(isPresented: $dayOpen) {
@@ -211,12 +211,14 @@ struct Segmented<Value: Hashable>: View {
     let options: [(Value, String)]
     let selected: Value?
     let label: String
+    /// id вариантов для сквозных проверок (shared/ui-ids.json), по порядку вариантов.
+    var ids: [String]?
     let onPick: (Value) -> Void
     @Environment(\.palette) private var palette
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
                 let on = option.0 == selected
                 Button {
                     onPick(option.0)
@@ -231,6 +233,7 @@ struct Segmented<Value: Hashable>: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(on ? .isSelected : [])
+                .accessibilityIdentifier(ids.flatMap { index < $0.count ? $0[index] : nil } ?? "")
             }
         }
         .padding(4)
@@ -323,14 +326,14 @@ struct TimeSheet: View {
             .pickerStyle(.menu)
             #endif
             .labelsHidden()
-            .accessibilityIdentifier("timeWheels")
+            .accessibilityIdentifier("time.wheels")
 
             PrimaryButton(title: t.done, wide: true) {
                 onPick(String(format: "%02d:%02d", hour, minute))
                 dismiss()
             }
             .padding(.top, 12)
-            .accessibilityIdentifier("timeDone")
+            .accessibilityIdentifier("time.done")
             if value != nil {
                 Button(offAction) {
                     onPick(nil)
