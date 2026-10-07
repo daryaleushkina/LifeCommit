@@ -150,7 +150,7 @@ struct GroupItemRow: View {
     private var swipeActions: [SwipeAction] {
         guard let swipe else { return [] }
         return [SwipeAction(label: t.swipe.remove) {
-            if item.recurring && item.mode != .goal {
+            if GroupLogic.asksRemoval(item) {
                 askRemoval = true
             } else {
                 model.together.removeItem(groupId: swipe.groupId, item, skipDay: nil)
@@ -273,7 +273,7 @@ struct GroupBlockView: View {
     @Environment(\.palette) private var palette
 
     var body: some View {
-        let shown = items.filter { !model.isRemoved(TogetherModel.removalKey(groupId, $0.id)) }
+        let shown = items.filter { !TogetherModel.isRemoved(model, groupId, $0.id, day: day) }
         if !shown.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Button { model.path.append(.group(groupId)) } label: {

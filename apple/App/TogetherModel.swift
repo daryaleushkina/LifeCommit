@@ -25,6 +25,9 @@ final class TogetherModel {
     /// Групп больше нет (удалили, вышла) — экран так и скажет.
     private(set) var missing: Set<Int> = []
     var note: Note?
+    /// Настройка группы не сохранилась — строка ошибки и в открытой шторке настроек (подсказку на экране группы она
+    /// закрывает).
+    private(set) var settingsFailed: Int?
 
     private(set) var friends: FriendsResponse?
     /// Друзей не удалось загрузить, а показать нечего — ошибка, а не «пока нет друзей».
@@ -71,6 +74,7 @@ final class TogetherModel {
         details = [:]
         missing = []
         note = nil
+        settingsFailed = nil
         friends = nil
         friendsFailed = false
         profiles = [:]
@@ -101,40 +105,64 @@ final class TogetherModel {
         await app?.groupsChanged()
     }
 
+    /// Правки, которые ещё идут на сервер (как trackEdit в мини-аппе и track в AppModel): ответ чтения, пришедший, пока
+    /// правка у сервера, её ещё не знает — его не применяем; после правки экран перечитывается заново.
+    private var editsInFlight = 0
+
+    private func track<T>(_ edit: () async throws -> T) async throws -> T {
+        version += 1
+        editsInFlight += 1
+        defer {
+            editsInFlight -= 1
+            version += 1
+        }
+        return try await edit()
+    }
+
+    /// Ответ чтения, начатого при номере seq, ещё верен: за это время ничего не правили и ничего не идёт на сервер.
+    private func fresh(_ seq: Int, _ session: Int) -> Bool { seq == version && editsInFlight == 0 && session == epoch }
+
+    /// После правки: «Сегодня» с календарём и экран группы — с сервера, одновременно.
+    private func reload(_ groupId: Int) async {
+        async let today: Void = changed()
+        await loadGroup(groupId, quiet: true)
+        await today
+    }
+
     // MARK: Группы
 
     func loadList() async {
         let seq = version, session = epoch
         do {
             let fresh = try await api.groups()
-            if seq == version, session == epoch { list = fresh }
+            if self.fresh(seq, session) { list = fresh }
         } catch {
             // Не вышло — остаётся то, что было (на экране — группы из «Сегодня»), а не «нет групп».
             if session == epoch { handle(error, "groups") }
         }
     }
 
-    func loadGroup(_ id: Int) async {
+    /// quiet — чтение в фоне (после отметки на «Сегодня», после удаления): «группа не найдена» — только если сервер так и
+    /// сказал (404), а не когда моргнула сеть, а экран группы ещё ни разу не открывали.
+    func loadGroup(_ id: Int, quiet: Bool = false) async {
         let seq = version, session = epoch
         do {
             let g = try await api.group(id: id)
-            guard session == epoch else { return }
-            if seq == version {
+            if fresh(seq, session) {
                 details[id] = g
                 missing.remove(id)
             }
         } catch {
             guard session == epoch, !(error is CancellationError) else { return }
             // «Не найдено» — только когда группы правда нет (404) или показать нечего; моргнула сеть — экран как был.
-            if (error as? APIError)?.status == 404 || details[id] == nil { missing.insert(id) }
+            if (error as? APIError)?.status == 404 || (!quiet && details[id] == nil) { missing.insert(id) }
             handle(error, "group \(id)")
         }
     }
 
     /// Новая группа: только название. Экран новой группы — сразу целиком, и в списке она уже есть.
     func create(title: String) async throws -> Int {
-        let id = try await api.createGroup(title: title.trimmingCharacters(in: .whitespacesAndNewlines))
-        version += 1
+        let id = try await track { try await api.createGroup(title: title.trimmingCharacters(in: .whitespacesAndNewlines)) }
         await loadGroup(id)
         if let g = details[id] { list = (list ?? app?.today.groups ?? []).filter { $0.id != id } + [g] }
         return id
@@ -143,11 +171,10 @@ final class TogetherModel {
     /// Отметка на экране группы: галочка сразу; не вышло — назад и подсказка. Потом «Сегодня» и экран — с сервера.
     func mark(groupId: Int, _ item: GroupDayItem) async {
         let done = !item.done
-        version += 1
         patchItem(groupId) { $0.id == item.id ? GroupLogic.marked($0, done: done, me: me) : $0 }
         if done { Haptics.success() }
         do {
-            let res = try await api.markGroupItem(groupId: groupId, itemId: item.id, done: done)
+            let res = try await track { try await api.markGroupItem(groupId: groupId, itemId: item.id, done: done) }
             if res.taken { note = Note(groupId: groupId, text: t.gr.taken) }
         } catch {
             patchItem(groupId) { $0.id == item.id ? item : $0 }
@@ -155,9 +182,7 @@ final class TogetherModel {
             togetherLog.notice("group mark: \(String(describing: error), privacy: .public)")
             note = Note(groupId: groupId, text: (error as? APIError)?.code == "not_yours" ? t.gr.notYours : t.error)
         }
-        version += 1
-        await changed()
-        await loadGroup(groupId)
+        await reload(groupId)
     }
 
     private func patchItem(_ groupId: Int, _ f: (GroupDayItem) -> GroupDayItem) {
@@ -168,58 +193,65 @@ final class TogetherModel {
 
     /// Новое дело или правка. Ошибку бросает — шторка покажет её и останется открытой.
     func saveItem(groupId: Int, itemId: Int?, _ input: GroupItemInput) async throws {
-        if let itemId {
-            try await api.updateGroupItem(groupId: groupId, itemId: itemId, input)
-        } else {
-            _ = try await api.createGroupItem(groupId: groupId, input)
+        try await track {
+            if let itemId {
+                try await api.updateGroupItem(groupId: groupId, itemId: itemId, input)
+            } else {
+                _ = try await api.createGroupItem(groupId: groupId, input)
+            }
         }
         Haptics.success()
-        version += 1
-        Task {
-            await changed()
-            await loadGroup(groupId)
-        }
+        // Шторка уже закрывается — перечитка идёт в задаче модели.
+        Task { await reload(groupId) }
     }
 
     /// Удалить дело свайпом (или «Удалить дело» в шторке): строка пропадает сразу, «Вернуть» 5 секунд. Повторяющееся
-    /// «только сегодня» — skipDay. В группе, где правят только админы, сервер откажет — так и сказать.
+    /// «только сегодня» — skipDay (прячется только этот день). В группе, где правят только админы, сервер откажет — так
+    /// и сказать. Строка остаётся скрытой, пока экраны не перечитаны без неё (иначе мелькнула бы обратно).
     func removeItem(groupId: Int, _ item: GroupDayItem, skipDay: String?) {
         guard let app else { return }
         let text = skipDay == nil ? app.strings.swipe.removed(item.title) : app.strings.together.skipped(item.title)
         let notAllowed = app.strings.together.notAllowed
-        app.removeWithUndo(key: Self.removalKey(groupId, item.id), text: text, failure: { error in
+        let key = skipDay.map { Self.removalKey(groupId, item.id, day: $0) } ?? Self.removalKey(groupId, item.id)
+        app.removeWithUndo(key: key, text: text, failure: { error in
             (error as? APIError)?.code == "admins_only" ? notAllowed : nil
         }, commit: { [weak self, api] in
-            defer {
-                Task { [weak self] in
-                    self?.version += 1
-                    await self?.changed()
-                    await self?.loadGroup(groupId)
+            do {
+                try await self?.track {
+                    if let skipDay {
+                        try await api.skipGroupItem(groupId: groupId, itemId: item.id, day: skipDay)
+                    } else {
+                        try await api.deleteGroupItem(groupId: groupId, itemId: item.id)
+                    }
                 }
+            } catch {
+                // Не удалилось — строка вернётся с перечитанным экраном.
+                await self?.reload(groupId)
+                throw error
             }
-            if let skipDay {
-                try await api.skipGroupItem(groupId: groupId, itemId: item.id, day: skipDay)
-            } else {
-                try await api.deleteGroupItem(groupId: groupId, itemId: item.id)
-            }
+            await self?.reload(groupId)
         })
     }
 
     static func removalKey(_ groupId: Int, _ itemId: Int) -> String { "gi:\(groupId):\(itemId)" }
+    static func removalKey(_ groupId: Int, _ itemId: Int, day: String) -> String { "gi:\(groupId):\(itemId):\(day)" }
+
+    /// Строка дела в этот день скрыта: удалили дело целиком или убрали только этот день.
+    static func isRemoved(_ app: AppModel, _ groupId: Int, _ itemId: Int, day: String) -> Bool {
+        app.isRemoved(removalKey(groupId, itemId)) || app.isRemoved(removalKey(groupId, itemId, day: day))
+    }
 
     /// Вклад в общую цель. Не вышло — подсказка на экране группы.
     func put(groupId: Int, itemId: Int, amount: Double) async {
         do {
-            try await api.addGoalEntry(groupId: groupId, itemId: itemId, amount: amount)
+            try await track { try await api.addGoalEntry(groupId: groupId, itemId: itemId, amount: amount) }
             Haptics.success()
         } catch {
             if isSignedOut(error) { return handle(error, "put") }
             togetherLog.notice("goal entry: \(String(describing: error), privacy: .public)")
             note = Note(groupId: groupId, text: t.error)
         }
-        version += 1
-        await changed()
-        await loadGroup(groupId)
+        await reload(groupId)
     }
 
     /// Ссылка-приглашение в группу (для «Позвать в группу» и подключения чата).
@@ -227,24 +259,32 @@ final class TogetherModel {
         try await api.invite(groupId: groupId).link
     }
 
-    /// Новое название: на экране сразу; не вышло — старое и подсказка на экране группы.
+    /// Настройка не сохранилась: подсказка на экране группы и строка в шторке настроек, если она ещё открыта.
+    private func settingFailed(_ groupId: Int, _ error: Error, _ what: String) {
+        togetherLog.notice("\(what, privacy: .public) \(groupId): \(String(describing: error), privacy: .public)")
+        note = Note(groupId: groupId, text: t.error)
+        settingsFailed = groupId
+    }
+
+    /// Шторку настроек открыли заново — прошлой ошибки в ней нет.
+    func clearSettingsFailed() { settingsFailed = nil }
+
+    /// Новое название: на экране сразу; не вышло — старое и подсказка.
     func rename(groupId: Int, title: String) {
         let next = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let before = details[groupId]?.title, !next.isEmpty, next != before else { return }
         setTitle(groupId, next)
         let session = epoch
-        version += 1
         Task {
             do {
-                try await api.updateGroup(id: groupId, ["title": .string(next)])
+                try await track { try await api.updateGroup(id: groupId, ["title": .string(next)]) }
                 if session == epoch { await changed() }
             } catch {
                 guard session == epoch else { return }
                 if isSignedOut(error) { return handle(error, "rename") }
-                togetherLog.notice("rename group \(groupId): \(String(describing: error), privacy: .public)")
                 // Назад — только название этой группы: остальное в списке за это время могло поменяться.
                 setTitle(groupId, before)
-                note = Note(groupId: groupId, text: t.error)
+                settingFailed(groupId, error, "rename group")
             }
         }
     }
@@ -262,16 +302,14 @@ final class TogetherModel {
     func setAdminsOnly(groupId: Int, _ on: Bool) {
         setSettings(groupId) { $0.adminsOnlyEdit = on }
         let session = epoch
-        version += 1
         Task {
             do {
-                try await api.updateGroup(id: groupId, ["admins_only_edit": .bool(on)])
+                try await track { try await api.updateGroup(id: groupId, ["admins_only_edit": .bool(on)]) }
             } catch {
                 guard session == epoch else { return }
                 if isSignedOut(error) { return handle(error, "admins only") }
-                togetherLog.notice("admins only \(groupId): \(String(describing: error), privacy: .public)")
                 setSettings(groupId) { $0.adminsOnlyEdit = !on }
-                note = Note(groupId: groupId, text: t.error)
+                settingFailed(groupId, error, "admins only")
             }
         }
     }
@@ -285,12 +323,12 @@ final class TogetherModel {
     }
 
     /// Чат ещё жив? Удалённый в Telegram пропадает из настроек сразу. Не вышло — остаётся, как было (это проверка, а
-    /// не действие человека).
+    /// не действие человека). Ответ, начатый до «Отключить» или «Другой чат», его не отменяет.
     func checkChat(groupId: Int) async {
-        let session = epoch
+        let seq = version, session = epoch
         do {
             let title = try await api.checkGroupChat(groupId: groupId)
-            if session == epoch { setSettings(groupId) { $0.tgChatTitle = title } }
+            if fresh(seq, session) { setSettings(groupId) { $0.tgChatTitle = title } }
         } catch {
             if session == epoch { handle(error, "chat check") }
         }
@@ -301,19 +339,20 @@ final class TogetherModel {
         let before = details[groupId]?.settings?.tgChatTitle
         setSettings(groupId) { $0.tgChatTitle = nil }
         do {
-            try await api.disconnectGroupChat(groupId: groupId)
+            try await track { try await api.disconnectGroupChat(groupId: groupId) }
         } catch {
             if isSignedOut(error) { return handle(error, "chat off") }
-            togetherLog.notice("chat off \(groupId): \(String(describing: error), privacy: .public)")
             setSettings(groupId) { $0.tgChatTitle = before }
-            note = Note(groupId: groupId, text: t.error)
+            settingFailed(groupId, error, "chat off")
         }
     }
 
     /// Выйти или удалить группу. false — сервер не выпустил: остаёмся на экране группы с подсказкой.
     func leave(groupId: Int, remove: Bool) async -> Bool {
         do {
-            if remove { try await api.deleteGroup(id: groupId) } else { try await api.leaveGroup(id: groupId) }
+            try await track {
+                if remove { try await api.deleteGroup(id: groupId) } else { try await api.leaveGroup(id: groupId) }
+            }
         } catch {
             if isSignedOut(error) {
                 handle(error, "leave")
@@ -323,7 +362,6 @@ final class TogetherModel {
             note = Note(groupId: groupId, text: t.error)
             return false
         }
-        version += 1
         details[groupId] = nil
         list = list?.filter { $0.id != groupId }
         Task { await changed() }
@@ -336,10 +374,11 @@ final class TogetherModel {
         try await api.invitation(code: code)
     }
 
-    /// Вступить: экран группы открывается сразу целиком.
+    /// Вступить: экран группы открывается сразу целиком. Первый экран «Чего я хочу?» больше не нужен — у человека есть
+    /// группа (как onJoined в мини-аппе).
     func join(code: String) async throws -> Int {
-        let id = try await api.join(code: code)
-        version += 1
+        let id = try await track { try await api.join(code: code) }
+        app?.endOnboarding()
         await loadGroup(id)
         Task {
             await changed()

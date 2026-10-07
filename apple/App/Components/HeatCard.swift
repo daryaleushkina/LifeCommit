@@ -47,13 +47,7 @@ struct HeatCard: View {
         .glassCard()
     }
 
-    private func short(_ month: String) -> String {
-        let f = DateFormatter()
-        f.locale = t.locale
-        f.dateFormat = "LLL"
-        guard let date = Days.localNoon("\(month)-15") else { return month }
-        return f.string(from: date).replacingOccurrences(of: ".", with: "")
-    }
+    private func short(_ month: String) -> String { t.monthShort(month) }
 
     /// Стрелка листает месяц; в годе её не видно, но место остаётся (строка не прыгает).
     private func arrow(_ symbol: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {

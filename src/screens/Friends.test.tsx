@@ -333,6 +333,11 @@ describe('«Позвать друга»', () => {
     // Коротко — не ищем.
     await input.fill('ab');
     expect(m.api.findPerson).toHaveBeenCalledTimes(3);
+    // Сеть или сервер подвели — «что-то пошло не так», а не «такого нет» (code-review 07.10.2026).
+    m.api.findPerson.mockRejectedValueOnce(new Error('сеть'));
+    await input.fill('masha2');
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    expect(page.getByText('Такого человека нет в LifeCommit').elements()).toEqual([]);
   });
 
   it('вне Telegram ссылка открывается в браузере; позвать не вышло — «что-то пошло не так»', async () => {

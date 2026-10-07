@@ -180,6 +180,22 @@ public struct Strings: Sendable {
         return f.string(from: date)
     }
 
+    /// Короткое название месяца для карты года: «окт», «Oct» (форматтер один на язык — подписей 53 на кадр).
+    public func monthShort(_ month: String) -> String {
+        guard let date = Days.localNoon("\(month)-15") else { return month }
+        return (lang == .ru ? Self.shortRu : Self.shortEn).string(from: date).replacingOccurrences(of: ".", with: "")
+    }
+
+    nonisolated(unsafe) private static let shortRu = monthFormatter("ru_RU")
+    nonisolated(unsafe) private static let shortEn = monthFormatter("en_US")
+
+    private static func monthFormatter(_ locale: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: locale)
+        f.dateFormat = "LLL"
+        return f
+    }
+
     /// «Октябрь 2026» — над календарём месяца.
     public func monthYear(_ month: String) -> String {
         let name = monthName(month)

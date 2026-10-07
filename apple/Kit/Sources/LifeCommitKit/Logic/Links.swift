@@ -32,4 +32,13 @@ public enum Links {
         guard css.hasPrefix("#"), css.count == 7 else { return nil }
         return UInt32(css.dropFirst(), radix: 16)
     }
+
+    /// «Поделиться» в Telegram (t.me/share/url), как encodeURIComponent в мини-аппе: «+», «&» и «=» кодируются —
+    /// иначе Telegram прочёл бы «+» как пробел.
+    public static func telegramShare(link: String, text: String) -> URL? {
+        var unreserved = CharacterSet.alphanumerics
+        unreserved.insert(charactersIn: "-._~")
+        func enc(_ s: String) -> String { s.addingPercentEncoding(withAllowedCharacters: unreserved) ?? "" }
+        return URL(string: "https://t.me/share/url?url=\(enc(link))&text=\(enc(text))")
+    }
 }

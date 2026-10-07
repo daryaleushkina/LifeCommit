@@ -87,7 +87,12 @@ final class AppModel {
 
     // MARK: Вход и загрузка
 
+    /// Запуск — один раз: на Mac второе окно (ссылка lifecommit:// из браузера) не перезапускает загрузку.
+    private var started = false
+
     func start() async {
+        guard !started else { return }
+        started = true
         if let dev = Config.devUserId {
             api.setCredential(.telegramInitData(DevTelegram.initData(userId: dev)))
             await load()
@@ -203,7 +208,8 @@ final class AppModel {
         rangeGroups = [:]
         // «Вместе» прошлого человека — тоже.
         together.reset()
-        deferredInvite = nil
+        // Ключ протух при запуске (приложение ещё загружалось) — приглашение ждёт нового входа; вышли сами — забыть.
+        if phase == .ready { deferredInvite = nil }
         path = []
         tab = .today
         phase = .signedOut
@@ -285,6 +291,9 @@ final class AppModel {
     }
 
     // MARK: Онбординг
+
+    /// Первый экран «Чего я хочу?» больше не нужен (вступили в группу) — без отметки «Пропустить» на устройстве.
+    func endOnboarding() { onboarding = false }
 
     private static let skipKey = "lc-onboarding-skipped"
 
@@ -833,7 +842,7 @@ final class AppModel {
             failGroupMark(error)
         }
         await groupsChanged()
-        await together.loadGroup(groupId)
+        await together.loadGroup(groupId, quiet: true)
     }
 
     private func patchTodayGroupItem(_ groupId: Int, _ itemId: Int, _ f: (GroupDayItem) -> GroupDayItem) {

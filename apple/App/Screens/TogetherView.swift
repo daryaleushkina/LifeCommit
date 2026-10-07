@@ -1,6 +1,7 @@
 // Вкладка «Вместе» — как Groups.tsx: «Группы · Друзья» (последний выбор помним на устройстве, lc-together), группы —
 // с прогрессом дня, «Тебе: …» и «Новая группа»; друзья — FriendsPanel.
 import LifeCommitKit
+import os
 import SwiftUI
 
 struct TogetherView: View {
@@ -169,6 +170,7 @@ struct NewGroupSheet: View {
                 onCreated(id)
             } catch {
                 if (error as? APIError)?.isSignedOut == true { return model.signOutLocally() }
+                Logger(subsystem: "app.lifecommit", category: "group").notice("create group failed: \(String(describing: error), privacy: .public)")
                 failed = true
                 busy = false
             }

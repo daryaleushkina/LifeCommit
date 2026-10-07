@@ -226,10 +226,13 @@ export function AddFriendSheet({ onClose }: { onClose: () => void }): ReactNode 
     const clean = name.trim();
     if (clean.replace(/^@/, '').length < 4) return;
     const timer = setTimeout(() => {
-      api.findPerson(clean).then(setFound, (e) => setProblem(e instanceof ApiError && e.code === 'bad_username' ? fr.badUsername : fr.notFound));
+      // «Такого нет» — только когда сервер так и сказал (404); сеть или сбой — «что-то пошло не так».
+      api.findPerson(clean).then(setFound, (e) =>
+        setProblem(e instanceof ApiError && e.code === 'bad_username' ? fr.badUsername : e instanceof ApiError && e.status === 404 ? fr.notFound : t.error),
+      );
     }, 400);
     return () => clearTimeout(timer);
-  }, [name, fr.badUsername, fr.notFound]);
+  }, [name, fr.badUsername, fr.notFound, t.error]);
 
   const sendLink = () => {
     const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(fr.shareText)}`;

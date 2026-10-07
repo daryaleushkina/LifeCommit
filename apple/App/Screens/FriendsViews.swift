@@ -181,7 +181,7 @@ struct AddFriendSheet: View {
         SheetBody(title: t.fr.invite) {
             let link = tg.friends?.link ?? ""
             PrimaryButton(title: t.fr.sendLink, wide: true) {
-                if let url = TelegramShare.url(link: link, text: t.fr.shareText) { openURL(url) }
+                if let url = Links.telegramShare(link: link, text: t.fr.shareText) { openURL(url) }
             }
             .disabled(link.isEmpty)
             .opacity(link.isEmpty ? 0.4 : 1)
@@ -236,7 +236,12 @@ struct AddFriendSheet: View {
             } catch {
                 if (error as? APIError)?.isSignedOut == true { return model.signOutLocally() }
                 guard !Task.isCancelled else { return }
-                problem = (error as? APIError)?.code == "bad_username" ? t.fr.badUsername : t.fr.notFound
+                // «Такого нет» — только когда сервер так и сказал (404); сеть или сбой — «что-то пошло не так».
+                let api = error as? APIError
+                if api?.code != "bad_username" && api?.status != 404 {
+                    friendsLog.notice("find person failed: \(String(describing: error), privacy: .public)")
+                }
+                problem = api?.code == "bad_username" ? t.fr.badUsername : api?.status == 404 ? t.fr.notFound : t.error
             }
         }
     }

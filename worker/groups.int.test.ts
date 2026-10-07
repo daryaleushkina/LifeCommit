@@ -264,7 +264,25 @@ describe.skipIf(!ready)('дела группы', () => {
     expect((await post({ title: 'Х', mode: 'goal', target: -5 })).body.error).toBe('bad_target');
     expect((await post({ title: 'Х', mode: 'goal', target: 1e12 })).body.error).toBe('bad_target');
     expect((await post({ title: 'Х', mode: 'goal', target: 'много' })).status).toBe(400);
+    // Единица цели — снаружи: кривую не храним (её не прочли бы приложения: «Сегодня» не загрузилось бы у всей группы).
+    for (const unit of [5, 'книг', { type: 'x' }, { type: 'x', forms: ['а', 'б'] }, { type: 'x', forms: [1, 2, 3] }, { type: '', forms: ['а', 'б', 'в'] }, { type: 'money', forms: ['₽', '₽', '₽'], currency: 7 }]) {
+      const res = await post({ title: 'Х', mode: 'goal', target: 5, unit });
+      expect(res.status, JSON.stringify(unit)).toBe(400);
+      expect(res.body.error, JSON.stringify(unit)).toBe('bad_unit');
+    }
     expect((await sb.from('group_items').select('id').eq('group_id', id)).data).toEqual([]);
+  });
+
+  it('единица цели: голосовые «₽» и «книг» сохраняются, лишние поля отбрасываются; правка кривой — 400', async () => {
+    const { id, owner } = await family([]);
+    const money = await addItem(owner, id, { title: 'Отпуск', mode: 'goal', target: 150000, unit: { type: 'money', forms: ['₽', '₽', '₽'], currency: '₽', extra: 'x' } });
+    const books = await addItem(owner, id, { title: 'Книги', mode: 'goal', target: 50, unit: { type: 'custom', forms: ['книга', 'книги', 'книг'], icon: null } });
+    const units = (await sb.from('group_items').select('id, unit').in('id', [money, books]).order('id')).data?.map((r) => r.unit);
+    expect(units).toEqual([{ type: 'money', forms: ['₽', '₽', '₽'], currency: '₽' }, { type: 'custom', forms: ['книга', 'книги', 'книг'] }]);
+    const patch = await owner.call('PATCH', `/groups/${id}/items/${books}`, { unit: { type: 'x' } });
+    expect(patch.status).toBe(400);
+    expect(patch.body.error).toBe('bad_unit');
+    expect((await owner.call('PATCH', `/groups/${id}/items/${books}`, { unit: null })).status).toBe(200);
   });
 
   it('несуществующая дата («30 февраля») — как кривая: день — сегодня, срок — пусто, пропуск — 400; не сбой сервера', async () => {
@@ -416,17 +434,22 @@ describe.skipIf(!ready)('отметки и цели', () => {
     expect((await owner.call('PUT', `/groups/${id}/items/999999999/mark`, {})).status).toBe(403);
   });
 
-  it('отметка задним числом — до недели назад; раньше и в будущем — на сегодня', async () => {
+  // Решение владелицы 07.10.2026: день вне последней недели — отказ, а не отметка «за сегодня» (календарь давал отметить
+  // любой прошлый день, и сервер тихо ставил её на сегодня — группа видела «сделано», хотя сегодня никто не делал).
+  it('отметка задним числом — до недели назад; раньше, в будущем и не день — 400 bad_day, сегодня не отмечено', async () => {
     const { id, owner } = await family([]);
     const day = await todayOf(owner);
     const daily = await addItem(owner, id, { title: 'Зарядка', mode: 'one', rrule: 'FREQ=DAILY', day: addDays(day, -10) });
-    const mark = (d: string) => owner.call('PUT', `/groups/${id}/items/${daily}/mark`, { day: d });
+    const mark = (d: unknown) => owner.call('PUT', `/groups/${id}/items/${daily}/mark`, { day: d });
     expect((await mark(addDays(day, -3))).body.taken).toBe(false);
-    expect((await mark(addDays(day, -8))).body.taken).toBe(false);
-    expect((await mark(addDays(day, 1))).body.taken).toBe(true);
-    expect((await mark('вчера')).body.taken).toBe(true);
+    expect((await mark(addDays(day, -7))).body.taken).toBe(false);
+    for (const bad of [addDays(day, -8), addDays(day, 1), 'вчера', 5]) {
+      const res = await mark(bad);
+      expect(res.status, String(bad)).toBe(400);
+      expect(res.body.error, String(bad)).toBe('bad_day');
+    }
     const days = (await sb.from('group_item_marks').select('day').eq('item_id', daily).order('day')).data?.map((m) => m.day);
-    expect(days).toEqual([addDays(day, -3), day]);
+    expect(days).toEqual([addDays(day, -7), addDays(day, -3)]);
   });
 
   it('цель: вклады копятся; кривая сумма — 400; не цель, удалённая и чужая — 404', async () => {

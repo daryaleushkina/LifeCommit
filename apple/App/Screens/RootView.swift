@@ -37,6 +37,9 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in model.scenePhaseChanged(phase) }
         // Возврат из входа Google ссылкой lifecommit://calendars (если система отдала её приложению, а не окну входа).
         // Адресу не доверяем: модель только перечитает календари и отправит код своим ключом.
+        // На Mac ссылку принимает уже открытое окно, а не новое (иначе каждый щелчок по «Открыть в приложении» открывал бы
+        // ещё одно окно).
+        .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         // Приглашения: lifecommit://join|friend/<код> (кнопка на странице приглашения) и lifecommit.app/j|f/<код> — код
         // сверяется (InviteLink), чужое отбрасывается.
         .onOpenURL { url in

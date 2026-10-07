@@ -522,11 +522,14 @@ describe.skipIf(!ready)('вход через Telegram: ключи Telegram со 
         }),
     );
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const t0 = performance.now();
+    // Срок — без настоящих 4 секунд ожидания: под нагрузкой полного прогона (load 120+, 07.10.2026) они вместе с
+    // подписью токена не укладывались в 15 секунд, и тест падал при верном коде. Проверяем, что сервер просит срок
+    // 4 секунды, и что по его истечении — 502, а не вечное ожидание.
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => AbortSignal.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError')));
     expect(await signIn({ id_token: await idToken({ id: freshId() }), device: 'ios' })).toEqual({ status: 502, body: { error: 'telegram_unreachable' } });
-    expect(performance.now() - t0).toBeLessThan(8_000);
+    expect(timeout).toHaveBeenCalledWith(4_000);
     expect(errors).toHaveBeenCalledWith('telegram jwks fetch failed', expect.anything());
-  }, 15_000);
+  });
 
   it('ключ Telegram не импортируется — это сбой на нашей стороне или у Telegram: 502 и в лог, а не «неверный токен»', async () => {
     net.routes = [];

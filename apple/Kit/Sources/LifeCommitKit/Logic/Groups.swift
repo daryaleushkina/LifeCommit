@@ -66,6 +66,12 @@ public enum GroupLogic {
         group.items.first { $0.forMe && !$0.done && $0.mode != .goal && $0.mode != .event && $0.people == [me] }
     }
 
+    /// Свайп по общему делу: повторяющееся — спросить «только сегодня или у всех»; разовое и цель — сразу с «Вернуть».
+    public static func asksRemoval(_ it: GroupDayItem) -> Bool { it.recurring && it.mode != .goal }
+
+    /// Отметить в дне календаря можно сегодня и неделю назад: раньше сервер откажет (400 bad_day), будущее — не наступило.
+    public static func canMark(on day: String, today: String) -> Bool { day <= today && day >= Days.add(today, -7) }
+
     /// Отметка на экране сразу: сделал я — в «сделали», снял — убрал себя.
     public static func marked(_ it: GroupDayItem, done: Bool, me: Int) -> GroupDayItem {
         var next = it
@@ -164,7 +170,8 @@ public struct GroupItemForm: Sendable, Equatable {
     public var mode: GroupMode
     /// «Все» — и будущие участники.
     public var all: Bool
-    public var people: Set<Int>
+    /// Выбранные люди — в порядке дела (по нему сервер считает очередь), новые — в конец.
+    public var people: [Int]
     public var rotate: Bool
     public var repeatRule: GroupRepeat
     public var day: String
@@ -172,6 +179,10 @@ public struct GroupItemForm: Sendable, Equatable {
     /// Цель — как напечатали («150 000»).
     public var target: String
     public var until: String
+    /// Повтор и первый день дела, как пришли: повтор не меняли — правило уходит как было (у «вт и чт» из голоса шторка
+    /// показывает только «раз в неделю»).
+    private var originalRule: String?
+    private var originalDay: String?
 
     /// Новое дело: «кто-то один», назначено мне, сегодня, без времени.
     public init(me: Int, today: String) {
@@ -192,9 +203,11 @@ public struct GroupItemForm: Sendable, Equatable {
         title = item.title
         mode = item.mode
         all = item.allMembers
-        people = Set(item.assignees.isEmpty ? [me] : item.assignees)
+        people = item.assignees.isEmpty ? [me] : item.assignees
         rotate = item.rotate
         repeatRule = GroupRepeat(rrule: item.rrule)
+        originalRule = item.rrule
+        originalDay = item.start
         day = item.start
         time = item.time
         // Как String(item.target) в мини-аппе: «150000», «2.5».
@@ -207,7 +220,7 @@ public struct GroupItemForm: Sendable, Equatable {
 
     /// Кто выбран: «Все» — все участники по порядку.
     public func chosen(_ members: [GroupMember]) -> [Int] {
-        all ? members.map(\.id) : members.map(\.id).filter(people.contains)
+        all ? members.map(\.id) : people.filter(Set(members.map(\.id)).contains)
     }
 
     /// «По очереди» — когда назначено двоим и больше.
@@ -221,10 +234,16 @@ public struct GroupItemForm: Sendable, Equatable {
 
     /// Нажали на человека: был «Все» — снимается, выбор начинается со всех.
     public mutating func toggle(_ id: Int, members: [GroupMember]) {
-        var next = all ? Set(members.map(\.id)) : people
-        if next.contains(id) { next.remove(id) } else { next.insert(id) }
+        var next = all ? members.map(\.id) : people
+        if next.contains(id) { next.removeAll { $0 == id } } else { next.append(id) }
         all = false
         people = next
+    }
+
+    /// Правило повтора для сервера: не меняли повтор (и день у «раз в неделю») — прежнее.
+    private var rule: String? {
+        if let originalRule, GroupRepeat(rrule: originalRule) == repeatRule, repeatRule != .weekly || day == originalDay { return originalRule }
+        return repeatRule.rrule(day: day)
     }
 
     /// Что уходит на сервер. Цель — на сегодня, без времени и повтора.
@@ -235,8 +254,8 @@ public struct GroupItemForm: Sendable, Equatable {
             mode: mode,
             day: goal ? today : day,
             time: goal ? nil : time,
-            rrule: goal ? nil : repeatRule.rrule(day: day),
-            assignees: choosesPeople && !all ? members.map(\.id).filter(people.contains) : [],
+            rrule: goal ? nil : rule,
+            assignees: choosesPeople && !all ? chosen(members) : [],
             allMembers: choosesPeople && all,
             rotate: canRotate(members) && rotate,
             target: goal ? GroupLogic.number(target) : nil,

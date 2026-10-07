@@ -209,6 +209,16 @@ describe('правка дела', () => {
     }
   });
 
+  // Повтор, заведённый голосом («вт и чт»), шторка не умеет показать отдельно — он «раз в неделю». Поправили только
+  // название — правило уходит как было, а не «по дню недели первого дня» (code-review 07.10.2026).
+  it('повтор не меняли — правило уходит как было, даже если шторка его не различает', async () => {
+    const { r } = setup(existing({ rrule: 'FREQ=WEEKLY;BYDAY=TU,TH', start: '2026-09-28' }));
+    await r;
+    await page.getByRole('textbox', { name: 'Что сделать?' }).fill('Полить цветы и кактус');
+    await page.getByRole('button', { name: 'Сохранить' }).click();
+    expect(api.updateItem).toHaveBeenCalledWith(10, 7, expect.objectContaining({ title: 'Полить цветы и кактус', rrule: 'FREQ=WEEKLY;BYDAY=TU,TH' }));
+  });
+
   it('удалить дело — даже если сервер не ответил, экран перечитывается', async () => {
     vi.mocked(api.deleteItem).mockRejectedValueOnce(new Error('offline'));
     const { r, onSaved } = setup(existing());

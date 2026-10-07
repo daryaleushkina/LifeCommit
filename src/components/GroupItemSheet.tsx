@@ -83,7 +83,9 @@ export function GroupItemSheet({ group, me, today, item, onSaved, onClose }: Pro
       mode,
       day: mode === 'goal' ? today : day,
       time: mode === 'goal' ? null : time,
-      rrule: mode === 'goal' ? null : toRRule(repeat, day),
+      // Повтор не трогали — правило уходит как было: «вт и чт» из голоса шторка показывает как «раз в неделю», и
+      // пересборка по дню первого раза его бы потеряла.
+      rrule: mode === 'goal' ? null : item && item.rrule && repeat === fromRRule(item.rrule) && (repeat !== 'weekly' || day === item.start) ? item.rrule : toRRule(repeat, day),
       assignees: mode === 'assign' || mode === 'event' ? (all ? [] : [...people]) : [],
       all_members: (mode === 'assign' || mode === 'event') && all,
       rotate: canRotate && rotate,
