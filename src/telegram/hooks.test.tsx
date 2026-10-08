@@ -98,6 +98,25 @@ describe('useBackButton', () => {
     expect(fn).not.toHaveBeenCalled();
   });
 
+  // 04.10.2026: шторка голоса поверх экрана группы, закрываясь, прятала «назад» — с экрана было не уйти.
+  it('экран и шторка поверх: нажатие — верхней; шторка закрылась — кнопка видна и ведёт экран', async () => {
+    const screen = vi.fn();
+    const sheet = vi.fn();
+    const s = await renderHook(() => useBackButton(screen));
+    const top = await renderHook(() => useBackButton(sheet));
+    tg.back.click.press();
+    expect(sheet).toHaveBeenCalledTimes(1);
+    expect(screen).not.toHaveBeenCalled();
+    tg.back.hide.mockClear();
+    await top.unmount();
+    expect(tg.back.hide).not.toHaveBeenCalled();
+    tg.back.click.press();
+    expect(screen).toHaveBeenCalledTimes(1);
+    await s.unmount();
+    expect(tg.back.hide).toHaveBeenCalledTimes(1);
+    expect(tg.back.click.off).toHaveBeenCalledTimes(1);
+  });
+
   it('кнопки нет — отписываться нечем, при уходе прячем', async () => {
     tg.back.click.ifAvailable.mockReturnValueOnce({ ok: false });
     const { unmount } = await renderHook(() => useBackButton(() => {}));

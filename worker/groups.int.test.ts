@@ -73,9 +73,11 @@ describe.skipIf(!ready)('создать группу: сбой базы', () => 
 describe.skipIf(!ready)('группы', () => {
   it('создать: без названия — 400, неизвестный вид — «другое», длинное название обрезается; в списке я — создатель', async () => {
     const u = await user({ name: 'Даша' });
-    const empty = await u.call('POST', '/groups', { title: '   ' });
-    expect(empty.status).toBe(400);
-    expect(empty.body.error).toBe('no_title');
+    for (const title of ['   ', '\u200B\u2060']) {
+      const empty = await u.call('POST', '/groups', { title });
+      expect(empty.status).toBe(400);
+      expect(empty.body.error).toBe('no_title');
+    }
     expect((await u.call('POST', '/groups', {})).body.error).toBe('no_title');
     const res = await u.call('POST', '/groups', { title: 'Очень'.repeat(20), kind: 'weird' });
     expect(res.status).toBe(201);
@@ -120,12 +122,29 @@ describe.skipIf(!ready)('группы', () => {
 
   it('настройки меняют создатель и админ, участник — нет; мусор пропускается', async () => {
     const { id, owner, members: [masha] } = await family();
-    expect((await masha.call('PATCH', `/groups/${id}`, { title: 'Моя' })).status).toBe(403);
+    const outsider = await user();
+    for (const body of [{ title: 'Моя', admins_only_edit: false }, { title: '\u200B' }]) {
+      expect(await outsider.call('PATCH', `/groups/${id}`, body)).toMatchObject({ status: 404, body: { error: 'not_found' } });
+      expect(await masha.call('PATCH', `/groups/${id}`, body)).toMatchObject({ status: 403, body: { error: 'forbidden' } });
+    }
     const res = await owner.call('PATCH', `/groups/${id}`, { title: '  Дом  ', kind: 'pair', admins_only_edit: true, chat_digest: false, rating_enabled: 'да' });
     expect(res.status).toBe(200);
     expect(await groupRow(id)).toMatchObject({ title: 'Дом', kind: 'pair', admins_only_edit: true, chat_digest: false, rating_enabled: false });
-    // Пустое и неверное — ничего не меняет.
-    expect((await owner.call('PATCH', `/groups/${id}`, { title: '   ', kind: 'weird' })).status).toBe(200);
+    // Пустое имя (и из одних невидимых символов) — отказ no_title, а не тихий пропуск: экран не покажет имя,
+    // которого нет на сервере (04.10.2026). Неверный вид — ничего не меняет.
+    for (const title of ['', '   ', '\u200B\u2060', null, 42, [], {}]) {
+      const empty = await owner.call('PATCH', `/groups/${id}`, { title, kind: 'weird', admins_only_edit: false });
+      expect(empty.status).toBe(400);
+      expect(empty.body.error).toBe('no_title');
+      expect(await groupRow(id)).toMatchObject({ title: 'Дом', kind: 'pair', admins_only_edit: true });
+    }
+    for (const body of [null, [], 42, 'Дом']) {
+      expect(await owner.call('PATCH', `/groups/${id}`, body)).toMatchObject({ status: 400, body: { error: 'bad_json' } });
+    }
+    // Права проверяются и при включённом «только админы», до разбора имени.
+    expect(await masha.call('PATCH', `/groups/${id}`, { title: 'Чужое', admins_only_edit: false })).toMatchObject({ status: 403, body: { error: 'forbidden' } });
+    expect(await outsider.call('PATCH', `/groups/${id}`, { title: 'Чужое' })).toMatchObject({ status: 404, body: { error: 'not_found' } });
+    expect((await owner.call('PATCH', `/groups/${id}`, { kind: 'weird' })).status).toBe(200);
     expect((await owner.call('PATCH', `/groups/${id}`, {})).status).toBe(200);
     expect(await groupRow(id)).toMatchObject({ title: 'Дом', kind: 'pair' });
     await sb.from('group_members').update({ role: 'admin' }).eq('group_id', id).eq('user_id', masha.id);
@@ -393,7 +412,8 @@ describe.skipIf(!ready)('дела группы', () => {
 });
 
 describe.skipIf(!ready)('отметки и цели', () => {
-  it('«кто-то один»: отметил — закрыто для всех; повторно — taken; снять может только сделавший', async () => {
+  // 04.10.2026: «уже сделала Маша» — не отказ «не на тебе» (так казалось, что дело чужое), а taken: экран скажет «уже сделано».
+  it('«кто-то один»: отметил — закрыто для всех; повторно и за другого — taken; снять может только сделавший', async () => {
     const { id, owner, members: [masha] } = await family();
     const a = await addItem(owner, id, { title: 'Купить корм', mode: 'one' });
     const mark = (u: TestUser, body: object = {}) => u.call('PUT', `/groups/${id}/items/${a}/mark`, body);
@@ -401,10 +421,13 @@ describe.skipIf(!ready)('отметки и цели', () => {
     expect((await sb.from('group_item_marks').select('user_id, solo').eq('item_id', a)).data).toEqual([{ user_id: masha.id, solo: true }]);
     expect((await mark(masha)).body).toEqual({ ok: true, taken: true });
     expect(await myGroup(owner, id)).toMatchObject({ planned: 1, done: 1 });
-    const other = await mark(owner);
-    expect(other.status).toBe(403);
-    expect(other.body.error).toBe('not_yours');
+    expect((await mark(owner)).body).toEqual({ ok: true, taken: true });
+    expect((await sb.from('group_item_marks').select('user_id').eq('item_id', a)).data).toEqual([{ user_id: masha.id }]);
     expect((await mark(owner, { done: false })).status).toBe(403);
+    const outsider = await user();
+    expect(await mark(outsider)).toMatchObject({ status: 403, body: { error: 'not_yours' } });
+    expect(await mark(owner, { day: 'вчера' })).toMatchObject({ status: 400, body: { error: 'bad_day' } });
+    expect((await sb.from('group_item_marks').select('user_id').eq('item_id', a)).data).toEqual([{ user_id: masha.id }]);
     expect((await mark(masha, { done: false })).body).toEqual({ ok: true, taken: false });
     expect((await sb.from('group_item_marks').select('user_id').eq('item_id', a)).data).toEqual([]);
   });

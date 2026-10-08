@@ -374,6 +374,8 @@ describe('заявки', () => {
     await expect.element(page.getByText('Тимур')).not.toBeInTheDocument();
     await page.getByRole('button', { name: 'Отклонить' }).click();
     expect(m.api.dropRequest).toHaveBeenCalledWith(6);
+    await expect.element(page.getByText('Новых заявок нет')).toBeVisible();
+    await expect.element(page.getByText('Никого не нашли')).not.toBeInTheDocument();
     m.back.current?.();
     expect(onBack).toHaveBeenCalled();
   });
@@ -449,6 +451,25 @@ describe('экран друга', () => {
 });
 
 describe('чужая ссылка', () => {
+  it.each([new TypeError('Failed to fetch'), new ApiError(500, 'internal')])('ссылку не загрузили — ошибка сети или сервера, без «Ссылка не работает»', async (error) => {
+    m.api.friendLink.mockRejectedValue(error);
+    await renderApp(<FriendLink code="abc" onClose={() => {}} onFriends={() => {}} />);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('Ссылка не работает')).not.toBeInTheDocument();
+  });
+
+  it.each([new TypeError('Failed to fetch'), new ApiError(500, 'internal')])('заявка не ушла — ссылка остаётся, можно повторить', async (error) => {
+    m.api.friendLink.mockResolvedValue({ person: { id: 3, first_name: 'Даша', username: 'dasha', photo_url: null }, status: 'none' });
+    m.api.requestFriend.mockRejectedValueOnce(error).mockResolvedValueOnce({ status: 'sent' });
+    await renderApp(<FriendLink code="abc" onClose={() => {}} onFriends={() => {}} />);
+    await page.getByRole('button', { name: 'Хочу дружить' }).click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('Ссылка не работает')).not.toBeInTheDocument();
+    await page.getByRole('button', { name: 'Хочу дружить' }).click();
+    await expect.element(page.getByText('Заявка отправлена — Даша подтвердит')).toBeVisible();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
+  });
+
   it('«Хочу дружить» → заявка отправлена → «Открыть» ведёт к друзьям', async () => {
     m.api.friendLink.mockResolvedValue({ person: { id: 3, first_name: 'Даша', username: 'dasha', photo_url: null }, status: 'none' });
     m.api.requestFriend.mockResolvedValue({ status: 'sent' });
@@ -494,4 +515,3 @@ describe('чужая ссылка', () => {
     await expect.element(page.getByText('Ссылка не работает')).toBeVisible();
   });
 });
-
