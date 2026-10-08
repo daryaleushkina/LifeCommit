@@ -42,11 +42,13 @@ interface Props {
   today: string;
   /** Правим существующее; нет — новое. */
   item?: GroupDayItem;
+  /** Группа «только админы», а я участник: смотреть можно, кнопок «Сохранить» и «Удалить» нет. */
+  readOnly?: boolean;
   onSaved: () => void;
   onClose: () => void;
 }
 
-export function GroupItemSheet({ group, me, today, item, onSaved, onClose }: Props): ReactNode {
+export function GroupItemSheet({ group, me, today, item, readOnly = false, onSaved, onClose }: Props): ReactNode {
   const t = useT();
   const g = t.gr;
   const [title, setTitle] = useState(item?.title ?? '');
@@ -102,10 +104,18 @@ export function GroupItemSheet({ group, me, today, item, onSaved, onClose }: Pro
     }
   };
 
+  // Сервер не удалил — шторка остаётся и говорит, что не вышло (раньше закрывалась, будто удалено).
   const remove = async () => {
     if (!item) return;
     setBusy(true);
-    await api.deleteItem(group.id, item.id).catch(() => {});
+    setError(false);
+    try {
+      await api.deleteItem(group.id, item.id);
+    } catch {
+      setError(true);
+      setBusy(false);
+      return;
+    }
     onSaved();
   };
 
@@ -168,10 +178,12 @@ export function GroupItemSheet({ group, me, today, item, onSaved, onClose }: Pro
       )}
 
       {error && <p className="error">{t.error}</p>}
-      <button className="act primary wide" disabled={busy || !valid} onClick={() => void save()}>
-        {item ? g.save : g.add(group.title)}
-      </button>
-      {item && (
+      {!readOnly && (
+        <button className="act primary wide" disabled={busy || !valid} onClick={() => void save()}>
+          {item ? g.save : g.add(group.title)}
+        </button>
+      )}
+      {item && !readOnly && (
         <button className="quiet-link danger" disabled={busy} onClick={() => void remove()}>
           {g.remove}
         </button>
