@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { openTelegramLink, popup, requestWriteAccess } from '@tma.js/sdk-react';
 import { heatLevel, type HeatDay, type Person, type UserSettings } from '../../shared/types';
-import { api, type DesktopSession } from '../api';
+import { api, ApiError, type DesktopSession } from '../api';
 import { isDesktop, sessionLost } from '../desktop/session';
 import type { Theme } from '../App';
 import { HeatCard, useMonthName } from '../components/HeatCard';
@@ -12,6 +12,7 @@ import { SelectRow, Sheet, TimeRow } from '../components/Picker';
 import { useT } from '../i18n';
 import type { SumRow, Template } from '../share/draw';
 import type { SummaryItem } from '../../shared/summary';
+import { firstGrapheme } from '../../shared/text';
 import { ShareSheet } from '../share/ShareSheet';
 
 /** Страница донатов в Tribute (открывается внутри Telegram). */
@@ -64,23 +65,36 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
     // Не загрузилось — строки нет, как и без устройств; в консоль — чтобы сбой был виден.
     if (!desktop) api.desktopSessions().then(setDevices, (e: unknown) => console.warn('desktop sessions failed', e));
   }, [desktop]);
+  // Порядок списка с сервера: несколько неудачных разблокировок подряд возвращают людей на свои места.
+  const order = useRef(new Map<number, number>());
+  const [unblocking, setUnblocking] = useState(0);
   useEffect(() => {
-    api.blocks().then(setBlocked, () => {});
+    api.blocks().then((list) => {
+      order.current = new Map(list.map((p, i) => [p.id, i]));
+      setBlocked(list);
+    }, () => {});
   }, []);
   const unblock = async (p: Person) => {
     setUnblockError(false);
-    const at = blocked.findIndex((x) => x.id === p.id);
     setBlocked((cur) => cur.filter((x) => x.id !== p.id));
+    setUnblocking((n) => n + 1);
     try {
       await api.unblock(p.id);
     } catch {
-      // На прежнее место в списке.
-      setBlocked((cur) => [...cur.slice(0, at), p, ...cur.slice(at)]);
+      const at = (x: Person) => order.current.get(x.id) ?? 0;
+      setBlocked((cur) => [...cur, p].sort((a, b) => at(a) - at(b)));
       setUnblockError(true);
+    } finally {
+      setUnblocking((n) => n - 1);
     }
   };
+  // Разблокировали последнего — шторка закрывается, а не остаётся пустой (пока сервер отвечает — ждём).
+  useEffect(() => {
+    if (blockedOpen && !blocked.length && !unblocking) setBlockedOpen(false);
+  }, [blockedOpen, blocked.length, unblocking]);
 
   const save = async (patch: Partial<UserSettings>) => {
+    setError(false);
     try {
       onUser(await api.settings(patch));
     } catch {
@@ -121,6 +135,8 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
     sessionLost();
   };
 
+  // Аккаунт не удалился — сказать почему, а не молчать (04.10.2026).
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteAccount = async () => {
     if (!popup.show.isAvailable()) return;
     const answer = await popup.show({
@@ -128,9 +144,26 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
       buttons: [{ id: 'delete', type: 'destructive', text: t.deleteForever }, { type: 'cancel' }],
     });
     if (answer !== 'delete') return;
-    await api.deleteAccount();
+    setDeleteError(null);
+    try {
+      await api.deleteAccount();
+    } catch (e) {
+      switch (e instanceof ApiError ? e.code : null) {
+        case 'linked_account':
+          setDeleteError(t.deleteLinked);
+          break;
+        case 'telegram_only':
+          setDeleteError(t.deleteTelegramOnly);
+          break;
+        default:
+          setDeleteError(t.error);
+      }
+      return;
+    }
     window.location.reload();
   };
+  // Имя из одних невидимых символов сервер чистит до пустого — тогда ник, а нет и ника — «Я».
+  const name = user.first_name || (user.username ? `@${user.username}` : t.me);
 
   const month = shiftMonth(monthOf(heat.today), offset);
   const monthName = useMonthName();
@@ -208,10 +241,10 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
     <>
       {sharing && <ShareSheet templates={yearTemplates()} onClose={() => setSharing(false)} />}
       <header className="profile-head">
-        {user.photo_url ? <img className="avatar" src={user.photo_url} alt="" /> : <div className="avatar">{user.first_name[0]}</div>}
+        {user.photo_url ? <img className="avatar" src={user.photo_url} alt="" /> : <div className="avatar">{firstGrapheme(name.replace(/^@/, '')).toUpperCase()}</div>}
         <div>
-          <h1>{user.first_name}</h1>
-          {user.username && <p className="muted">@{user.username}</p>}
+          <h1>{name}</h1>
+          {user.username && user.first_name && <p className="muted">@{user.username}</p>}
         </div>
         {/* Поделиться годом: «N дней работы над собой». */}
         <button className="icon-btn" aria-label={t.share.open} onClick={() => setSharing(true)}>
@@ -314,6 +347,11 @@ export function Profile({ user, onUser, heat, theme, onTheme }: Props): ReactNod
         </button>
       </section>
 
+      {deleteError && (
+        <p className="error" onClick={() => setDeleteError(null)}>
+          {deleteError}
+        </p>
+      )}
       {desktop && (
         <button className="quiet-link logout" onClick={() => void logout()}>
           {t.desktop.logout}

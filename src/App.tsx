@@ -293,7 +293,12 @@ export function App(): ReactNode {
         ) : route.name === 'requests' ? (
           <Requests onBack={() => setRoute(tab('groups'))} />
         ) : currentTab === 'me' ? (
-          <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
+          <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => {
+            setBoot({ ...boot, user });
+            // Сменился конец дня — «сегодня» могло стать другим днём: перечитать «Сегодня» и карту сразу, а не через минуту
+            // (04.10.2026: экран показывал прошлый день и его отметки, а отметки уже уходили в новый).
+            if (user.day_start_hour !== boot.user.day_start_hour) void refresh(true);
+          }} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         ) : currentTab === 'groups' ? (
           <Groups
             me={boot.user.id}
