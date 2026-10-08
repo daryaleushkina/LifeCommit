@@ -2,7 +2,7 @@
 
 Telegram Mini App ([@LifeCommit_bot](https://t.me/LifeCommit_bot)): ежедневные дела без стыда, тепловая карта активности как в GitHub и сообщество.
 
-- Прод: https://lifecommit.daryaleushkina.workers.dev (открывать из Telegram)
+- Прод: https://lifecommit.app — лендинг, мини-апп — https://lifecommit.app/app/ (открывать из Telegram)
 - База: Supabase `lifecommit` (eu-central-1)
 
 ## Стек
@@ -36,7 +36,7 @@ DEV_AUTH_BYPASS=1        # принимать подделанную initData и
 APP_URL=http://localhost:5173
 ```
 
-⚠️ Локальная разработка работает с боевой базой. Тестовый пользователь из mockEnv — `id = 1`.
+Локальная разработка ходит в локальную Supabase (`pnpm db:start`), боевая база — только через `pnpm dev:prod`. Тестовый пользователь из mockEnv — `id = 1`.
 
 ## Деплой
 

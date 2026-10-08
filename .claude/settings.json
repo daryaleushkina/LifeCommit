@@ -23,8 +23,7 @@
       "Bash(git config * core.hookspath)",
       "Read(.dev.vars*)",
       "Read(.env)",
-      "Read(.env.*)",
-      "Read(!.env.example)"
+      "Read(.env.*)"
     ],
     "ask": [
       "Bash(pnpm e2e -u*)",
