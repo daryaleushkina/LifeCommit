@@ -1046,7 +1046,7 @@
       "entityId": "core-icon-semantics",
       "sourceFile": "icons.csv",
       "sourceKey": {
-        "Scope": "No 1-105; Allowed Contexts and contextual accessibility guidance in Usage; No 105 library/import examples",
+        "Scope": "No 1-101; Allowed Contexts and contextual accessibility guidance in Usage; No 101 library/import examples",
         "Compatibility": "Semantic Role remains a legacy recommended-default field, not an immutable semantic classification"
       },
       "status": "active",
@@ -1106,31 +1106,6 @@
         {
           "type": "official",
           "ref": "https://www.w3.org/WAI/tutorials/carousels/animations/"
-        }
-      ]
-    },
-    {
-      "entityKind": "dataset-contract",
-      "entityId": "core-native-input",
-      "sourceFile": "app-interface.csv",
-      "sourceKey": {
-        "Scope": "No 6, 31, and 32; Description, Do, Don't, and code-example fields"
-      },
-      "status": "active",
-      "verifiedAt": "2026-08-13",
-      "sla": "manual-verified",
-      "appliesTo": [
-        "search",
-        "design-guidance"
-      ],
-      "sources": [
-        {
-          "type": "official",
-          "ref": "https://developer.apple.com/design/human-interface-guidelines/accessibility"
-        },
-        {
-          "type": "official",
-          "ref": "https://developer.android.com/guide/topics/ui/accessibility/apps"
         }
       ]
     },

@@ -1,4 +1,4 @@
-// git-хуки commit-msg (без подписей ИИ) и pre-commit (файлы владелицы не уезжают в коммит) — во временном репозитории.
+// git-хуки commit-msg (без подписей ИИ) и pre-commit (настройки IDE владелицы не уезжают в коммит) — во временном репозитории.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -82,7 +82,7 @@ describe('git commit с хуками проекта', () => {
     expect(r.stderr).toContain('подпись ИИ-ассистента');
   });
 
-  it.each(['.claude/skills/x/SKILL.md', '.mcp.json', '.idea/misc.xml'])('файл владелицы %s — коммит отклонён с подсказкой', (file) => {
+  it.each(['.idea/misc.xml', '.idea/LifeCommit.iml'])('настройки IDE %s — коммит отклонён с подсказкой', (file) => {
     const { git, write } = repo();
     write('src/a.ts');
     write(file);
@@ -93,16 +93,25 @@ describe('git commit с хуками проекта', () => {
     expect(r.stderr).toContain('git restore --staged');
   });
 
-  it('удаление файла владелицы и прочие .claude/* не мешают', () => {
+  // Решение владелицы 08.10.2026: скиллы и .mcp.json коммитятся обычными PR.
+  it.each(['.claude/skills/x/SKILL.md', '.mcp.json'])('%s коммитится', (file) => {
+    const { git, write } = repo();
+    write(file);
+    git('add', '.');
+    const r = git('commit', '-q', '-m', 'Правка');
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it('удаление из .idea/ и прочие .claude/* не мешают', () => {
     const { dir, git, write } = repo();
-    write('.mcp.json');
+    write('.idea/misc.xml');
     write('.claude/hooks/a.mjs');
     git('add', '.');
     expect(git('commit', '-q', '--no-verify', '-m', 'Исходное состояние').status).toBe(0);
-    fs.rmSync(path.join(dir, '.mcp.json'));
+    fs.rmSync(path.join(dir, '.idea/misc.xml'));
     write('.claude/hooks/a.mjs', 'y');
     git('add', '-A');
-    const r = git('commit', '-q', '-m', 'Убрали .mcp.json');
+    const r = git('commit', '-q', '-m', 'Убрали .idea/misc.xml');
     expect(r.status, r.stderr).toBe(0);
   });
 });

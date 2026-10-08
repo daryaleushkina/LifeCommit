@@ -66,11 +66,6 @@ CSV_CONFIG = {
         "search_cols": ["Category", "Issue", "Keywords", "Description"],
         "output_cols": ["Category", "Issue", "Platform", "Description", "Do", "Don't", "Code Example Good", "Code Example Bad", "Severity"]
     },
-    "web": {
-        "file": "app-interface.csv",
-        "search_cols": ["Category", "Issue", "Keywords", "Description"],
-        "output_cols": ["Category", "Issue", "Platform", "Description", "Do", "Don't", "Code Example Good", "Code Example Bad", "Severity"]
-    },
     "google-fonts": {
         "file": "google-fonts.csv",
         "search_cols": ["Family", "Category", "Stroke", "Classifications", "Keywords", "Subsets", "Designers"],
@@ -93,8 +88,6 @@ STACK_CONFIG = {
     "svelte":           {"file": "stacks/svelte.csv"},
     "astro":            {"file": "stacks/astro.csv"},
     "swiftui":          {"file": "stacks/swiftui.csv"},
-    "react-native":     {"file": "stacks/react-native.csv"},
-    "flutter":          {"file": "stacks/flutter.csv"},
     "nuxtjs":           {"file": "stacks/nuxtjs.csv"},
     "nuxt-ui":          {"file": "stacks/nuxt-ui.csv"},
     "html-tailwind":    {"file": "stacks/html-tailwind.csv"},
@@ -135,8 +128,6 @@ WEB_STACKS = frozenset(WEB_STACK_CURRENT_MAJORS) | {"shadcn"}
 
 STACK_CURRENT_VERSIONS = {
     **{stack: (major,) for stack, major in WEB_STACK_CURRENT_MAJORS.items()},
-    "react-native": (0, 86),
-    "flutter": (3, 44),
     "swiftui": (16,),
     "jetpack-compose": (1, 11),
     "avalonia": (12,),
@@ -157,8 +148,6 @@ STACK_CURRENT_APPLICABILITY = {
     "shadcn": "shadcn cli 4",
     "nuxtjs": "nuxtjs 4.5",
     "nuxt-ui": "nuxt-ui 4.11.1",
-    "react-native": "react-native 0.86.x",
-    "flutter": "flutter 3.44.x",
     "swiftui": "swiftui current",
     "jetpack-compose": "jetpack-compose 1.11.4",
     "avalonia": "avalonia 12",
@@ -181,8 +170,6 @@ _STACK_QUERY_NAMES = {
     "html-tailwind": r"tailwind(?:\s*css)?",
     "nuxtjs": r"nuxt(?:\.js|js)?",
     "nuxt-ui": r"nuxt\s*ui",
-    "react-native": r"react[\s-]*native",
-    "flutter": r"flutter",
     "swiftui": r"(?:ios|swiftui\s+ios)",
     "jetpack-compose": r"(?:jetpack\s*)?compose",
     "avalonia": r"avalonia",
@@ -228,8 +215,6 @@ _DOMAIN_QUERY_REWRITES = {
              "flip plugin": None, "splittext": None},
     "react": {"nextjs": "react", "usecallback": "memoization",
               "useeffect": "effects"},
-    "web": {"aria": "accessibility", "outline": "focus",
-            "semantic": None, "autocomplete": "input", "preconnect": None},
 }
 
 
@@ -579,8 +564,7 @@ def _domain_keywords():
         "google-fonts": ["google font", "font family", "font weight", "font style", "variable font", "noto", "font for", "find font", "font subset", "font language", "monospace font", "serif font", "sans serif font", "display font", "handwriting font", "font", "typography", "serif", "sans"],
         "icons": ["icon", "icons", "lucide", "phosphor", "heroicons", "symbol", "glyph", "pictogram", "svg icon"],
         "gsap": ["gsap", "quickto", "scrolltrigger", "stagger", "magnetic cursor", "parallax", "page transition", "scroll reveal", "scroll-triggered", "scrollytelling", "flip plugin", "splittext", "shimmer", "skeleton loader"],
-        "react": ["react", "next.js", "nextjs", "suspense", "memo", "usecallback", "useeffect", "rerender", "bundle", "waterfall", "barrel", "dynamic import", "rsc", "server component"],
-        "web": ["aria", "focus", "outline", "semantic", "virtualize", "autocomplete", "form", "input type", "preconnect", "drag reorder", "single pointer", "touch target", "native accessibility"]
+        "react": ["react", "next.js", "nextjs", "suspense", "memo", "usecallback", "useeffect", "rerender", "bundle", "waterfall", "barrel", "dynamic import", "rsc", "server component"]
     }
     _DOMAIN_KEYWORDS_SIGNATURE = signature
     return _DOMAIN_KEYWORDS
@@ -618,7 +602,7 @@ def _rewrite_query_for_domain(query, domain, index):
 # deterministic instead of depending on dict/hash ordering.
 _DOMAIN_TIEBREAK_ORDER = [
     "ux", "product", "style", "color", "typography", "google-fonts",
-    "chart", "landing", "icons", "gsap", "react", "web",
+    "chart", "landing", "icons", "gsap", "react",
 ]
 _DOMAIN_TIEBREAK_RANK = {
     domain: rank for rank, domain in enumerate(_DOMAIN_TIEBREAK_ORDER)

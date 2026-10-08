@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // PreToolUse (Bash): агент не обходит git-хуки проекта — ни `--no-verify` / `-n`, ни подменой core.hooksPath,
 // в том числе внутри `bash -c`, `eval` и heredoc. Хук pre-push — гейт перед продом (typecheck → coverage → e2e →
-// сборка → деплой), CLAUDE.md: «красное — чинить, а не обходить --no-verify».
+// сборка → деплой), AGENTS.md: «красное — чинить, а не обходить --no-verify».
 // Разбор команды — порт из ECC (lib/no-verify-check.cjs). Блок — код 2 и причина в stderr; иначе — молча 0.
 // Владелица в своём терминале по-прежнему может пушить с --no-verify: хук действует только на Claude.
 // Тест: .claude/hooks/block-no-verify.test.ts.
@@ -20,7 +20,7 @@ export function decide(raw) {
   return [
     `Обход git-хуков запрещён: ${reason}.`,
     'Хуки проекта — гейт перед продом (pre-push: typecheck → coverage → e2e → сборка → деплой).',
-    'Красное — чинить, а не обходить (CLAUDE.md). Если правда нужно отдать деплой GitHub Actions — спроси владелицу.',
+    'Красное — чинить, а не обходить (AGENTS.md). Если правда нужно отдать деплой GitHub Actions — спроси владелицу.',
   ].join('\n');
 }
 

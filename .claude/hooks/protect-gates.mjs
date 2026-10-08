@@ -3,7 +3,7 @@
 // владелицы — хук отвечает permissionDecision "ask", и Claude Code спрашивает её.
 //   • scripts/hooks/* (pre-push, commit-msg, pre-commit) и .github/workflows/* — проверки перед деплоем;
 //   • vitest.config.ts — только если правка опускает или убирает порог покрытия (thresholds). Поднимать — можно.
-//     CLAUDE.md: «Порог не опускать; подняли покрытие — поднять и порог».
+//     AGENTS.md: «Порог не опускать; подняли покрытие — поднять и порог».
 // Файлы вне проекта (другие worktree и т. п.) не трогаем. Непонятный вход — пропускаем (хук не должен мешать работе).
 // Тест: .claude/hooks/protect-gates.test.ts.
 import fs from 'node:fs';
@@ -56,7 +56,7 @@ export function decide(input, root, readFile = (p) => (fs.existsSync(p) ? fs.rea
     const before = readFile(abs);
     const lowered = loweredThresholds(before, applyEdit(before, input.tool_name, input.tool_input));
     if (lowered.length) {
-      return `Правка опускает или убирает порог покрытия (${lowered.join(', ')}) в vitest.config.ts. CLAUDE.md: «Порог не опускать». Только с согласия владелицы.`;
+      return `Правка опускает или убирает порог покрытия (${lowered.join(', ')}) в vitest.config.ts. AGENTS.md: «Порог не опускать». Только с согласия владелицы.`;
     }
   }
   return null;

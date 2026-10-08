@@ -1,5 +1,5 @@
 // Палитра «Мягкий» — те же цвета, что токены src/styles/app.css (светлая :root, тёмная [data-color-scheme='dark']) и
-// Palette.swift на iPhone. Поменяли токен в мини-аппе — меняем здесь (CLAUDE.md «Платформы»: вид нативных — копия мини-аппа).
+// Palette.swift на iPhone. Поменяли токен в мини-аппе — меняем здесь (AGENTS.md «Платформы»: вид нативных — копия мини-аппа).
 package app.lifecommit.ui
 
 import androidx.compose.runtime.Composable

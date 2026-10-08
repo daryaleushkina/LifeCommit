@@ -1,6 +1,6 @@
 # Quick Reference — Full Rule Set (all 10 categories)
 
-Load this file when doing a UI review/audit pass, or when you need the full checklist for a category beyond the priority table in SKILL.md. Each rule is also present verbatim in `data/ux-guidelines.csv` / `data/app-interface.csv` and is reachable via `--domain ux` / `--domain web` search — this file is a static index for quick scanning without a search round-trip.
+Load this file when doing a UI review/audit pass, or when you need the full checklist for a category beyond the priority table in SKILL.md. Web rules are also present verbatim in `data/ux-guidelines.csv` and reachable via `--domain ux` search; the native app-interface dataset (`--domain web`, written for React Native) was removed from this copy, so its rules live only here — this file is a static index for quick scanning without a search round-trip.
 
 ## Quick Reference
 
