@@ -5,6 +5,7 @@ import { renderHook } from 'vitest-browser-react';
 import type { TodayResponse, Todo } from '../shared/types';
 
 const haptic = vi.hoisted(() => vi.fn());
+const notify = vi.fn();
 vi.mock('@tma.js/sdk-react', () => ({ hapticFeedback: { notificationOccurred: { ifAvailable: haptic } } }));
 vi.mock('./api', () => ({ api: { updateTodo: vi.fn(), createTodo: vi.fn(), deleteTodo: vi.fn(), today: vi.fn() } }));
 
@@ -28,11 +29,11 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function setup(todos: Todo[]) {
+function setup(todos: Todo[], onError: (text: string) => void = notify) {
   const initial: Cache = { today: { day: '2026-10-03', tasks: [], todos } as unknown as TodayResponse, heat: [], loadedAt: 1 };
   return renderHook(() => {
     const [cache, setCache] = useState(initial);
-    return { cache, todos: cache.today.todos, ...useTodos(setCache, 'Не сохранилось') };
+    return { cache, todos: cache.today.todos, ...useTodos(setCache, 'Не сохранилось', onError) };
   });
 }
 
@@ -85,7 +86,7 @@ describe('toggle', () => {
     expect(m.updateTodo).toHaveBeenCalledWith(1, { done: true, on: '2026-10-03' });
   });
 
-  it('сервер не принял — откат и ошибка; clearError', async () => {
+  it('сервер не принял — откат и ошибка', async () => {
     m.updateTodo.mockRejectedValueOnce(new Error('500'));
     const a = todo({});
     const b = todo({ id: 2, title: 'Хлеб' });
@@ -93,9 +94,7 @@ describe('toggle', () => {
     await act(() => result.current.toggle(a));
     expect(result.current.todos).toHaveLength(2);
     expect(result.current.todos).toEqual(expect.arrayContaining([a, b]));
-    expect(result.current.error).toBe('Не сохранилось');
-    await act(() => result.current.clearError());
-    expect(result.current.error).toBeNull();
+    expect(notify).toHaveBeenCalledWith('Не сохранилось');
   });
 });
 
@@ -106,7 +105,7 @@ describe('add', () => {
     const other = todo({ id: 5, title: 'Хлеб', time: '08:00' });
     const { result, act } = await setup([other]);
     const before = currentChange();
-    let done!: Promise<void>;
+    let done!: Promise<boolean>;
     await act(() => {
       done = result.current.add('Купить хлеб', '2026-10-03');
     });
@@ -116,7 +115,7 @@ describe('add', () => {
     expect(m.createTodo).toHaveBeenCalledWith({ title: 'Купить хлеб', day: '2026-10-03' });
     await act(async () => {
       d.resolve({ id: 77 });
-      await done;
+      expect(await done).toBe(true);
     });
     expect(result.current.todos.map((x) => x.id)).toEqual([5, 77]); // со временем — выше
     // Раз до запроса и раз после: начатые раньше чтения устарели.
@@ -127,13 +126,40 @@ describe('add', () => {
     m.createTodo.mockRejectedValue(new Error('500'));
     const keep = todo({ id: 5 });
     const { result, act } = await setup([keep]);
-    await act(() => result.current.add('X', '2026-10-03'));
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.add('X', '2026-10-03');
+    });
+    expect(ok).toBe(false);
     expect(result.current.todos).toEqual([keep]);
-    expect(result.current.error).toBe('Не сохранилось');
+    expect(notify).toHaveBeenCalledWith('Не сохранилось');
+  });
+
+  // 04.10.2026: на «Сегодня» ошибки — плашкой внизу (notify), а не строкой на экране.
+  it('с notify — ошибка уходит в плашку, а не в состояние экрана', async () => {
+    m.createTodo.mockRejectedValue(new Error('500'));
+    const notify = vi.fn();
+    const { result, act } = await setup([], notify);
+    await act(async () => {
+      await result.current.add('X', '2026-10-03');
+    });
+    expect(notify).toHaveBeenCalledExactlyOnceWith('Не сохранилось');
   });
 });
 
 describe('update', () => {
+  it('правка и перечитывание не прошли — прежние название, время и место во всех повторяющихся днях', async () => {
+    m.updateTodo.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    m.today.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const a = todo({ recurring: true, time: '09:00', details: { location: 'Дом' } });
+    const a2 = { ...a, day: '2026-10-04' };
+    const b = todo({ id: 2, title: 'Хлеб' });
+    const { result, act } = await setup([a, a2, b]);
+    await act(() => result.current.update(a, { title: 'Новое', day: a.day, time: '10:30', location: 'Парк' }));
+    expect(result.current.todos).toEqual(expect.arrayContaining([a, a2, b]));
+    expect(notify).toHaveBeenCalledExactlyOnceWith('Не сохранилось');
+  });
+
   it('ничего не поменяли — ни запроса, ни перечитывания', async () => {
     const a = todo({ time: '09:00', details: { location: 'Кафе' } });
     const { result, act } = await setup([a]);
@@ -197,7 +223,7 @@ describe('update', () => {
     const a = todo({});
     const { result, act } = await setup([a]);
     await act(() => result.current.update(a, { title: 'Б', day: a.day, time: null }));
-    expect(result.current.error).toBe('Не сохранилось');
+    expect(notify).toHaveBeenCalledWith('Не сохранилось');
     expect(m.today).toHaveBeenCalledTimes(1);
   });
 
@@ -208,11 +234,23 @@ describe('update', () => {
     await act(() => result.current.update(a, { title: 'Б', day: a.day, time: null }));
     expect(result.current.todos[0]!.title).toBe('Б');
     expect(result.current.cache.loadedAt).toBe(1);
-    expect(result.current.error).toBeNull();
+    expect(notify).not.toHaveBeenCalled();
   });
 });
 
 describe('remove и hide', () => {
+  it('удаление и перечитывание не прошли — все дни повторяющегося дела остаются на месте', async () => {
+    m.deleteTodo.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    m.today.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const a = todo({ recurring: true });
+    const a2 = todo({ recurring: true, day: '2026-10-04' });
+    const b = todo({ id: 2, title: 'Хлеб' });
+    const { result, act } = await setup([a, a2, b]);
+    await act(() => result.current.remove(a));
+    expect(result.current.todos).toEqual([a, a2, b]);
+    expect(notify).toHaveBeenCalledWith('Не сохранилось');
+  });
+
   it('удалить: строка пропадает сразу (повторяющееся — все дни), потом перечитываем', async () => {
     const a = todo({ recurring: true });
     const a2 = todo({ recurring: true, day: '2026-10-04' });
@@ -231,7 +269,7 @@ describe('remove и hide', () => {
     m.today.mockResolvedValue(fresh([a]));
     const { result, act } = await setup([a]);
     await act(() => result.current.remove(a));
-    expect(result.current.error).toBe('Не сохранилось');
+    expect(notify).toHaveBeenCalledWith('Не сохранилось');
     expect(result.current.todos).toEqual([a]);
   });
 
@@ -248,6 +286,6 @@ describe('remove и hide', () => {
     const a = todo({});
     const { result, act } = await setup([a]);
     await act(() => result.current.hide(a));
-    expect(result.current.error).toBe('Не сохранилось');
+    expect(notify).toHaveBeenCalledWith('Не сохранилось');
   });
 });
