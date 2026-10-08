@@ -7,7 +7,7 @@ import { renderApp } from './test/render';
 const haptic = vi.hoisted(() => vi.fn());
 vi.mock('@tma.js/sdk-react', () => ({ hapticFeedback: { impactOccurred: { ifAvailable: haptic } } }));
 
-import { askGroupRemoval, RemovalHost, removeWithUndo, useRemoved } from './removal';
+import { askGroupRemoval, notify, RemovalHost, removeWithUndo, useRemoved } from './removal';
 
 function Row({ k }: { k: string }) {
   const isRemoved = useRemoved();
@@ -53,12 +53,61 @@ beforeEach(() => {
   haptic.mockReset();
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 });
-afterEach(() => {
+afterEach(async () => {
   setVisibility('hidden'); // недоотправленное — отправить, чтобы следующий тест начинал с чистого
+  await Promise.resolve();
+  vi.advanceTimersByTime(10_000); // в том числе плашка ошибки, если проверка оборвалась до её закрытия
   vi.useRealTimers();
 });
 
 describe('удаление с «Вернуть»', () => {
+  it.each(['light', 'dark'])('плашки в теме %s: над панелью, друг над другом; последняя строка достаётся', async (theme) => {
+    document.documentElement.dataset.colorScheme = theme;
+    try {
+      await renderApp(
+        <>
+          <main className="app-shell with-tabs">
+            {Array.from({ length: 20 }, (_, i) => <p key={i} style={{ minHeight: 56 }}>Дело {i + 1}</p>)}
+          </main>
+          <nav className="tabbar">
+            {['Сегодня', 'Календарь', 'Голос', 'Вместе', 'Я'].map((name) => <button key={name}>{name}</button>)}
+          </nav>
+          <RemovalHost />
+        </>,
+      );
+      notify('Что-то пошло не так. Попробуй ещё раз.');
+      const notice = () => document.querySelector<HTMLElement>('.undo-toast.notice')!;
+      const shell = document.querySelector<HTMLElement>('main')!;
+      const bar = document.querySelector<HTMLElement>('.tabbar')!;
+      const last = shell.lastElementChild!;
+      await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+      await expect.poll(() => {
+        shell.scrollTop = shell.scrollHeight;
+        return last.getBoundingClientRect().bottom;
+      }).toBeLessThanOrEqual(notice().getBoundingClientRect().top - 8);
+      removeWithUndo('todo:layout', '«Хлеб» удалено', vi.fn(async () => {}));
+      await expect.element(undoButton).toBeVisible();
+      const undo = () => document.querySelector<HTMLElement>('.undo-toast:not(.notice)')!;
+      await expect.poll(() => notice().getBoundingClientRect().bottom).toBeLessThanOrEqual(undo().getBoundingClientRect().top - 8);
+      await expect.poll(() => {
+        shell.scrollTop = shell.scrollHeight;
+        return last.getBoundingClientRect().bottom;
+      }).toBeLessThanOrEqual(notice().getBoundingClientRect().top - 8);
+      expect(undo().getBoundingClientRect().bottom).toBeLessThan(bar.getBoundingClientRect().top);
+      expect(notice().getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
+      expect(notice().getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth);
+      for (let y = 0; y <= shell.scrollHeight; y += 60) {
+        shell.scrollTop = y;
+        const b = bar.getBoundingClientRect();
+        expect(document.elementFromPoint(b.left + 24, b.top + 12)?.closest('.tabbar')).toBe(bar);
+      }
+      await undoButton.click();
+      await page.getByText('Что-то пошло не так. Попробуй ещё раз.').click();
+    } finally {
+      delete document.documentElement.dataset.colorScheme;
+    }
+  });
+
   it('строка пропадает сразу, через 5 секунд — на сервер; после ответа ключ больше не прячется', async () => {
     const d = deferred();
     const commit = vi.fn(() => d.promise);
@@ -97,7 +146,7 @@ describe('удаление с «Вернуть»', () => {
     await expect.element(error).not.toBeInTheDocument();
   });
 
-  it('строка ошибки уходит сама через 5 секунд; новое удаление её сразу убирает', async () => {
+  it('строка ошибки уходит сама через 5 секунд; при новом удалении она остаётся над «Вернуть»', async () => {
     const commit = vi.fn(() => Promise.reject(new Error('сеть')));
     await renderApp(<Screen />);
     removeWithUndo('todo:1', '«Молоко» удалено', commit);
@@ -112,10 +161,25 @@ describe('удаление с «Вернуть»', () => {
     removeWithUndo('todo:2', '«Хлеб» удалено', commit);
     vi.advanceTimersByTime(5000);
     await expect.element(error).toBeVisible();
+    // 04.10.2026 (lc-explore): раньше новое удаление прятало ошибку — две привычки подряд, первая не удалилась,
+    // а человек видел только «Вернуть» второй. Теперь видно обе: ошибка над плашкой «Вернуть».
     removeWithUndo('todo:1', '«Молоко» удалено', vi.fn(async () => {}));
-    await expect.element(error).not.toBeInTheDocument();
-    await expect.element(toast.getByText('«Молоко» удалено')).toBeVisible();
+    await expect.element(error).toBeVisible();
+    await expect.element(page.getByText('«Молоко» удалено')).toBeVisible();
+    expect(document.querySelector('.undo-toast.notice')!.getBoundingClientRect().bottom)
+      .toBeLessThan(document.querySelector('.undo-toast:not(.notice)')!.getBoundingClientRect().top);
     await undoButton.click();
+  });
+
+  it('notify: своя строка внизу поверх любого экрана; без текста — «что-то пошло не так»', async () => {
+    await renderApp(<RemovalHost />);
+    notify('Не отметилось');
+    await expect.element(page.getByText('Не отметилось')).toBeVisible();
+    expect(document.querySelectorAll('.undo-toast')).toHaveLength(1);
+    notify();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    vi.advanceTimersByTime(5000);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
   });
 
   it('«Вернуть» — строка на месте, сервер ничего не узнаёт', async () => {
