@@ -12,7 +12,6 @@ import {
   type TaskTemplate,
   type Todo,
   type TodoDetails,
-  type TodoInput,
   sortTodos,
   type TodayResponse,
   type UserSettings,
@@ -41,6 +40,8 @@ import { removeUserFeedbackFiles } from './feedback';
 import { feedbackApi } from './feedbackApi';
 import { body, desktopApi, tokenHash } from './desktop';
 import { GOOGLE_PENDING_TTL_MS } from './google';
+import { insertKeyed, requestKeys } from './requestKey';
+import { inputBody, inputObject, normalizeTaskInput, normalizeTodoInput, optionalNumber, optionalText } from './input';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -203,36 +204,42 @@ function cleanSlipDate(value: string | null | undefined, day: string): string | 
 }
 
 /** Значение из известного списка; другое — 400 (а не 500 от проверки в базе). */
-function known<T extends string>(value: T, list: readonly string[], error: string): T {
-  if (!list.includes(value)) throw new HTTPException(400, { message: error });
-  return value;
+function known<T extends string>(value: unknown, list: readonly T[], error: string): T {
+  const match = list.find((entry) => entry === value);
+  if (match === undefined) throw new HTTPException(400, { message: error });
+  return match;
 }
-const SCHEDULES = ['daily', 'weekdays', 'per_week'];
-const VISIBILITIES = ['private', 'friends'];
+const SCHEDULES = ['daily', 'weekdays', 'per_week'] as const;
+const VISIBILITIES = ['private', 'friends'] as const;
 
-function cleanTask(input: TaskInput, day: string) {
-  const title = cleanText(String(input.title ?? ''), 80);
+function cleanTask(raw: unknown, day: string) {
+  const input = inputObject(raw);
+  const title = cleanText(optionalText(input.title, 'title_required') ?? '', 80);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
-  if (!['count', 'check', 'abstain'].includes(input.kind)) throw new HTTPException(400, { message: 'bad_kind' });
-  const binary = input.kind === 'check' || input.kind === 'abstain';
-  const target = binary ? 1 : Number(input.target);
-  if (!(target > 0)) throw new HTTPException(400, { message: 'bad_target' });
+  const kind = known(input.kind, ['count', 'check', 'abstain'] as const, 'bad_kind');
+  const binary = kind === 'check' || kind === 'abstain';
+  const target = binary ? 1 : optionalNumber(input.target, 'bad_target');
+  if (target == null || !(target > 0) || autoStep(target) > 2147483647) throw new HTTPException(400, { message: 'bad_target' });
   const schedule = known(input.schedule ?? 'daily', SCHEDULES, 'bad_schedule');
+  const weekdays = optionalNumber(input.weekdays, 'bad_schedule') ?? 127;
+  const perWeek = optionalNumber(input.per_week, 'bad_schedule') ?? 3;
+  const subtasks: unknown = input.subtasks ?? [];
+  if (!Array.isArray(subtasks) || !subtasks.every((s): s is string => typeof s === 'string')) throw new HTTPException(400, { message: 'bad_input' });
   return {
     row: {
       title,
-      emoji: input.emoji?.slice(0, 16) || null,
-      kind: input.kind,
-      unit: binary ? null : cleanText(input.unit ?? '', 20) || null,
+      emoji: optionalText(input.emoji)?.slice(0, 16) || null,
+      kind,
+      unit: binary ? null : cleanText(optionalText(input.unit) ?? '', 20) || null,
       step: binary ? 1 : autoStep(target),
       schedule,
-      weekdays: schedule === 'weekdays' ? Math.min(127, Math.max(1, input.weekdays ?? 127)) : 127,
-      per_week: schedule === 'per_week' ? Math.min(7, Math.max(1, input.per_week ?? 3)) : null,
+      weekdays: schedule === 'weekdays' ? Math.min(127, Math.max(1, Math.trunc(weekdays))) : 127,
+      per_week: schedule === 'per_week' ? Math.min(7, Math.max(1, Math.trunc(perWeek))) : null,
       visibility: known(input.visibility ?? 'private', VISIBILITIES, 'bad_visibility'),
-      last_slip_on: input.kind === 'abstain' ? cleanSlipDate(input.last_slip_on, day) : null,
+      last_slip_on: kind === 'abstain' ? cleanSlipDate(optionalText(input.last_slip_on, 'bad_date'), day) : null,
     },
     target,
-    subtasks: (input.subtasks ?? []).map((s) => cleanText(s, 80)).filter(Boolean).slice(0, 20),
+    subtasks: subtasks.map((s) => cleanText(s, 80)).filter(Boolean).slice(0, 20),
   };
 }
 
@@ -257,38 +264,37 @@ async function assertCanAdd(sb: SupabaseClient, user: UserRow, adding: number) {
   if ((await countActive(sb, user)) + adding > FREE_TASK_LIMIT) throw new HTTPException(402, { message: 'task_limit' });
 }
 
-export async function insertTasks(sb: SupabaseClient, user: UserRow, inputs: TaskInput[]) {
+/** keys — ключи повтора (requestKey.ts): привычка, записанная раньше по тому же ключу, второй раз не создаётся. */
+export async function insertTasks(sb: SupabaseClient, user: UserRow, inputs: unknown[], keys: (string | null)[] = []) {
   const day = today(user);
   const cleaned = inputs.map((input) => cleanTask(input, day));
-  const created = must(
-    await sb
-      .from('tasks')
-      .insert(cleaned.map((t, i) => ({ ...t.row, user_id: user.id, position: (Date.now() % 1e9) + i })))
-      .select('id'),
-  ) as { id: number }[];
-  await Promise.all([
-    sb.from('task_goals').insert(created.map((t, i) => ({ task_id: t.id, effective_from: day, target: cleaned[i]!.target }))),
-    sb.from('task_subtasks').insert(
-      created.flatMap((t, i) => cleaned[i]!.subtasks.map((title, position) => ({ task_id: t.id, title, position }))),
-    ),
-  ]).then((rs) => rs.forEach(must));
-  return created.map((t) => t.id);
+  // Одна транзакция: лимит считает только новые ключи; цель и подзадачи не могут остаться недописанными.
+  const result = await sb.rpc('insert_tasks', {
+    p_user: user.id,
+    p_day: day,
+    p_limit: isPremium(user) ? null : FREE_TASK_LIMIT,
+    p_tasks: cleaned.map((t, i) => ({ ...t.row, target: t.target, subtasks: t.subtasks, request_key: keys[i] ?? null, position: (Date.now() % 1e9) + i })),
+  });
+  if (result.error?.message === 'task_limit') throw new HTTPException(402, { message: 'task_limit' });
+  const ids: unknown = must(result);
+  if (!Array.isArray(ids) || ids.length !== inputs.length || !ids.every((id): id is number => typeof id === 'number' && Number.isSafeInteger(id))) {
+    throw new HTTPException(500, { message: 'bad_insert_result' });
+  }
+  return ids;
 }
 
 api.post('/tasks', async (c) => {
-  const input = await c.req.json<TaskInput>();
-  await assertCanAdd(c.get('sb'), c.get('user'), 1);
+  const input = normalizeTaskInput(await inputBody(c.req));
   const [id] = await insertTasks(c.get('sb'), c.get('user'), [input]);
   return c.json({ id }, 201);
 });
 
 // Несколько привычек сразу — из голосового разбора. Лимит бесплатных проверяется на всю пачку.
 api.post('/tasks/batch', async (c) => {
-  const { tasks } = await c.req.json<{ tasks: TaskInput[] }>();
-  const list = (Array.isArray(tasks) ? tasks : []).slice(0, MAX_HABITS);
+  const { tasks, keys } = await inputBody(c.req);
+  const list = (Array.isArray(tasks) ? tasks : []).slice(0, MAX_HABITS).map(normalizeTaskInput);
   if (!list.length) throw new HTTPException(400, { message: 'no_tasks' });
-  await assertCanAdd(c.get('sb'), c.get('user'), list.length);
-  const ids = await insertTasks(c.get('sb'), c.get('user'), list);
+  const ids = await insertTasks(c.get('sb'), c.get('user'), list, requestKeys(keys, list.length, c.get('user').id));
   return c.json({ ids }, 201);
 });
 
@@ -366,21 +372,23 @@ function todoTime(value: string | null | undefined): string | null {
   return `${m[1]!.padStart(2, '0')}:${m[2]}`;
 }
 
-function cleanTodo(input: TodoInput, today: string) {
-  const title = cleanText(String(input.title ?? ''), 120);
+function cleanTodo(raw: unknown, today: string) {
+  const input = inputObject(raw);
+  const title = cleanText(optionalText(input.title, 'title_required') ?? '', 120);
   if (!title) throw new HTTPException(400, { message: 'title_required' });
-  const d = Number(input.duration_min);
-  const location = cleanLocation(input.location);
-  return { title, day: todoDay(input.day, today), time: todoTime(input.time), duration_min: d > 0 && d <= 20160 ? Math.round(d) : null, details: location ? { location } : null };
+  const d = optionalNumber(input.duration_min) ?? 0;
+  const location = cleanLocation(optionalText(input.location));
+  return { title, day: todoDay(optionalText(input.day), today), time: todoTime(optionalText(input.time, 'bad_time')), duration_min: d > 0 && d <= 20160 ? Math.round(d) : null, details: location ? { location } : null };
 }
 
 const cleanLocation = (v: unknown) => (typeof v === 'string' ? cleanText(v, 200) : '');
 
-export async function insertTodos(sb: SupabaseClient, user: UserRow, inputs: TodoInput[]): Promise<number[]> {
+/** keys — ключи повтора (requestKey.ts): дело, записанное раньше по тому же ключу, второй раз не создаётся. */
+export async function insertTodos(sb: SupabaseClient, user: UserRow, inputs: unknown[], keys: (string | null)[] = []): Promise<number[]> {
   const day = today(user);
   const rows = inputs.slice(0, MAX_TODOS).map((input, i) => ({ ...cleanTodo(input, day), user_id: user.id, position: (Date.now() % 1e9) + i }));
   if (!rows.length) return [];
-  return (must(await sb.from('todos').insert(rows).select('id')) as { id: number }[]).map((r) => r.id);
+  return (await insertKeyed(sb, 'todos', rows, keys, { user_id: user.id })).ids;
 }
 
 /** Строка `todos` из базы — как её читают экраны. */
@@ -432,15 +440,16 @@ function pushLater(c: Context<App>, ids: number[]) {
 }
 
 api.post('/todos', async (c) => {
-  const [id] = await insertTodos(c.get('sb'), c.get('user'), [await c.req.json<TodoInput>()]);
+  const [id] = await insertTodos(c.get('sb'), c.get('user'), [normalizeTodoInput(await inputBody(c.req))]);
   if (id) pushLater(c, [id]);
   return c.json({ id }, 201);
 });
 
 api.post('/todos/batch', async (c) => {
-  const { todos } = await c.req.json<{ todos: TodoInput[] }>();
+  const { todos, keys } = await inputBody(c.req);
   if (!Array.isArray(todos) || !todos.length) throw new HTTPException(400, { message: 'no_todos' });
-  const ids = await insertTodos(c.get('sb'), c.get('user'), todos);
+  const list = todos.slice(0, MAX_TODOS).map(normalizeTodoInput);
+  const ids = await insertTodos(c.get('sb'), c.get('user'), list, requestKeys(keys, list.length, c.get('user').id));
   pushLater(c, ids);
   return c.json({ ids }, 201);
 });
@@ -467,7 +476,7 @@ api.patch('/todos/:id', async (c) => {
     );
   }
   const fields: Record<string, unknown> = {};
-  if (body.title !== undefined) fields.title = cleanTodo({ title: body.title }, day).title;
+  if (body.title !== undefined) fields.title = cleanTodo(normalizeTodoInput({ title: body.title }), day).title;
   // У повторяющегося дела день начала не двигаем: он задаёт, в какие дни оно бывает.
   if (body.day !== undefined && !todo.rrule) fields.day = todoDay(body.day, day);
   if (body.time !== undefined) fields.time = todoTime(body.time);
