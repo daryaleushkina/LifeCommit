@@ -1,4 +1,4 @@
-import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { hapticFeedback } from '@tma.js/sdk-react';
 import { sortTodos, type Todo } from '../shared/types';
 import { api } from './api';
@@ -30,14 +30,17 @@ interface Options {
   /** Перечитать список с сервера: после переноса на другой день или удаления он меняется целиком. */
   reload: () => Promise<void>;
   errorText: string;
+  /** Где показать ошибку: общая плашка на «Сегодня», строка во вкладке «Календарь». */
+  onError: (text: string) => void;
 }
 
 /**
  * Действия с делами: отметить, добавить, поправить, удалить.
  * Экран меняется сразу, сервер догоняет; при ошибке отметка откатывается.
  */
-export function useTodoActions({ patchList, reload, errorText }: Options) {
-  const [error, setError] = useState<string | null>(null);
+export function useTodoActions({ patchList, reload, errorText, onError }: Options) {
+  // Удаление уходит на сервер через 5 секунд «Вернуть» — экрана к тому времени может не быть: тогда только плашка.
+  const fail = useCallback(() => onError(errorText), [onError, errorText]);
 
   const toggle = useCallback(
     async (todo: Todo) => {
@@ -49,15 +52,15 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
         await trackEdit(api.updateTodo(todo.id, { done, ...(todo.recurring && { on: todo.day }) }));
       } catch {
         patchList((list) => list.map((d) => (sameTodo(d, todo) ? todo : d)));
-        setError(errorText);
+        fail();
       }
     },
-    [patchList, errorText],
+    [patchList, fail],
   );
 
-  /** Новое дело: появляется сразу, id приходит с сервера. */
+  /** Новое дело: появляется сразу, id приходит с сервера. false — не сохранилось (набранное вернуть в поле). */
   const add = useCallback(
-    async (title: string, day: string) => {
+    async (title: string, day: string): Promise<boolean> => {
       const temp: Todo = { id: -Date.now(), title, day, done: false, time: null, duration_min: null, recurring: false, source: null, details: null };
       patchList((list) => [...list, temp]);
       try {
@@ -65,12 +68,14 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
         // дождётся, пока дело создаётся (caches.ts), — иначе ответ без него ляжет поверх строки.
         const { id } = await trackEdit(api.createTodo({ title, day }));
         patchList((list) => list.map((d) => (d.id === temp.id ? { ...d, id } : d)));
+        return true;
       } catch {
         patchList((list) => list.filter((d) => d.id !== temp.id));
-        setError(errorText);
+        fail();
+        return false;
       }
     },
-    [patchList, errorText],
+    [patchList, fail],
   );
 
   const update = useCallback(
@@ -86,25 +91,29 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
       try {
         await trackEdit(api.updateTodo(todo.id, patch));
       } catch {
-        setError(errorText);
+        // Сеть может не дать и перечитать список: откатываем изменённые поля сами, сохраняя дни и отметки.
+        patchList((list) => list.map((d) => (d.id === todo.id ? { ...d, title: todo.title, time: todo.time, details: todo.details } : d)));
+        fail();
       }
       await reload();
     },
-    [patchList, reload, errorText],
+    [patchList, reload, fail],
   );
 
   const remove = useCallback(
     async (todo: Todo) => {
       // Повторяющееся удаляется целиком — со всеми днями.
-      patchList((list) => list.filter((d) => d.id !== todo.id));
       try {
         await trackEdit(api.deleteTodo(todo.id));
+        // Пока ждём сервер, строку прячет removeWithUndo. Не стираем её из данных до успеха:
+        // при отказе и неудачной перечитке она всё равно вернётся, со всеми повторяющимися днями.
+        patchList((list) => list.filter((d) => d.id !== todo.id));
       } catch {
-        setError(errorText);
+        fail();
       }
       await reload();
     },
-    [patchList, reload, errorText],
+    [patchList, reload, fail],
   );
 
   /** Скрыть событие из календаря (свайп): у нас пропадает, в календаре остаётся. */
@@ -113,26 +122,27 @@ export function useTodoActions({ patchList, reload, errorText }: Options) {
       try {
         await trackEdit(api.updateTodo(todo.id, { hidden: true }));
       } catch {
-        setError(errorText);
+        fail();
       }
       await reload();
     },
-    [reload, errorText],
+    [reload, fail],
   );
 
-  return { toggle, add, update, remove, hide, error, clearError: () => setError(null) };
+  return { toggle, add, update, remove, hide };
 }
 
 /** Дела на «Сегодня»: список живёт в кэше приложения. */
-export function useTodos(setCache: Dispatch<SetStateAction<Cache>>, errorText: string) {
+export function useTodos(setCache: Dispatch<SetStateAction<Cache>>, errorText: string, onError: (text: string) => void) {
   const patchList = useCallback(
     (fn: (list: Todo[]) => Todo[]) => setCache((c) => ({ ...c, today: { ...c.today, todos: sortTodos(fn(c.today.todos)) } })),
     [setCache],
   );
   const reload = useCallback(async () => {
     bumpChange();
+    // Фоновая перечитка после правки: успех уже применён, а отказ показан через onError.
     const today = await api.today().catch(() => null);
     if (today) setCache((c) => ({ ...c, today, loadedAt: Date.now() }));
   }, [setCache]);
-  return useTodoActions({ patchList, reload, errorText });
+  return useTodoActions({ patchList, reload, errorText, onError });
 }

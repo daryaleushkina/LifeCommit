@@ -87,6 +87,20 @@ describe('аватарки и значок', () => {
     expect(b.style.background).toBe(a.style.background);
   });
 
+  // 04.10.2026 (/lc-explore): «🏠 Дом» и «🌸Аня» давали половинку суррогатной пары — пустой квадрат или «?» в ромбе.
+  it('название или имя начинается с эмодзи — в кружке и значке эмодзи целиком', async () => {
+    const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
+    const { container } = await renderApp(
+      <>
+        <Avatar member={{ id: 3, name: '\u{1F338}Аня', photo: null }} />
+        <GroupBadge id={5} title={'\u{1F3E0} Дом'} />
+        <GroupBadge id={6} title={`${family} Семья`} />
+      </>,
+    );
+    expect(container.querySelector('span.avatar')!.textContent).toBe('\u{1F338}');
+    expect([...container.querySelectorAll('.group-badge')].map((b) => b.textContent)).toEqual(['\u{1F3E0}', family]);
+  });
+
   it('стопка: не больше четырёх, остальные — «+N»', async () => {
     const many = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, name: `Имя${i}`, photo: null }));
     const { container, rerender } = await renderApp(<AvatarStack members={many} size={20} />);

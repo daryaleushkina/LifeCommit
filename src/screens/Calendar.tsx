@@ -134,6 +134,7 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
     if (!caches.accounts?.some((a) => a.provider === 'google')) warm(fetchInto.googleUrl());
   }, []);
 
+  const [todoError, setTodoError] = useState<string | null>(null);
   const actions = useTodoActions({
     patchList: (fn) => setTodos((list) => (list ? fn(list) : list)),
     reload: async () => {
@@ -141,6 +142,7 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
       onChanged();
     },
     errorText: t.error,
+    onError: setTodoError,
   });
   const shift = (n: number) => setSelected(mode === 'day' ? addDays(selected, n) : `${shiftMonth(monthOf(selected), n)}-01`);
   const ofDay = (day: string) => (todos ?? []).filter((d) => d.day === day);
@@ -277,15 +279,15 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
       </div>
       )}
 
-      {(actions.error ?? markError) && (
+      {(todoError ?? markError) && (
         <p
           className="error"
           onClick={() => {
-            actions.clearError();
+            setTodoError(null);
             setMarkError(null);
           }}
         >
-          {actions.error ?? markError}
+          {todoError ?? markError}
         </p>
       )}
 
@@ -298,7 +300,7 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
           showCarry={false}
           canAdd={selected >= today}
           onToggle={(d) => void actions.toggle(d)}
-          onAdd={(title) => void actions.add(title, selected)}
+          onAdd={(title) => actions.add(title, selected)}
           onUpdate={actions.update}
           onRemove={actions.remove}
           onHide={actions.hide}

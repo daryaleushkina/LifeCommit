@@ -43,6 +43,13 @@ describe('карточка «Бросить»', () => {
     await page.getByRole('button', { name: 'Да, получилось' }).click();
     expect(onLog).toHaveBeenLastCalledWith({ value: null, status: null });
   });
+
+  // 04.10.2026 (/lc-explore): «Worked out?» читалось как «потренировался?» — у «бросить» речь о дне без привычки.
+  it('по-английски — «Made it today?»', async () => {
+    const task = { ...base, kind: 'abstain', status: null } as TodayTask;
+    await renderApp(<TaskCard task={task} onLog={() => {}} onOpen={() => {}} />, 'en');
+    await expect.element(page.getByText('Made it today?')).toBeVisible();
+  });
 });
 
 describe('правила отметки', () => {
