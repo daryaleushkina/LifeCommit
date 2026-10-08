@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { cleanText } from './text';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanText, firstGrapheme, graphemes } from './text';
 
 describe('cleanText', () => {
   it('обычный текст — как был, края и лишние пробелы убраны', () => {
@@ -57,5 +57,33 @@ describe('cleanText', () => {
     expect(cleanText('👨\u200D👩\u200D👧', 3)).toBe('👨');
     expect(cleanText('Короткое', 80)).toBe('Короткое');
     expect(cleanText('ab cd', 3)).toBe('ab');
+  });
+});
+
+// 04.10.2026 (/lc-explore): значок группы, аватарка без фото и обрезка названий на картинках «Поделиться» брали
+// первую или последнюю единицу UTF-16 — от эмодзи оставалась половинка суррогатной пары (пустой квадрат или «?»).
+const FAMILY = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
+const RAINBOW = '\u{1F3F3}\uFE0F\u200D\u{1F308}';
+const CODER = '\u{1F469}\u{1F3FD}\u200D\u{1F4BB}';
+const RU = '\u{1F1F7}\u{1F1FA}';
+const SCOTLAND = '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}';
+
+describe('graphemes и firstGrapheme', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('эмодзи-последовательности — один символ, а не части', () => {
+    expect(graphemes(`${FAMILY}${RAINBOW}${CODER}${RU}${SCOTLAND}ё`)).toEqual([FAMILY, RAINBOW, CODER, RU, SCOTLAND, 'ё']);
+    expect(firstGrapheme(`${FAMILY} Семья`)).toBe(FAMILY);
+    expect(firstGrapheme('\u{1F3E0} Дом')).toBe('\u{1F3E0}');
+    expect(firstGrapheme('Аня')).toBe('А');
+    expect(firstGrapheme('')).toBe('');
+  });
+
+  it('без Intl.Segmenter (старый WebView) — по символам, склеивая ZWJ, оттенок кожи, VS16, теги и пары флагов', () => {
+    vi.stubGlobal('Intl', { ...Intl, Segmenter: undefined });
+    expect(graphemes(`${FAMILY}${RAINBOW}${CODER}${RU}${SCOTLAND}ё`)).toEqual([FAMILY, RAINBOW, CODER, RU, SCOTLAND, 'ё']);
+    expect(graphemes(`${RU}${RU}`)).toEqual([RU, RU]);
+    expect(firstGrapheme('\u{1F98A} Лиса')).toBe('\u{1F98A}');
+    expect(graphemes('')).toEqual([]);
   });
 });

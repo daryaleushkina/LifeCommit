@@ -320,6 +320,7 @@ function CalendarDay({ day, today, entry, heading, me, onOpenGroup, onPatched, p
   reload: () => Promise<void>;
 }): ReactNode {
   const t = useT();
+  const [todoError, setTodoError] = useState<string | null>(null);
   const actions = useTodoActions({
     patchList: (fn) => {
       patchTodos(caches.days, fn);
@@ -327,6 +328,7 @@ function CalendarDay({ day, today, entry, heading, me, onOpenGroup, onPatched, p
     },
     reload,
     errorText: t.error,
+    onError: setTodoError,
   });
   const [markError, setMarkError] = useState<string | null>(null);
   const markGroupItem = async (groupId: number, it: GroupDayItem) => {
@@ -362,16 +364,16 @@ function CalendarDay({ day, today, entry, heading, me, onOpenGroup, onPatched, p
   const dayTodos = sortTodos((todos ?? []).filter((d) => d.day === day));
   return (
     <>
-      {(actions.error ?? markError) && (
+      {(todoError ?? markError) && (
         <p
           className="error"
           role="alert"
           onClick={() => {
-            actions.clearError();
+            setTodoError(null);
             setMarkError(null);
           }}
         >
-          {actions.error ?? markError}
+          {todoError ?? markError}
         </p>
       )}
 
@@ -384,7 +386,7 @@ function CalendarDay({ day, today, entry, heading, me, onOpenGroup, onPatched, p
           showCarry={false}
           canAdd={day >= today}
           onToggle={(d) => void actions.toggle(d)}
-          onAdd={(title) => void actions.add(title, day)}
+          onAdd={(title) => actions.add(title, day)}
           onUpdate={actions.update}
           onRemove={actions.remove}
           onHide={actions.hide}

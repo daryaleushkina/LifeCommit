@@ -477,6 +477,8 @@ const ru = {
     logoutConfirm: 'Выйти из LifeCommit на этом устройстве?',
     logoutOk: 'Выйти',
   },
+  deleteLinked: 'Удалить аккаунт можно только из того Telegram, в котором он создан.',
+  deleteTelegramOnly: 'Удалить аккаунт можно в Telegram или в приложении LifeCommit на телефоне.',
 };
 
 type Dict = typeof ru;
@@ -820,7 +822,7 @@ const en: Dict = {
   nothingDue: 'All done for today',
   archivedLink: (n) => `Postponed · ${n}`,
   didIt: 'Did it work out today?',
-  didItShort: 'Worked out?',
+  didItShort: 'Made it today?',
   answerYes: 'Yes, it did',
   answerNo: 'No, it happened today',
   of: 'of',
@@ -933,6 +935,8 @@ const en: Dict = {
     logoutConfirm: 'Sign out of LifeCommit on this device?',
     logoutOk: 'Sign out',
   },
+  deleteLinked: 'You can delete the account only from the Telegram account it was created in.',
+  deleteTelegramOnly: 'You can delete your account in Telegram or in the LifeCommit app on your phone.',
 };
 
 function plural(n: number, one: string, few: string, many: string): string {

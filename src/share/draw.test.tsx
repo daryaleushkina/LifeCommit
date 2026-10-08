@@ -150,6 +150,73 @@ describe('draw — все шаблоны', () => {
   });
 });
 
+/** Что и где нарисовано текстом: строка и её рамка в координатах макета 360×640, тем шрифтом, каким рисовали. */
+interface Box {
+  text: string;
+  l: number;
+  r: number;
+  font: string;
+}
+function texts(t: Template): Box[] {
+  const out: Box[] = [];
+  const P = CanvasRenderingContext2D.prototype;
+  const fill = P.fillText;
+  const spy = vi.spyOn(P, 'fillText').mockImplementation(function (this: CanvasRenderingContext2D, text: string, x: number, y: number, mw?: number) {
+    const m = this.measureText(text);
+    out.push({ text, l: x - m.actualBoundingBoxLeft, r: x + m.actualBoundingBoxRight, font: this.font });
+    return mw === undefined ? fill.call(this, text, x, y) : fill.call(this, text, x, y, mw);
+  });
+  try {
+    paint(t);
+  } finally {
+    spy.mockRestore();
+  }
+  return out;
+}
+const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
+
+// 04.10.2026 (/lc-explore): в неоне (23D) число мерили прежним шрифтом (после restore) — «300 000» налезало на
+// «шагов»; обрезка названия резала эмодзи пополам; единица из 20 широких букв вылезала за край и съедала название.
+describe('итог по целям: числа, единицы и названия', () => {
+  const big: SumRow[] = [
+    { n: '300 000', u: 'шагов', t: 'Шаги' },
+    { n: '2 999 997', u: 'стаканов', t: 'Вода' },
+    { n: '7', u: 'раз', t: 'Зарядка' },
+  ];
+  it.each([1, 3])('неон, %i строк(и): число не налезает на единицу, единицы — ровной колонкой', (n) => {
+    const rows = big.slice(0, n);
+    const boxes = texts({ kind: 'sum-neon', title: 'Сентябрь 2026', big: '30', caption: 'дней', rows, footer });
+    const units = rows.map((r) => boxes.find((b) => b.text === `${r.u} `)!);
+    rows.forEach((r, i) => {
+      const num = boxes.find((b) => b.text === r.n && b.font.startsWith('800'))!;
+      expect(units[i]!.l - num.r, `зазор между «${r.n}» и «${r.u}»`).toBeGreaterThanOrEqual(4);
+    });
+    // Граница самих букв у «р» и «с» отличается на пиксель — колонка ровная, если начала в пределах 2 px.
+    const starts = units.map((u) => u.l);
+    expect(Math.max(...starts) - Math.min(...starts)).toBeLessThanOrEqual(2);
+  });
+
+  it.each(['sum-list', 'sum-poster', 'sum-bento', 'sum-neon', 'sum-year'] as const)('%s: длинное название с эмодзи обрезается по целым символам', (kind) => {
+    // Где именно ляжет обрезка, зависит от ширины — перебираем длины, чтобы попасть и между половинками эмодзи.
+    const broken: string[] = [];
+    for (let k = 6; k <= 30; k++) {
+      const row: SumRow = { n: '42', u: 'стакана', t: `Пить воду ${'\u{1F4A7}'.repeat(k)}`, months: Array(12).fill(1) };
+      const rows = Array.from({ length: 1 + (k % 8) }, () => row);
+      const t = { kind, title: 'Сентябрь', big: '3', caption: 'дня', levels: levels(30), rows, footer } as Template;
+      broken.push(...texts(t).filter((b) => lone.test(b.text)).map((b) => b.text));
+    }
+    expect(broken).toEqual([]);
+  });
+
+  it.each(['sum-list', 'sum-neon'] as const)('%s: огромная единица не вылезает за край, название цели остаётся', (kind) => {
+    const row: SumRow = { n: '1 000 000', u: 'Щ'.repeat(20), t: 'Бег по утрам' };
+    const boxes = texts({ kind, title: 'Сентябрь', big: '3', caption: 'дня', rows: [row], footer } as Template);
+    const over = boxes.filter((b) => b.r > W - 4).map((b) => b.text);
+    expect(over).toEqual([]);
+    expect(boxes.some((b) => b.text.includes('Бег'))).toBe(true);
+  });
+});
+
 describe('QR в подвале', () => {
   it.each(['sum-list', 'number', 'month', 'sum-neon'] as const)('читается сканером: %s', (kind) => {
     const t = [...single, ...sums].find((x) => x.kind === kind)!;
