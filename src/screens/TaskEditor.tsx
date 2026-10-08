@@ -163,9 +163,14 @@ export function TaskEditor({ task, day, kind, onClose, onBack, onSaved, draft, o
 
   const postpone = async () => {
     if (id === null) return;
-    await api.archiveTask(id);
-    await onSaved();
-    onClose();
+    try {
+      await api.archiveTask(id);
+      await onSaved();
+      onClose();
+    } catch {
+      // Не отложилось — сказать, а не молча ничего не сделать (lc-explore 04.10.2026).
+      setMessage(t.error);
+    }
   };
 
   // Удаление стирает и историю привычки — поэтому с подтверждением.

@@ -1,4 +1,4 @@
-import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { hapticFeedback } from '@tma.js/sdk-react';
 import type { HeatDay, TodayResponse, TodayTask } from '../shared/types';
 import { api } from './api';
@@ -25,8 +25,7 @@ export const bumpChange = (): number => ++changeSeq;
  * Отметка привычки за сегодня — общая для «Сегодня» и экрана привычки.
  * Экран меняется сразу, сервер догоняет; при ошибке отметка откатывается.
  */
-export function useTaskLog(setCache: Dispatch<SetStateAction<Cache>>, errorText: string) {
-  const [error, setError] = useState<string | null>(null);
+export function useTaskLog(setCache: Dispatch<SetStateAction<Cache>>, errorText: string, onError: (text: string) => void) {
 
   const log = useCallback(
     async (task: TodayTask, change: LogChange) => {
@@ -47,11 +46,11 @@ export function useTaskLog(setCache: Dispatch<SetStateAction<Cache>>, errorText:
         await api.log(task.id, change.value, change.status);
       } catch {
         patchTask(task); // откат
-        setError(errorText);
+        onError(errorText);
       }
     },
-    [setCache, errorText],
+    [setCache, errorText, onError],
   );
 
-  return { log, error, clearError: () => setError(null) };
+  return { log };
 }

@@ -84,3 +84,47 @@ test('свайп: «Вернуть» возвращает, без него — �
   await expect(page.locator('.undo-toast')).toHaveCount(0, { timeout: 8_000 });
   await expect.poll(async () => (await me.api<{ todos: { title: string }[] }>('GET', '/today')).todos.some((t) => t.title === 'Купить корм')).toBe(false);
 });
+
+// Находки /lc-explore 04.10.2026 (решение владелицы: ошибки отметок и дел — плашкой внизу, видна на любой вкладке).
+const ERR = 'Что-то пошло не так. Попробуй ещё раз.';
+
+test('свайп по делу и сразу в «Календарь»: сервер не удалил — сказано и там, дело вернулось', async ({ app: page, me }) => {
+  await me.api('POST', '/todos', { title: 'Купить батарейки' });
+  await page.reload();
+  await page.route('**/api/todos/*', (r) => (r.request().method() === 'DELETE' ? r.abort('failed') : r.fallback()));
+  await swipeLeft(page, row(page, 'Купить батарейки').locator('.swipe-body'));
+  await expect(row(page, 'Купить батарейки')).toHaveCount(0);
+  await page.locator('.tabbar button', { hasText: 'Календарь' }).click();
+  await expect(page.getByRole('status').filter({ hasText: ERR })).toBeVisible({ timeout: 8_000 });
+  await page.locator('.tabbar button', { hasText: 'Сегодня' }).click();
+  await expect(row(page, 'Купить батарейки')).toHaveCount(1);
+});
+
+test('«Потом · N»: список не загрузился — сказано и можно повторить', async ({ app: page, me }) => {
+  const later = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10);
+  await me.api('POST', '/todos', { title: 'Сдать анализы', day: later });
+  let fail = true;
+  await page.route('**/api/todos/later', (r) => (fail ? r.abort('failed') : r.fallback()));
+  await page.reload();
+  await page.getByRole('button', { name: /Потом · 1/ }).click();
+  const sheet = page.locator('.sheet');
+  await expect(sheet.getByText(ERR)).toBeVisible();
+  fail = false;
+  await sheet.getByText(ERR).click();
+  await expect(sheet.getByText('Сдать анализы')).toBeVisible();
+});
+
+test('новое дело не сохранилось — набранный текст остался в поле', async ({ app: page }) => {
+  let fail = true;
+  await page.route('**/api/todos', (r) => (fail && r.request().method() === 'POST' ? r.abort('failed') : r.fallback()));
+  await page.getByRole('button', { name: 'Дело на сегодня' }).click();
+  const input = page.getByPlaceholder('Что сделать?');
+  await input.fill('Записаться к стоматологу');
+  await input.press('Enter');
+  await expect(page.getByRole('status').filter({ hasText: ERR })).toBeVisible();
+  await expect(page.getByPlaceholder('Что сделать?')).toHaveValue('Записаться к стоматологу');
+  fail = false;
+  await input.press('Enter');
+  await expect(row(page, 'Записаться к стоматологу')).toBeVisible();
+  await expect(input).toHaveValue('');
+});
