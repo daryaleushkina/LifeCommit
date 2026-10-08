@@ -225,13 +225,25 @@ export function AddFriendSheet({ onClose }: { onClose: () => void }): ReactNode 
     setProblem(null);
     const clean = name.trim();
     if (clean.replace(/^@/, '').length < 4) return;
+    // Допечатали дальше — ответ на прежнее имя уже не нужен (он пришёл бы строкой «Позвать» рядом с итогом нового).
+    let stale = false;
     const timer = setTimeout(() => {
       // «Такого нет» — только когда сервер так и сказал (404); сеть или сбой — «что-то пошло не так».
-      api.findPerson(clean).then(setFound, (e) =>
-        setProblem(e instanceof ApiError && e.code === 'bad_username' ? fr.badUsername : e instanceof ApiError && e.status === 404 ? fr.notFound : t.error),
+      api.findPerson(clean).then(
+        (person) => {
+          if (!stale) setFound(person);
+        },
+        (e) => {
+          if (stale) return;
+          setFound(null);
+          setProblem(e instanceof ApiError && e.code === 'bad_username' ? fr.badUsername : e instanceof ApiError && e.status === 404 ? fr.notFound : t.error);
+        },
       );
     }, 400);
-    return () => clearTimeout(timer);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
   }, [name, fr.badUsername, fr.notFound, t.error]);
 
   const sendLink = () => {

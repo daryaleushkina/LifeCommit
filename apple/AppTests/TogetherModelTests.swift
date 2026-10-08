@@ -92,15 +92,19 @@ struct TogetherModelTests {
         let (server, m) = setup()
         await m.together.loadGroup(1)
         let gate = server.hold("GET groups/1")
-        let reading = Task { await m.together.loadGroup(1) }
+        let reading = Task {
+            await m.together.loadGroup(1)
+            #expect(m.together.details[1]?.items.first?.done == true, "по завершении чтения старый ответ не снял отметку")
+        }
         await server.seen("GET groups/1", times: 2)
         let mark = server.hold("PUT groups/1/items/11/mark")
         let marking = Task { await m.together.mark(groupId: 1, Self.trash()) }
         await server.seen("PUT groups/1/items/11/mark")
         await gate.open()
-        await reading.value
+        // Перечитка теперь ждёт правку: держать её до await reading означало бы ждать друг друга.
         #expect(m.together.details[1]?.items.first?.done == true, "старый ответ без отметки не лёг поверх неё")
         await mark.open()
+        await reading.value
         await marking.value
         #expect(m.together.details[1]?.items.first?.done == true)
     }
@@ -300,12 +304,37 @@ struct TogetherModelTests {
     func removalNoFlash() async {
         let (server, m) = setup()
         await m.together.loadGroup(1)
+        let delete = server.hold("DELETE groups/1/items/11")
         m.together.removeItem(groupId: 1, Self.trash(), skipDay: nil)
-        await m.flushRemoval()?.value
+        let commit = m.flushRemoval()
+        await server.seen("DELETE groups/1/items/11")
+        for day in [Self.day, "2026-10-07", "2026-09-01", "2026-12-31"] {
+            #expect(TogetherModel.isRemoved(m, 1, 11, day: day), "дело целиком скрыто во всех днях, пока удаляется")
+        }
+        await delete.open()
+        await commit?.value
         #expect(!m.isRemoved(TogetherModel.removalKey(1, 11)))
         #expect(!m.today.groups[0].items.contains { $0.id == 11 }, "«Сегодня» уже без дела, когда строка перестала быть скрытой")
         #expect(!(m.together.details[1]?.items.contains { $0.id == 11 } ?? true), "экран группы — тоже")
         #expect(server.calls("DELETE groups/1/items/11").count == 1)
+    }
+
+    @Test("открыли другую группу, пока уходит удаление: её ответ не теряется — дождались правки и спросили заново")
+    func loadDuringEdit() async {
+        let (server, m) = setup()
+        server.groups.withLock { $0[2] = GroupToday(id: 2, title: "Бег", role: .member, settings: GroupSettings(), upcoming: []) }
+        let delete = server.hold("DELETE groups/1/items/11")
+        m.together.removeItem(groupId: 1, Self.trash(), skipDay: nil)
+        let commit = m.flushRemoval()
+        await server.seen("DELETE groups/1/items/11")
+        let opening = Task { await m.together.loadGroup(2) }
+        await server.seen("GET groups/2")
+        await delete.open()
+        await commit?.value
+        await opening.value
+        #expect(m.together.details[2]?.title == "Бег", "экран группы не пустой")
+        #expect(server.calls("GET groups/2").count == 2, "устаревшее чтение повторено после правки")
+        #expect(!m.together.missing.contains(2))
     }
 
     @Test("«только сегодня» прячет один день: в другие дни и на «Сегодня» дело видно, пока идёт «Вернуть»")
@@ -315,7 +344,24 @@ struct TogetherModelTests {
         #expect(m.isRemoved(TogetherModel.removalKey(1, 12, day: "2026-10-07")))
         #expect(!m.isRemoved(TogetherModel.removalKey(1, 12)))
         #expect(!m.isRemoved(TogetherModel.removalKey(1, 12, day: Self.day)))
+        #expect(TogetherModel.isRemoved(m, 1, 12, day: "2026-10-07"))
+        #expect(!TogetherModel.isRemoved(m, 1, 12, day: Self.day))
         m.undoRemoval()
+    }
+
+    @Test("прошлая ошибка настройки очищается при открытии шторки и при выходе из аккаунта")
+    func clearSettingsFailed() async {
+        let (server, m) = setup()
+        await m.together.loadGroup(1)
+        server.fail("PATCH groups/1", times: 2)
+        m.together.rename(groupId: 1, title: "Дом")
+        await until("ошибка переименования") { m.together.settingsFailed == 1 }
+        m.together.clearSettingsFailed()
+        #expect(m.together.settingsFailed == nil)
+        m.together.rename(groupId: 1, title: "Дом")
+        await until("повторная ошибка переименования") { m.together.settingsFailed == 1 }
+        m.together.reset()
+        #expect(m.together.settingsFailed == nil)
     }
 
     @Test("две отметки подряд: перечитка после первой, пока вторая ещё у сервера, не снимает вторую галочку")
@@ -327,9 +373,11 @@ struct TogetherModelTests {
         let b = Task { await m.together.mark(groupId: 1, second) }
         await server.seen("PUT groups/1/items/13/mark")
         // Первая отметка дошла и перечитала экран, пока вторая ещё идёт.
-        await m.together.mark(groupId: 1, Self.trash())
+        let a = Task { await m.together.mark(groupId: 1, Self.trash()) }
+        await server.seen("GET groups/1", times: 2)
         #expect(m.together.details[1]?.items.first { $0.id == 13 }?.done == true, "вторая галочка на месте")
         await held.open()
+        await a.value
         await b.value
         #expect(m.together.details[1]?.items.first { $0.id == 13 }?.done == true)
     }

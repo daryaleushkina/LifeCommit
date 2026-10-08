@@ -38,6 +38,16 @@ struct AppModelTests {
         #expect(!server.calls.contains { $0.hasPrefix("GET heatmap") })
     }
 
+    @Test("два запуска подряд: одна сессия, приложение готово")
+    func startOnce() async {
+        let server = FakeServer(today: Self.today())
+        let m = AppModel(api: server.api, tokens: MemoryTokenStore("key"))
+        await m.start()
+        await m.start()
+        #expect(server.calls("POST session").count == 1)
+        #expect(m.phase == .ready)
+    }
+
     @Test("перечитали «Сегодня», пока добавляли дело: старый ответ не стирает дело — спрашиваем заново")
     func refreshDuringAddTodo() async {
         let server = FakeServer(today: Self.today())

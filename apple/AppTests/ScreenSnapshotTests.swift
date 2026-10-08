@@ -262,6 +262,61 @@ struct ScreenSnapshotTests {
         }
     }
 
+    @Test("Настройки группы: переименование не сохранилось, ошибка видна в шторке", arguments: [ColorScheme.light, .dark])
+    func groupSettingsError(scheme: ColorScheme) async throws {
+        let server = FakeServer(today: Self.today)
+        server.groups.withLock { $0[Self.family.id] = Self.family }
+        let m = AppModel(api: server.api, tokens: MemoryTokenStore())
+        m.showForTests(user: Self.user, today: Self.today)
+        await m.together.loadGroup(Self.family.id)
+        server.fail("PATCH groups/1")
+        // Ошибка возникает в уже открытой шторке: при новом открытии onAppear очищает прошлую ошибку.
+        let screen = snapshotScreen(GroupSettingsSheet(group: Self.family, onLeft: {}), model: m, scheme: scheme, named: "group-settings-error", sheet: true)
+            .onAppear { m.together.rename(groupId: Self.family.id, title: "Новое название") }
+        #if os(iOS)
+        let controller = UIHostingController(rootView: screen.ignoresSafeArea())
+        let previousWindow = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows).first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: try #require(previousWindow?.windowScene))
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
+        }
+        controller.view.layoutIfNeeded()
+        #else
+        let host = NSHostingView(rootView: screen.frame(width: 420, height: 860))
+        host.frame = CGRect(x: 0, y: 0, width: 420, height: 860)
+        host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+        // Первое рисование запускает onAppear; этот кадр не становится эталоном.
+        await withCheckedContinuation { continuation in
+            Snapshotting<NSView, NSImage>.image.snapshot(host).run { _ in continuation.resume() }
+        }
+        #endif
+        await TogetherModelTests().until("ошибка переименования видна в шторке") { m.together.settingsFailed == Self.family.id }
+        try #require(m.together.settingsFailed == Self.family.id)
+        #expect(m.together.details[Self.family.id]?.title == Self.family.title, "название откатилось после ошибки")
+        withSnapshotTesting(record: recording) {
+            #if os(iOS)
+            controller.view.layoutIfNeeded()
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.preferredRange = .standard
+            let image = UIGraphicsImageRenderer(bounds: controller.view.bounds, format: format).image { _ in
+                _ = controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+            }
+            assertSnapshot(of: image, as: .image(precision: 0.999), named: "iphone-\(scheme == .dark ? "dark" : "light")-group-settings-error", testName: "screen")
+            #else
+            assertSnapshot(of: host, as: .image(precision: 0.999), named: "mac-\(scheme == .dark ? "dark" : "light")-group-settings-error", testName: "screen")
+            #endif
+        }
+        #expect(m.together.settingsFailed == Self.family.id, "снимали открытую шторку, не открывали её повторно")
+    }
+
     @Test("Групповое дело: новое; правка «по очереди» каждый день; цель", arguments: [ColorScheme.light, .dark])
     func groupItem(scheme: ColorScheme) {
         let m = togetherModel()
@@ -321,8 +376,8 @@ struct ScreenSnapshotTests {
     // MARK: Снимок
 
     /// sheet — шторка: в приложении она на своей подложке (presentationBackground — palette.surface), а не на фоне экрана.
-    private func check(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String, sheet: Bool = false) {
-        let screen = ZStack {
+    private func snapshotScreen(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String, sheet: Bool) -> some View {
+        ZStack {
             if sheet { Palette.of(scheme).surface } else { GlowBackground() }
             view
         }
@@ -335,14 +390,20 @@ struct ScreenSnapshotTests {
         .font(.onest(16))
         .foregroundStyle(Palette.of(scheme).text)
         .tint(Palette.of(scheme).accent)
+    }
 
-        // LC_RECORD=1 — переснять все (намеренная правка вида), LC_RECORD=missing — снять только новые экраны.
-        let record: SnapshotTestingConfiguration.Record = switch ProcessInfo.processInfo.environment["LC_RECORD"] {
+    // LC_RECORD=1 — переснять все (намеренная правка вида), LC_RECORD=missing — снять только новые экраны.
+    private var recording: SnapshotTestingConfiguration.Record {
+        switch ProcessInfo.processInfo.environment["LC_RECORD"] {
         case "1": .all
         case "missing": .missing
         default: .never
         }
-        withSnapshotTesting(record: record) {
+    }
+
+    private func check(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String, sheet: Bool = false) {
+        let screen = snapshotScreen(view, model: model, scheme: scheme, named: name, sheet: sheet)
+        withSnapshotTesting(record: recording) {
             #if os(iOS)
             let controller = UIHostingController(rootView: screen)
             // Масштаб 1: эталоны в git весят в 9 раз меньше, чем при 3×, а вёрстку видно так же.

@@ -436,7 +436,7 @@ describe.skipIf(!ready)('отметки и цели', () => {
 
   // Решение владелицы 07.10.2026: день вне последней недели — отказ, а не отметка «за сегодня» (календарь давал отметить
   // любой прошлый день, и сервер тихо ставил её на сегодня — группа видела «сделано», хотя сегодня никто не делал).
-  it('отметка задним числом — до недели назад; раньше, в будущем и не день — 400 bad_day, сегодня не отмечено', async () => {
+  it('отметка: сегодня и до недели назад — 200; раньше, в будущем и не день — 400 bad_day', async () => {
     const { id, owner } = await family([]);
     const day = await todayOf(owner);
     const daily = await addItem(owner, id, { title: 'Зарядка', mode: 'one', rrule: 'FREQ=DAILY', day: addDays(day, -10) });
@@ -448,8 +448,30 @@ describe.skipIf(!ready)('отметки и цели', () => {
       expect(res.status, String(bad)).toBe(400);
       expect(res.body.error, String(bad)).toBe('bad_day');
     }
+    expect((await mark(day)).status).toBe(200);
     const days = (await sb.from('group_item_marks').select('day').eq('item_id', daily).order('day')).data?.map((m) => m.day);
-    expect(days).toEqual([addDays(day, -7), addDays(day, -3)]);
+    expect(days).toEqual([addDays(day, -7), addDays(day, -3), day]);
+  });
+
+  it('отметка за сегодня в часовом поясе человека, когда в UTC ещё вчера', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-06T22:30:00Z'));
+      const owner = await user({ timezone: 'Asia/Ho_Chi_Minh' });
+      const day = await todayOf(owner);
+      expect(day).toBe('2026-10-07');
+      expect(day).not.toBe(new Date().toISOString().slice(0, 10));
+      const created = await owner.call('POST', '/groups', { title: 'Семья', kind: 'family' });
+      expect(created.status).toBe(201);
+      const id = created.body.id as number;
+      const daily = await addItem(owner, id, { title: 'Зарядка', mode: 'one', rrule: 'FREQ=DAILY', day });
+      expect((await owner.call('PUT', `/groups/${id}/items/${daily}/mark`, { day })).status).toBe(200);
+      const marks = await sb.from('group_item_marks').select('day').eq('item_id', daily);
+      expect(marks.error).toBeNull();
+      expect(marks.data?.map((m) => m.day)).toEqual([day]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('цель: вклады копятся; кривая сумма — 400; не цель, удалённая и чужая — 404', async () => {

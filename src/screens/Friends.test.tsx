@@ -340,6 +340,26 @@ describe('«Позвать друга»', () => {
     expect(page.getByText('Такого человека нет в LifeCommit').elements()).toEqual([]);
   });
 
+  // code-review 07.10.2026: ответ на «masha», пришедший, когда уже напечатали «masha2», не должен остаться строкой с
+  // «Позвать» рядом с «такого нет».
+  it('ответ поиска на старое имя не показывается: ввели дальше — виден только итог для нового', async () => {
+    m.api.friends.mockResolvedValue(list());
+    let release!: (v: { person: { id: number; first_name: string; username: string; photo_url: null }; status: 'none' }) => void;
+    m.api.findPerson
+      .mockImplementationOnce(() => new Promise((r) => (release = r)))
+      .mockRejectedValueOnce(new ApiError(404, 'not_found'));
+    await renderApp(<AddFriendSheet onClose={() => {}} />);
+    const input = page.getByRole('textbox', { name: 'Найти по @username' });
+    await input.fill('masha');
+    await expect.poll(() => m.api.findPerson.mock.calls.length).toBe(1);
+    await input.fill('masha2');
+    // Ответ на «masha» приходит, пока ждём, когда допечатают «masha2», — потом итог для нового имени.
+    release({ person: { id: 9, first_name: 'Маша', username: 'masha', photo_url: null }, status: 'none' });
+    await expect.element(page.getByText('Такого человека нет в LifeCommit')).toBeVisible();
+    expect(page.getByRole('button', { name: 'Позвать' }).elements()).toEqual([]);
+    expect(page.getByText('Маша', { exact: true }).elements()).toEqual([]);
+  });
+
   it('вне Telegram ссылка открывается в браузере; позвать не вышло — «что-то пошло не так»', async () => {
     caches.friends = list();
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);

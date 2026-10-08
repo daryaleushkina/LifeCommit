@@ -238,11 +238,15 @@ struct AddFriendSheet: View {
                 if (error as? APIError)?.isSignedOut == true { return model.signOutLocally() }
                 guard !Task.isCancelled else { return }
                 // «Такого нет» — только когда сервер так и сказал (404); сеть или сбой — «что-то пошло не так».
-                let api = error as? APIError
-                if api?.code != "bad_username" && api?.status != 404 {
+                let kind = FriendsLogic.searchProblem(error)
+                if kind == .error {
                     friendsLog.notice("find person failed: \(String(describing: error), privacy: .public)")
                 }
-                problem = api?.code == "bad_username" ? t.fr.badUsername : api?.status == 404 ? t.fr.notFound : t.error
+                problem = switch kind {
+                case .badUsername: t.fr.badUsername
+                case .notFound: t.fr.notFound
+                case .error: t.error
+                }
             }
         }
     }

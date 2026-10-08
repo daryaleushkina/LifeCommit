@@ -18,10 +18,10 @@ const existing = (p: Partial<GroupDayItem> = {}): GroupDayItem => ({
   target: null, total: null, unit: null, goal_until: null, start: '2026-09-29', rrule: 'FREQ=WEEKLY;BYDAY=TU', assignees: [1, 2], ...p,
 });
 
-function setup(item?: GroupDayItem) {
+function setup(item?: GroupDayItem, today = TODAY) {
   const onSaved = vi.fn();
   const onClose = vi.fn();
-  const r = renderApp(<GroupItemSheet group={group} me={ME} today={TODAY} item={item} onSaved={onSaved} onClose={onClose} />);
+  const r = renderApp(<GroupItemSheet group={group} me={ME} today={today} item={item} onSaved={onSaved} onClose={onClose} />);
   return { r, onSaved, onClose };
 }
 
@@ -177,6 +177,21 @@ describe('новое дело', () => {
 });
 
 describe('правка дела', () => {
+  it('перенесли еженедельное дело на среду — повтор пересобран по новому дню', async () => {
+    await setup(existing(), '2026-09-29').r;
+    await page.getByRole('button', { name: /^Когда/ }).click();
+    await page.getByRole('dialog', { name: 'Когда' }).getByRole('button', { name: '30', exact: true }).click();
+    await page.getByRole('button', { name: 'Сохранить' }).click();
+    expect(api.updateItem).toHaveBeenCalledWith(10, 7, expect.objectContaining({ rrule: 'FREQ=WEEKLY;BYDAY=WE', day: '2026-09-30' }));
+  });
+
+  it('заменили еженедельный повтор на каждый день — прежнее правило не отправляется', async () => {
+    await setup(existing()).r;
+    await repeat('Каждый день');
+    await page.getByRole('button', { name: 'Сохранить' }).click();
+    expect(api.updateItem).toHaveBeenCalledWith(10, 7, expect.objectContaining({ rrule: 'FREQ=DAILY' }));
+  });
+
   it('поля из дела, «Сохранить» отправляет правку', async () => {
     const { r, onSaved } = setup(existing());
     await r;

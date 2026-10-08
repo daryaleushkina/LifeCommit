@@ -3,6 +3,7 @@
 // сервер догоняет; не вышло — как было и сказано. Ответ, начатый раньше правки, её не затирает. Действия, которые
 // человек может «бросить» (закрыл шторку, ушёл назад), идут в задачах модели, а не экрана: так запрос не отменится
 // вместе с экраном (так же у Android, /lc-review 06.10).
+import Foundation
 import LifeCommitKit
 import Observation
 import os
@@ -86,6 +87,7 @@ final class TogetherModel {
         showFailed = nil
         showOpen = false
         asked = false
+        resumeEditWaiters()
     }
 
     /// Ключ больше не пускает — на вход; остальное — в лог (экран решает сам, что сказать).
@@ -108,6 +110,32 @@ final class TogetherModel {
     /// Правки, которые ещё идут на сервер (как trackEdit в мини-аппе и track в AppModel): ответ чтения, пришедший, пока
     /// правка у сервера, её ещё не знает — его не применяем; после правки экран перечитывается заново.
     private var editsInFlight = 0
+    @ObservationIgnored private var editWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+    private func resumeEditWaiters() {
+        let waiting = editWaiters.values
+        editWaiters = [:]
+        waiting.forEach { $0.resume() }
+    }
+
+    /// Открытый экран ждёт все правки; закрытый экран и прошлый аккаунт ждать больше не должны.
+    private func settleEdits() async {
+        guard editsInFlight > 0 else { return }
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled || editsInFlight == 0 {
+                    continuation.resume()
+                } else {
+                    editWaiters[id] = continuation
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.editWaiters.removeValue(forKey: id)?.resume()
+            }
+        }
+    }
 
     private func track<T>(_ edit: () async throws -> T) async throws -> T {
         version += 1
@@ -115,6 +143,7 @@ final class TogetherModel {
         defer {
             editsInFlight -= 1
             version += 1
+            if editsInFlight == 0 { resumeEditWaiters() }
         }
         return try await edit()
     }
@@ -145,19 +174,30 @@ final class TogetherModel {
     /// quiet — чтение в фоне (после отметки на «Сегодня», после удаления): «группа не найдена» — только если сервер так и
     /// сказал (404), а не когда моргнула сеть, а экран группы ещё ни разу не открывали.
     func loadGroup(_ id: Int, quiet: Bool = false) async {
-        let seq = version, session = epoch
-        do {
-            let g = try await api.group(id: id)
-            if fresh(seq, session) {
-                details[id] = g
-                missing.remove(id)
+        let session = epoch
+        for _ in 0..<4 {
+            guard session == epoch, !Task.isCancelled else { return }
+            let seq = version
+            do {
+                let g = try await api.group(id: id)
+                guard session == epoch, !Task.isCancelled else { return }
+                if fresh(seq, session) {
+                    details[id] = g
+                    missing.remove(id)
+                    return
+                }
+                // Ответ ещё не знает правок: сначала сервер примет их все, потом спросим заново.
+                await settleEdits()
+            } catch {
+                guard session == epoch, !Task.isCancelled, !(error is CancellationError) else { return }
+                // «Не найдено» — только когда группы правда нет (404) или показать нечего; моргнула сеть — экран как был.
+                if (error as? APIError)?.status == 404 || (!quiet && details[id] == nil) { missing.insert(id) }
+                handle(error, "group \(id)")
+                return
             }
-        } catch {
-            guard session == epoch, !(error is CancellationError) else { return }
-            // «Не найдено» — только когда группы правда нет (404) или показать нечего; моргнула сеть — экран как был.
-            if (error as? APIError)?.status == 404 || (!quiet && details[id] == nil) { missing.insert(id) }
-            handle(error, "group \(id)")
         }
+        guard session == epoch, !Task.isCancelled else { return }
+        togetherLog.notice("group \(id): no fresh response after 4 attempts")
     }
 
     /// Новая группа: только название. Экран новой группы — сразу целиком, и в списке она уже есть.

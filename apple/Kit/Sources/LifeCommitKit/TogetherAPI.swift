@@ -1,6 +1,7 @@
 // Раздел «Вместе»: группы и друзья — модели как shared/groups.ts и shared/types.ts, вызовы как api.groups/friends/… в
 // src/api.ts. Пути и коды ошибок — docs/mobile.md («Группы», «Друзья»). Новое поле на сервере — сюда в том же коммите.
 import Foundation
+import os
 
 public enum GroupKind: String, Codable, Sendable, CaseIterable {
     case family, sport, pair, friends, work, other
@@ -22,7 +23,13 @@ public enum GroupRole: String, Codable, Sendable {
 
     /// Незнакомая роль — просто участник (меньше прав на экране; сервер всё равно проверяет сам).
     public init(from decoder: Decoder) throws {
-        self = GroupRole(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .member
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if let role = GroupRole(rawValue: raw) {
+            self = role
+        } else {
+            apiLog.error("GroupRole: unknown role \(raw, privacy: .public), using member")
+            self = .member
+        }
     }
 }
 
@@ -34,7 +41,17 @@ public struct Lossy<Value: Codable & Sendable & Equatable>: Codable, Sendable, E
     public init(wrappedValue: Value?) { self.wrappedValue = wrappedValue }
 
     public init(from decoder: Decoder) throws {
-        wrappedValue = try? decoder.singleValueContainer().decode(Value.self)
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() {
+            wrappedValue = nil
+            return
+        }
+        do {
+            wrappedValue = try c.decode(Value.self)
+        } catch {
+            apiLog.error("discarded \(String(reflecting: Value.self), privacy: .public): \(String(describing: error), privacy: .public)")
+            wrappedValue = nil
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -54,9 +71,10 @@ public struct LossyList<Element: Codable & Sendable & Equatable>: Codable, Senda
         var c = try decoder.unkeyedContainer()
         var out: [Element] = []
         while !c.isAtEnd {
-            if let x = try? c.decode(Element.self) {
-                out.append(x)
-            } else {
+            do {
+                out.append(try c.decode(Element.self))
+            } catch {
+                apiLog.error("discarded \(String(reflecting: Element.self), privacy: .public): \(String(describing: error), privacy: .public)")
                 // Пропустить непонятный элемент: без этого контейнер стоял бы на нём.
                 _ = try c.decode(JSONValue.self)
             }

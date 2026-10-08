@@ -398,6 +398,14 @@ public enum FriendsLogic {
         }
     }
 
+    public enum SearchProblem: Equatable, Sendable { case badUsername, notFound, error }
+
+    public static func searchProblem(_ error: Error) -> SearchProblem {
+        guard let api = error as? APIError else { return .error }
+        if api.status == 400 && api.code == "bad_username" { return .badUsername }
+        return api.status == 404 ? .notFound : .error
+    }
+
     /// Поиск по @username — когда напечатали хотя бы 4 знака (без «@»).
     public static func searchable(_ name: String) -> Bool {
         let clean = name.trimmingCharacters(in: .whitespaces)

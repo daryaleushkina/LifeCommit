@@ -300,19 +300,20 @@ struct GroupItemFormTests {
 
 @Suite("Вместе: разбор ответа терпит чужое")
 struct TogetherTolerantTests {
-    static func item(_ extra: String) -> String {
-        #"{"id":1,"title":"Отпуск","mode":"goal","time":null,"duration_min":null,"due_day":null,"carried":false,"recurring":false,"people":[1],"all_members":false,"rotate":false,"turn":null,"for_me":true,"can_mark":false,"done":false,"done_by":[],"target":100,"total":5,"goal_until":null,"start":"2026-10-06","rrule":null,"assignees":[]"# + extra + "}"
+    static func item(_ extra: String, id: Int = 1) -> String {
+        #"{"id":\#(id),"title":"Отпуск","mode":"goal","time":null,"duration_min":null,"due_day":null,"carried":false,"recurring":false,"people":[1],"all_members":false,"rotate":false,"turn":null,"for_me":true,"can_mark":false,"done":false,"done_by":[],"target":100,"total":5,"goal_until":null,"start":"2026-10-06","rrule":null,"assignees":[]"# + extra + "}"
     }
 
     @Test("кривая единица цели — без единицы, а не сбой всего «Сегодня»; незнакомый вид дела пропускается; незнакомая роль — участник")
     func tolerant() throws {
+        let unknown = Self.item(#","unit":null"#, id: 4).replacingOccurrences(of: #""mode":"goal""#, with: #""mode":"quest""#)
         let json = #"{"id":3,"title":"Семья","kind":"family","color":null,"role":"guest","members":[],"planned":0,"done":0,"items":["# +
-            Self.item(#","unit":{"type":"x"}"#) + "," + Self.item(#","unit":5"#) + "," +
-            Self.item(#","unit":{"type":"money","forms":["₽","₽","₽"],"currency":"₽"}"#) + "," +
-            Self.item(#","unit":null"#).replacingOccurrences(of: #""mode":"goal""#, with: #""mode":"quest""#) + "]}"
+            Self.item(#","unit":{"type":"x"}"#) + "," + unknown + "," + Self.item(#","unit":5"#, id: 2) + "," +
+            Self.item(#","unit":{"type":"money","forms":["₽","₽","₽"],"currency":"₽"}"#, id: 3) + "]}"
         let g = try APIClient.decoder.decode(GroupToday.self, from: Data(json.utf8))
         #expect(g.role == .member)
-        #expect(g.items.count == 3, "незнакомый вид дела пропущен, остальные на месте")
+        #expect(g.items.map(\.id) == [1, 2, 3], "пропущено ровно незнакомое дело, следующие за ним тоже на месте")
+        try #require(g.items.count == 3)
         #expect(g.items[0].unit == nil && g.items[1].unit == nil)
         #expect(g.items[2].unit?.currency == "₽")
         let block = try APIClient.decoder.decode(GroupDayBlock.self, from: Data((#"{"day":"2026-10-06","group":{"id":3,"title":"Семья","kind":"family","members":[]},"items":["# + Self.item(#","unit":{"type":"x"}"#) + "]}").utf8))
@@ -379,6 +380,18 @@ struct TogetherMiscTests {
         #expect(FriendsLogic.habitNote(FriendHabit(id: 1, title: "", kind: .abstain, status: .clean, cleanDays: 5), strings: t) == ("5 дней без этого", true))
         #expect(FriendsLogic.habitNote(FriendHabit(id: 1, title: "", kind: .abstain, cleanDays: 0), strings: t) == (nil, false))
         #expect(!FriendsLogic.searchable("@ann") && FriendsLogic.searchable("@anna") && FriendsLogic.searchable("anna"))
+    }
+
+    @Test("поиск: неверное имя — 400 bad_username, такого нет — 404, прочие ошибки — сбой")
+    func searchProblem() {
+        // Что сказать, если поиск не удался: «такого нет» — только когда сервер так и ответил (404).
+        #expect(FriendsLogic.searchProblem(APIError(.http(status: 400, code: "bad_username"))) == .badUsername)
+        #expect(FriendsLogic.searchProblem(APIError(.http(status: 404, code: "not_found"))) == .notFound)
+        #expect(FriendsLogic.searchProblem(APIError(.http(status: 500, code: "internal"))) == .error)
+        #expect(FriendsLogic.searchProblem(APIError(.http(status: 500, code: "bad_username"))) == .error)
+        #expect(FriendsLogic.searchProblem(APIError(.http(status: 400, code: "bad_request"))) == .error)
+        #expect(FriendsLogic.searchProblem(APIError(.network)) == .error)
+        #expect(FriendsLogic.searchProblem(URLError(.notConnectedToInternet)) == .error)
     }
 
     @Test("свайп по общему делу: повторяющееся — спросить «только сегодня или у всех», разовое и цель — сразу")
