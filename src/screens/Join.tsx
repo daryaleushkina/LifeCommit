@@ -21,9 +21,15 @@ export function Join({ code, onJoined, onClose }: Props): ReactNode {
   const [busy, setBusy] = useState(false);
   useBackButton(onClose);
 
+  const [error, setError] = useState(false);
+  // «Не найдено» и «устарело» — только когда так ответил сервер; моргнула сеть — «попробуйте ещё раз», кнопка жива.
+  const problemOf = (e: unknown): string | null =>
+    e instanceof ApiError && e.code === 'invite_expired' ? j.expired : e instanceof ApiError && e.status === 404 ? j.notFound : null;
   useEffect(() => {
-    fetchInto.invitation(code).then(setInv, (e) => setProblem(e instanceof ApiError && e.code === 'invite_expired' ? j.expired : j.notFound));
-  }, [code, j.expired, j.notFound]);
+    fetchInto.invitation(code).then(setInv, (e: unknown) =>
+      setProblem(e instanceof ApiError && e.code === 'invite_expired' ? j.expired : e instanceof ApiError && e.status === 404 ? j.notFound : t.error),
+    );
+  }, [code, j.expired, j.notFound, t.error]);
 
   if (problem) {
     return (
@@ -39,13 +45,17 @@ export function Join({ code, onJoined, onClose }: Props): ReactNode {
 
   const join = async () => {
     setBusy(true);
+    setError(false);
     try {
       const { id } = await api.join(code);
       // Экран группы открывается сразу целиком, а не пустым.
       await fetchInto.group(id).catch(() => null);
       onJoined(id);
-    } catch {
-      setProblem(j.notFound);
+    } catch (e) {
+      const p = problemOf(e);
+      if (p) setProblem(p);
+      else setError(true);
+      setBusy(false);
     }
   };
 
@@ -91,9 +101,12 @@ export function Join({ code, onJoined, onClose }: Props): ReactNode {
           {j.open}
         </button>
       ) : (
-        <button className="act primary wide" disabled={busy} onClick={() => void join()}>
-          {j.btn}
-        </button>
+        <>
+          {error && <p className="error">{t.error}</p>}
+          <button className="act primary wide" disabled={busy} onClick={() => void join()}>
+            {j.btn}
+          </button>
+        </>
       )}
       <button className="quiet-link" onClick={onClose}>
         {inv.member ? j.already : j.later}
