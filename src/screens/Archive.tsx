@@ -46,9 +46,14 @@ export function Archive({ archived, onClose, onChanged }: Props): ReactNode {
       });
       if (answer !== 'delete') return;
     }
-    await api.deleteTask(id);
-    await onChanged(true);
-    drop(id);
+    try {
+      await api.deleteTask(id);
+      await onChanged(true);
+      drop(id);
+    } catch {
+      // Не удалилось — привычка остаётся в списке, сказано (lc-explore 04.10.2026).
+      setMessage(t.error);
+    }
   };
 
   return (

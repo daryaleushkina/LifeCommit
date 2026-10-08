@@ -237,6 +237,17 @@ describe('существующая привычка', () => {
     expect(p.onSaved).toHaveBeenCalledWith();
   });
 
+  // lc-explore 04.10.2026: «Отложить» при сбое молча ничего не делало.
+  it('«Отложить» не прошло — сказано, редактор открыт', async () => {
+    m.api.archiveTask.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const p = props();
+    await renderApp(<TaskEditor task={task()} {...p} />);
+    await page.getByRole('button', { name: 'Отложить' }).click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    expect(p.onClose).not.toHaveBeenCalled();
+    expect(p.onSaved).not.toHaveBeenCalled();
+  });
+
   it('«Удалить» вне Telegram — сразу, вместе с картой', async () => {
     const p = props();
     await renderApp(<TaskEditor task={task()} {...p} />);

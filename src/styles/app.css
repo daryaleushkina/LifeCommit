@@ -118,8 +118,8 @@ h1, h2, p { margin: 0; }
 /* Место снизу — отдельным пустым элементом, а не padding-bottom контейнера прокрутки: WebKit на iPhone нижний padding
    flex-контейнера в высоту прокрутки не считает. Календарь «не листался», а низ списка лежал под панелью
    (03.10.2026, замер с телефона: scrollHeight = clientHeight = 824, низ списка ~790, панель с 730). */
-.app-shell:not(.center)::after { content: ''; flex: none; height: calc(var(--app-inset-bottom) + 32px); }
-.app-shell.with-tabs::after { height: calc(var(--app-inset-bottom) + 96px); }
+.app-shell:not(.center)::after { content: ''; flex: none; height: calc(var(--app-inset-bottom) + max(32px, var(--removal-space, 0px))); }
+.app-shell.with-tabs::after { height: calc(var(--app-inset-bottom) + max(96px, var(--removal-space, 0px))); }
 .app-shell.center { align-items: center; justify-content: center; text-align: center; gap: 20px; min-height: var(--app-height); padding-bottom: calc(var(--app-inset-bottom) + 32px); }
 .muted { color: var(--muted); }
 .error { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--warn-soft); color: var(--warn); font-size: 14px; }
@@ -425,6 +425,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .todo-list.flat { background: var(--bg); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .later-day h3 { margin: 14px 4px 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
 .later-day h3::first-letter { text-transform: uppercase; }
+.later-retry { text-align: left; }
 .voice-section { margin: 16px 4px 0; }
 .todo-tile { flex: none; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
 
@@ -691,10 +692,14 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 @media (prefers-reduced-motion: reduce) { .swipe-body, .swipe-actions, .swipe-pill { transition: none; } }
 
 /* «Удалено · Вернуть» — внизу над панелью, 5 секунд. */
-.undo-toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--app-inset-bottom) + 104px); z-index: 40; min-height: 52px; padding: 6px 8px 6px 16px; border-radius: 16px; background: color-mix(in srgb, var(--text) 92%, transparent); color: var(--bg); display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); font-size: 15px; animation: toast-up 200ms var(--ease-out); transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out); }
+.undo-toasts { position: fixed; left: 16px; right: 16px; bottom: calc(var(--app-inset-bottom) + 104px); z-index: 60; display: flex; flex-direction: column; gap: 8px; }
+.undo-toast { min-height: 52px; padding: 6px 8px 6px 16px; border-radius: 16px; background: color-mix(in srgb, var(--text) 92%, transparent); color: var(--bg); display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); font-size: 15px; animation: toast-up 200ms var(--ease-out); transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out); }
 .undo-toast span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .undo-toast button { flex: none; height: 40px; padding: 0 14px; border-radius: 12px; background: color-mix(in srgb, var(--bg) 16%, transparent); color: var(--bg); font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .undo-toast.out { opacity: 0; transform: translateY(8px); }
+/* Сообщение внизу (ошибка отметки, дела, удаления): текст переносится; при плашке «Вернуть» — над ней. */
+.undo-toast.notice { padding-right: 16px; }
+.undo-toast.notice span { white-space: normal; overflow-wrap: anywhere; }
 @keyframes toast-up { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) { .undo-toast { animation: none; transition: none; } }
 
