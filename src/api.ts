@@ -122,10 +122,11 @@ export const api = {
     call<{ user: UserSettings; start_param: string | null; is_new: boolean }>('POST', '/session', { timezone }),
   today: () => call<TodayResponse>('GET', '/today'),
   createTask: (input: TaskInput) => call<{ id: number }>('POST', '/tasks', input),
-  createTasks: (tasks: TaskInput[]) => call<{ ids: number[] }>('POST', '/tasks/batch', { tasks }),
+  /** keys — ключи повтора по строкам: повтор с теми же ключами не задваивает (worker/requestKey.ts). */
+  createTasks: (tasks: TaskInput[], keys?: string[]) => call<{ ids: number[] }>('POST', '/tasks/batch', { tasks, keys }),
   voice,
   createTodo: (input: TodoInput) => call<{ id: number }>('POST', '/todos', input),
-  createTodos: (todos: TodoInput[]) => call<{ ids: number[] }>('POST', '/todos/batch', { todos }),
+  createTodos: (todos: TodoInput[], keys?: string[]) => call<{ ids: number[] }>('POST', '/todos/batch', { todos, keys }),
   updateTodo: (id: number, patch: { title?: string; day?: string; time?: string | null; done?: boolean; on?: string; location?: string; hidden?: boolean }) =>
     call<{ ok: true }>('PATCH', `/todos/${id}`, patch),
   calendar: (from: string, to: string) => call<{ today: string; todos: Todo[]; groups: GroupDayBlock[] }>('GET', `/calendar?from=${from}&to=${to}`),
@@ -187,7 +188,7 @@ export const api = {
   disconnectGroupChat: (id: number) => call<{ ok: true }>('DELETE', `/groups/${id}/chat`),
   invitation: (code: string) => call<Invitation>('GET', `/invites/${code}`),
   join: (code: string) => call<{ id: number }>('POST', `/invites/${code}/join`),
-  createItem: (groupId: number, input: GroupItemInput) => call<{ id: number }>('POST', `/groups/${groupId}/items`, input),
+  createItem: (groupId: number, input: GroupItemInput, key?: string) => call<{ id: number }>('POST', `/groups/${groupId}/items`, key ? { ...input, key } : input),
   updateItem: (groupId: number, itemId: number, patch: Partial<GroupItemInput>) => call<{ ok: true }>('PATCH', `/groups/${groupId}/items/${itemId}`, patch),
   deleteItem: (groupId: number, itemId: number) => call<{ ok: true }>('DELETE', `/groups/${groupId}/items/${itemId}`),
   /** Повторяющееся дело — убрать только в этот день. */

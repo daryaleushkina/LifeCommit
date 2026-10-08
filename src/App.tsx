@@ -17,6 +17,7 @@ import { Today } from './screens/Today';
 import { bumpChange, currentChange, type Cache } from './useTaskLog';
 import { taskScore } from './components/TaskCard';
 import { MicIcon, VoiceSheet, type VoicePreview } from './components/VoiceSheet';
+import { plain, runAll, withKeys } from './voice/addAll';
 import { Group } from './screens/Group';
 import { Groups } from './screens/Groups';
 import { Join } from './screens/Join';
@@ -248,7 +249,7 @@ export function App(): ReactNode {
         day={cache.today.day}
         draft={voicePreview.habits[index]}
         onDraft={(input) => {
-          setVoicePreview((p) => p && { ...p, habits: p.habits.map((h, i) => (i === index ? input : h)) });
+          setVoicePreview((p) => p && { ...p, habits: p.habits.map((h, i) => (i === index ? { ...input, key: h.key } : h)) });
           setRoute(tab(back));
         }}
         onSaved={async () => {}}
@@ -322,12 +323,25 @@ export function App(): ReactNode {
             // Список с вкладки «Вместе» свежее: новую группу он знает сразу, «Сегодня» — после перечитывания.
             groups={caches.groupList ?? cache.today.groups}
             onAdd={async (todos, habits, groupItems) => {
-              await Promise.all([
-                todos.length ? api.createTodos(todos) : null,
-                habits.length ? api.createTasks(habits) : null,
-                ...groupItems.map((a) => api.createItem(a.group.id, a.item)),
+              const todoRows = withKeys(todos);
+              const habitRows = withKeys(habits);
+              const groupRows = withKeys(groupItems);
+              const { failed, error } = await runAll([
+                ...(todoRows.length ? [{ id: 'todos', run: () => api.createTodos(todoRows.map(plain), todoRows.map((d) => d.key!)) }] : []),
+                ...(habitRows.length ? [{ id: 'habits', run: () => api.createTasks(habitRows.map(plain), habitRows.map((h) => h.key!)) }] : []),
+                ...groupRows.map((a) => ({ id: `group:${a.key!}`, run: () => api.createItem(a.group.id, a.item, a.key) })),
               ]);
+              const remaining = new Set(failed);
+              const addedHabits = new Set(remaining.has('habits') ? [] : habitRows.map((h) => h.key));
+              setVoicePreview((p) => p && {
+                ...p,
+                todos: remaining.has('todos') ? todoRows : [],
+                // Не поместившиеся не отправлялись: до закрытия шторки оставляем их в списке.
+                habits: p.habits.filter((h) => !addedHabits.has(h.key)),
+                groupItems: groupRows.filter((a) => remaining.has(`group:${a.key!}`)),
+              });
               await refresh();
+              if (failed.length) throw error;
               closeVoice();
               // Всё ушло в одну группу — туда и ведём (там это и видно); иначе — на «Сегодня».
               const only = new Set(groupItems.map((a) => a.group.id));

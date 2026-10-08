@@ -6,6 +6,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { dayCount, dayItem, type GroupDayBlock, type GoalUnit, type GroupItemRow, type GroupKind, type GroupMember, type GroupMode, type GroupRole, type GroupToday } from '../shared/groups';
 import { parseRRule } from '../shared/rrule';
 import { cleanText } from '../shared/text';
+import { insertKeyed, requestKeys } from './requestKey';
+import { body } from './desktop';
+import { inputObject, optionalBoolean, optionalNumber, optionalText } from './input';
 import type { App, UserRow } from './api';
 import { addDays, logicalDay } from './day';
 import { checkChat, disconnectChat, refreshChat } from './groupBot';
@@ -258,48 +261,38 @@ groups.post('/invites/:code/join', async (c) => {
 
 // ── Групповые дела ──
 
-interface ItemInput {
-  title?: string;
-  mode?: GroupMode;
-  day?: string | null;
-  time?: string | null;
-  duration_min?: number | null;
-  rrule?: string | null;
-  due_day?: string | null;
-  assignees?: number[];
-  all_members?: boolean;
-  rotate?: boolean;
-  target?: number | null;
-  unit?: GoalUnit | null;
-  goal_until?: string | null;
-}
-
 /** Проверить и привести поля дела. Участники — только из этой группы. */
-function cleanItem(body: ItemInput, today: string, memberIds: number[], partial: boolean): Record<string, unknown> {
+function cleanItem(raw: unknown, today: string, memberIds: number[], partial: boolean): Record<string, unknown> {
+  const body = inputObject(raw);
   const out: Record<string, unknown> = {};
   if (body.title !== undefined || !partial) {
-    const title = cleanText(body.title ?? '', 120);
+    const title = cleanText(optionalText(body.title, 'no_title') ?? '', 120);
     if (!title) throw bad('no_title');
     out.title = title;
   }
   if (body.mode !== undefined || !partial) {
-    if (!MODES.includes(body.mode as GroupMode)) throw bad('bad_mode');
-    out.mode = body.mode;
+    const mode = MODES.find((mode) => mode === body.mode);
+    if (!mode) throw bad('bad_mode');
+    out.mode = mode;
   }
   if (body.day !== undefined || !partial) out.day = isDay(body.day) ? body.day : today;
   if (body.time !== undefined) out.time = body.time === null ? null : isTime(body.time) ? body.time : (() => { throw bad('bad_time'); })();
-  if (body.duration_min !== undefined) out.duration_min = body.duration_min === null ? null : Math.min(20160, Math.max(1, Math.round(Number(body.duration_min) || 0))) || null;
+  if (body.duration_min !== undefined) out.duration_min = body.duration_min === null ? null : Math.min(20160, Math.max(1, Math.round(optionalNumber(body.duration_min) ?? 0)));
   if (body.rrule !== undefined) {
-    if (body.rrule !== null && !parseRRule(body.rrule)) throw bad('bad_repeat');
+    if (body.rrule !== null && !parseRRule(optionalText(body.rrule, 'bad_repeat') ?? '')) throw bad('bad_repeat');
     out.rrule = body.rrule;
   }
   if (body.due_day !== undefined) out.due_day = isDay(body.due_day) ? body.due_day : null;
-  if (body.assignees !== undefined) out.assignees = [...new Set((body.assignees ?? []).map(Number))].filter((id) => memberIds.includes(id));
-  if (body.all_members !== undefined) out.all_members = Boolean(body.all_members);
-  if (body.rotate !== undefined) out.rotate = Boolean(body.rotate);
+  if (body.assignees !== undefined) {
+    const assignees: unknown = body.assignees ?? [];
+    if (!Array.isArray(assignees) || !assignees.every((id): id is number => typeof id === 'number' && Number.isSafeInteger(id))) throw bad('bad_input');
+    out.assignees = [...new Set(assignees)].filter((id) => memberIds.includes(id));
+  }
+  if (body.all_members !== undefined) out.all_members = optionalBoolean(body.all_members);
+  if (body.rotate !== undefined) out.rotate = optionalBoolean(body.rotate);
   if (body.target !== undefined) {
-    const t = body.target === null ? null : Number(body.target);
-    if (t !== null && !(t > 0 && t < 1e12)) throw bad('bad_target');
+    const t = optionalNumber(body.target, 'bad_target');
+    if (t != null && !(t > 0 && t < 1e12)) throw bad('bad_target');
     out.target = t;
   }
   if (body.unit !== undefined) out.unit = cleanUnit(body.unit);
@@ -338,10 +331,12 @@ groups.post('/groups/:id/items', async (c) => {
   const user = c.get('user');
   const { canEdit } = await membership(sb, id, user.id);
   if (!canEdit) throw new HTTPException(403, { message: 'admins_only' });
-  const fields = cleanItem(await c.req.json<ItemInput>(), todayOf(user), await memberIds(sb, id), false);
-  const row = must(await sb.from('group_items').insert({ ...fields, group_id: id, created_by: user.id }).select('id').single()) as { id: number };
-  c.executionCtx.waitUntil(refreshChat(c.env, id));
-  return c.json({ id: row.id }, 201);
+  const input = await body(c.req);
+  const fields = cleanItem(input, todayOf(user), await memberIds(sb, id), false);
+  // Ключ повтора (голос «Добавить всё» повторяет не дошедшее): то же дело второй раз не создаётся.
+  const { ids, fresh } = await insertKeyed(sb, 'group_items', [{ ...fields, group_id: id, created_by: user.id }], requestKeys([input.key], 1, user.id), { group_id: id, created_by: user.id });
+  if (fresh[0]) c.executionCtx.waitUntil(refreshChat(c.env, id));
+  return c.json({ id: ids[0] }, 201);
 });
 
 groups.patch('/groups/:id/items/:item', async (c) => {
@@ -351,7 +346,7 @@ groups.patch('/groups/:id/items/:item', async (c) => {
   const user = c.get('user');
   const { canEdit } = await membership(sb, id, user.id);
   if (!canEdit) throw new HTTPException(403, { message: 'admins_only' });
-  const fields = cleanItem(await c.req.json<ItemInput>(), todayOf(user), await memberIds(sb, id), true);
+  const fields = cleanItem(await body(c.req), todayOf(user), await memberIds(sb, id), true);
   if (Object.keys(fields).length) {
     const res = await sb.from('group_items').update(fields).eq('id', itemId).eq('group_id', id);
     // Остальные поля cleanItem уже проверил — нарушить проверку базы может только цель без числа

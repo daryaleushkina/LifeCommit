@@ -6,6 +6,8 @@ import { render } from 'vitest-browser-react';
 import type { GroupDayItem, GroupItemDraft } from '../shared/groups';
 import type { TaskInput, TodayResponse, TodayTask, TodoInput, UserSettings } from '../shared/types';
 import type { GroupDetail, Invitation } from './api';
+import { ApiError } from './api';
+import { withKeys } from './voice/addAll';
 import { App } from './App';
 import { caches } from './caches';
 import type { GroupVoiceItem, VoicePreview } from './components/VoiceSheet';
@@ -23,7 +25,7 @@ const m = vi.hoisted(() => ({
   },
   main: { text: '', press: null as null | (() => void) },
   back: { current: null as (() => void) | null },
-  voice: { preview: null as VoicePreview | null, todos: [] as TodoInput[], habits: [] as TaskInput[], groupItems: [] as GroupVoiceItem[] },
+  voice: { preview: null as VoicePreview | null, current: null as VoicePreview | null, todos: [] as TodoInput[], habits: [] as TaskInput[], groupItems: [] as GroupVoiceItem[] },
 }));
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), api: m.api }));
 vi.mock('./telegram/hooks', () => ({
@@ -37,21 +39,25 @@ vi.mock('./telegram/hooks', () => ({
 }));
 // Запись голоса проверяют отдельно; здесь — что приложение делает с разобранным: добавить, поправить, вручную.
 vi.mock('./components/VoiceSheet', async (orig) => {
-  const { createElement: h } = await import('react');
+  const { createElement: h, useState } = await import('react');
   type P = Parameters<typeof import('./components/VoiceSheet').VoiceSheet>[0];
   return {
     ...(await orig<typeof import('./components/VoiceSheet')>()),
-    VoiceSheet: (p: P) =>
-      h(
+    VoiceSheet: (p: P) => {
+      const [error, setError] = useState<string | null>(null);
+      m.voice.current = p.preview;
+      return h(
         'div',
         { role: 'dialog', 'aria-label': 'Голос' },
         h('p', null, `место: ${p.room ?? 'без лимита'}; группа: ${p.groupId ?? 'нет'}; привычки: ${p.preview?.habits.map((x) => x.title).join(', ') ?? '—'}`),
         h('button', { onClick: () => p.setPreview(m.voice.preview) }, 'Разобрать'),
         h('button', { onClick: () => p.onEdit(0) }, 'Править первую'),
-        h('button', { onClick: () => void p.onAdd(m.voice.todos, m.voice.habits, m.voice.groupItems) }, 'Добавить всё'),
+        h('p', null, error),
+        h('button', { onClick: () => void p.onAdd(p.preview?.todos ?? m.voice.todos, (p.preview?.habits ?? m.voice.habits).slice(0, p.room ?? undefined), p.preview?.groupItems ?? m.voice.groupItems).catch((e: unknown) => setError(e instanceof Error ? e.message : 'error')) }, 'Добавить всё'),
         h('button', { onClick: p.onManual }, 'Вручную'),
         h('button', { onClick: p.onClose }, 'Закрыть голос'),
-      ),
+      );
+    },
   };
 });
 
@@ -694,16 +700,18 @@ describe('голос', () => {
   });
 
   it('«Добавить»: дела и привычки — одним разом, шторка закрывается, на «Сегодня»', async () => {
-    m.voice.todos = [{ title: 'Купить молоко' }];
-    m.voice.habits = [habit];
+    m.voice.todos = [{ title: 'Купить молоко' }, { title: 'Позвонить маме' }];
+    m.voice.habits = [habit, { ...habit, title: 'Гулять' }];
     await boot();
     await tab('Календарь').click();
     await page.getByRole('button', { name: 'Сказать голосом' }).click();
     await page.getByRole('button', { name: 'Добавить всё' }).click();
     await expect.element(heading('Сегодня')).toBeVisible();
     await expect.element(page.getByRole('dialog', { name: 'Голос' })).not.toBeInTheDocument();
-    expect(m.api.createTodos).toHaveBeenCalledWith([{ title: 'Купить молоко' }]);
-    expect(m.api.createTasks).toHaveBeenCalledWith([habit]);
+    expect(m.api.createTodos).toHaveBeenCalledOnce();
+    expect(m.api.createTasks).toHaveBeenCalledOnce();
+    expect(m.api.createTodos).toHaveBeenCalledWith(m.voice.todos, m.voice.todos.map(() => expect.stringMatching(/^[0-9a-f]{32}$/)));
+    expect(m.api.createTasks).toHaveBeenCalledWith(m.voice.habits, m.voice.habits.map(() => expect.stringMatching(/^[0-9a-f]{32}$/)));
   });
 
   it('всё ушло в одну группу — туда и ведём', async () => {
@@ -712,7 +720,7 @@ describe('голос', () => {
     await page.getByRole('button', { name: 'Сказать голосом' }).click();
     await page.getByRole('button', { name: 'Добавить всё' }).click();
     await expect.element(page.getByRole('button', { name: 'Настройки группы' })).toBeVisible();
-    expect(m.api.createItem).toHaveBeenCalledWith(10, draft);
+    expect(m.api.createItem).toHaveBeenCalledWith(10, draft, expect.stringMatching(/^[0-9a-f]{32}$/));
     expect(m.api.createTodos).not.toHaveBeenCalled();
     expect(m.api.createTasks).not.toHaveBeenCalled();
   });
@@ -740,6 +748,94 @@ describe('голос', () => {
     expect(m.api.createItem).toHaveBeenCalledTimes(2);
   });
 
+  it('связь и 5xx повторяют целую пачку с теми же ключами; дошедшая пачка не повторяется', async () => {
+    m.voice.preview = { text: '', todos: withKeys([{ title: 'Молоко' }, { title: 'Хлеб' }]), habits: withKeys([habit, { ...habit, title: 'Гулять' }]), groupItems: withKeys([{ type: 'create_group_item' as const, group: { id: 10, title: 'Семья' }, item: draft, names: [] }]) };
+    m.api.createTasks.mockRejectedValueOnce(new ApiError(503, 'failed')).mockResolvedValue({ ids: [1] });
+    m.api.createItem.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue({ id: 2 });
+    await boot();
+    await page.getByRole('button', { name: 'Сказать голосом' }).click();
+    await page.getByRole('button', { name: 'Разобрать' }).click();
+    await page.getByRole('button', { name: 'Добавить всё' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Голос' })).not.toBeInTheDocument();
+    expect(m.api.createTodos).toHaveBeenCalledOnce();
+    expect(m.api.createTasks).toHaveBeenCalledTimes(2);
+    expect(m.api.createTasks.mock.calls[0]).toEqual(m.api.createTasks.mock.calls[1]);
+    expect(m.api.createTasks.mock.calls[0]).toEqual([[habit, { ...habit, title: 'Гулять' }], m.voice.preview.habits.map((h) => h.key)]);
+    expect(m.api.createItem).toHaveBeenCalledTimes(2);
+    expect(m.api.createItem.mock.calls[0]).toEqual(m.api.createItem.mock.calls[1]);
+  });
+
+  it('недошедшая пачка дел остаётся целиком; повторное нажатие отправляет её с прежними ключами', async () => {
+    m.voice.preview = { text: '', todos: withKeys([{ title: 'Молоко' }, { title: 'Хлеб' }]), habits: withKeys([habit]), groupItems: withKeys([{ type: 'create_group_item' as const, group: { id: 10, title: 'Семья' }, item: draft, names: [] }]) };
+    const failedTodos = m.voice.preview.todos;
+    const failedGroup = m.voice.preview.groupItems[0]!;
+    m.api.createTodos.mockImplementation(async (rows: TodoInput[]) => {
+      if (rows.some((row) => row.title === 'Хлеб')) throw new ApiError(400, 'title_required');
+      return { ids: [1] };
+    });
+    m.api.createItem.mockRejectedValue(new TypeError('Failed to fetch'));
+    await boot();
+    await page.getByRole('button', { name: 'Сказать голосом' }).click();
+    await page.getByRole('button', { name: 'Разобрать' }).click();
+    await page.getByRole('button', { name: 'Добавить всё' }).click();
+    await expect.element(page.getByText('title_required', { exact: true })).toBeVisible();
+    expect(m.voice.current).toEqual({ text: '', todos: failedTodos, habits: [], groupItems: [failedGroup] });
+    expect(m.api.createTasks).toHaveBeenCalledOnce();
+    expect(m.api.createTodos).toHaveBeenCalledOnce(); // 400 — одна попытка на всю пачку.
+    expect(m.api.createItem).toHaveBeenCalledTimes(3);
+    m.api.createTodos.mockResolvedValue({ ids: [2] });
+    m.api.createItem.mockResolvedValue({ id: 3 });
+    await page.getByRole('button', { name: 'Добавить всё' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Голос' })).not.toBeInTheDocument();
+    expect(m.api.createTasks).toHaveBeenCalledOnce();
+    expect(m.api.createTodos.mock.calls[1]).toEqual([[{ title: 'Молоко' }, { title: 'Хлеб' }], failedTodos.map((d) => d.key)]);
+    expect(m.api.createItem.mock.calls[3]).toEqual([10, draft, failedGroup.key]);
+  });
+
+  it('лимит не повторяем; успешное дело исчезает, привычка остаётся', async () => {
+    const keyedHabits = withKeys([habit, { ...habit, title: 'Гулять' }]);
+    m.voice.preview = { text: '', todos: withKeys([{ title: 'Молоко' }]), habits: keyedHabits, groupItems: [] };
+    m.api.createTasks.mockRejectedValue(new ApiError(402, 'task_limit'));
+    await boot();
+    await page.getByRole('button', { name: 'Сказать голосом' }).click();
+    await page.getByRole('button', { name: 'Разобрать' }).click();
+    await page.getByRole('button', { name: 'Добавить всё' }).click();
+    await expect.element(page.getByText('task_limit', { exact: true })).toBeVisible();
+    expect(m.api.createTasks).toHaveBeenCalledOnce();
+    expect(m.voice.current).toEqual({ text: '', todos: [], habits: keyedHabits, groupItems: [] });
+  });
+
+  it('не поместившаяся привычка не отправляется и уходит вместе со шторкой после успеха', async () => {
+    const habits = withKeys([habit, { ...habit, title: 'Гулять' }]);
+    m.voice.preview = { text: '', todos: [], habits, groupItems: [] };
+    await boot({ first: today({ limits: { max_tasks: 5, active: 4 } }) });
+    await page.getByRole('button', { name: 'Сказать голосом' }).click();
+    await page.getByRole('button', { name: 'Разобрать' }).click();
+    await page.getByRole('button', { name: 'Добавить всё' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Голос' })).not.toBeInTheDocument();
+    expect(m.api.createTasks).toHaveBeenCalledExactlyOnceWith([habit], [habits[0]!.key]);
+    await page.getByRole('button', { name: 'Сказать голосом' }).click();
+    await expect.element(page.getByText(/привычки: —$/)).toBeVisible();
+  });
+
+  it('до полного успеха не поместившаяся остаётся; повтор группы не отправляет привычки снова', async () => {
+    const habits = withKeys([habit, { ...habit, title: 'Гулять' }]);
+    const groupItems = withKeys([{ type: 'create_group_item' as const, group: { id: 10, title: 'Семья' }, item: draft, names: [] }]);
+    m.voice.preview = { text: '', todos: [], habits, groupItems };
+    m.api.createItem.mockRejectedValueOnce(new ApiError(403, 'admins_only'));
+    await boot({ first: today({ limits: { max_tasks: 5, active: 4 } }) });
+    m.api.today.mockResolvedValue(today({ limits: { max_tasks: 5, active: 5 } }));
+    await page.getByRole('button', { name: 'Сказать голосом' }).click();
+    await page.getByRole('button', { name: 'Разобрать' }).click();
+    await page.getByRole('button', { name: 'Добавить всё' }).click();
+    await expect.element(page.getByText('admins_only', { exact: true })).toBeVisible();
+    expect(m.voice.current).toEqual({ text: '', todos: [], habits: [habits[1]], groupItems });
+    await page.getByRole('button', { name: 'Добавить всё' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Голос' })).not.toBeInTheDocument();
+    expect(m.api.createTasks).toHaveBeenCalledExactlyOnceWith([habit], [habits[0]!.key]);
+    expect(m.api.createItem).toHaveBeenCalledTimes(2);
+  });
+
   it('с экрана группы микрофон знает группу', async () => {
     await boot({ start_param: 'grp_10' });
     await page.getByRole('button', { name: 'Сказать голосом' }).click();
@@ -747,7 +843,7 @@ describe('голос', () => {
   });
 
   it('привычку из разбора правят в редакторе: «Готово» возвращает в шторку с исправленным', async () => {
-    m.voice.preview = preview;
+    m.voice.preview = { ...preview, habits: [{ ...habit, key: 'edited-row' }] };
     await boot();
     await tab('Вместе').click();
     await page.getByRole('button', { name: 'Сказать голосом' }).click();
@@ -762,6 +858,7 @@ describe('голос', () => {
     await expect.element(heading('Вместе')).toBeVisible();
     await expect.element(page.getByText(/привычки: Читать книгу$/)).toBeVisible();
     expect(m.api.createTask).not.toHaveBeenCalled();
+    expect(m.voice.current!.habits[0]!.key).toBe('edited-row');
   });
 
   it('из редактора черновика «назад» — обратно на вкладку со шторкой', async () => {

@@ -7,6 +7,7 @@ import { LangContext, useT } from '../i18n';
 import { repeatLabel } from '../repeat';
 import { useBackButton } from '../telegram/hooks';
 import { canRecord, Recorder } from '../voice/recorder';
+import { withKeys, type Keyed } from '../voice/addAll';
 import { KindTile } from './KindIcon';
 import { todoWhen } from '../todoDates';
 import { Check, endTime } from './TodoList';
@@ -15,13 +16,13 @@ import { TodoSheet } from './TodoSheet';
 /** Что получилось из сказанного. Живёт в App: пока человек правит привычку в редакторе, шторка закрыта. */
 export interface VoicePreview {
   text: string;
-  habits: TaskInput[];
-  todos: TodoInput[];
+  habits: Keyed<TaskInput>[];
+  todos: Keyed<TodoInput>[];
   /** Дела в группы — как их понял разбор: себе или в группу и кому в ней. */
   groupItems: GroupVoiceItem[];
 }
 
-export type GroupVoiceItem = Extract<VoiceAction, { type: 'create_group_item' }>;
+export type GroupVoiceItem = Keyed<Extract<VoiceAction, { type: 'create_group_item' }>>;
 
 type Phase = 'recording' | 'parsing' | 'nothing' | 'nomic' | 'failed' | 'limit';
 
@@ -37,7 +38,7 @@ interface Props {
   /** Сегодняшний логический день: от него подписи «сегодня», «завтра». */
   today: string;
   onEdit: (index: number) => void;
-  onAdd: (todos: TodoInput[], habits: TaskInput[], groupItems: GroupVoiceItem[]) => Promise<void>;
+  onAdd: (todos: Keyed<TodoInput>[], habits: Keyed<TaskInput>[], groupItems: GroupVoiceItem[]) => Promise<void>;
   /** Микрофон нажали на экране группы — сказанное без названия группы пойдёт в неё. */
   groupId?: number | null;
   /** Группы человека: есть — подсказываем, как сказать в одной фразе и группе, и себе. */
@@ -130,7 +131,7 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
       const groupItems = actions.filter((a): a is GroupVoiceItem => a.type === 'create_group_item');
       if (habits.length === 0 && todos.length === 0 && groupItems.length === 0) return setPhase('nothing');
       hapticFeedback.notificationOccurred.ifAvailable('success');
-      setPreview({ text: said, habits, todos, groupItems });
+      setPreview({ text: said, habits: withKeys(habits), todos: withKeys(todos), groupItems: withKeys(groupItems) });
     } catch (e) {
       if (!alive.current) return;
       setPhase(e instanceof ApiError && e.code === 'voice_limit' ? 'limit' : 'failed');
@@ -162,14 +163,22 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
     return () => window.clearInterval(id);
   }, [phase, preview, stop]);
 
-  const add = async (todos: TodoInput[], habits: TaskInput[], groupItems: GroupVoiceItem[]) => {
+  const adding = useRef(false);
+  const add = async () => {
+    if (!preview || adding.current) return;
+    adding.current = true;
     setBusy(true);
     setMessage(null);
+    const keyed = { ...preview, todos: withKeys(preview.todos), habits: withKeys(preview.habits), groupItems: withKeys(preview.groupItems) };
+    setPreview(keyed);
+    const fit = room === null ? keyed.habits.length : Math.min(room, keyed.habits.length);
     try {
-      await onAdd(todos, habits, groupItems);
+      await onAdd(keyed.todos, keyed.habits.slice(0, fit), keyed.groupItems);
     } catch (e) {
-      setMessage(e instanceof ApiError && e.code === 'task_limit' ? t.limitReached(FREE_TASK_LIMIT ?? 0) : t.error);
-      setBusy(false);
+      if (alive.current) setMessage(e instanceof ApiError && e.code === 'task_limit' ? t.limitReached(FREE_TASK_LIMIT ?? 0) : t.error);
+    } finally {
+      adding.current = false;
+      if (alive.current) setBusy(false);
     }
   };
 
@@ -192,7 +201,7 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
             <ul className="voice-list">
               {preview.groupItems.map((a, i) =>
                 a.group.id !== g.id ? null : (
-                  <li key={`g${i}-${a.item.title}`}>
+                  <li key={a.key ?? `g${i}-${a.item.title}`}>
                     <span className="voice-row">
                       <span className="todo-tile group" aria-hidden>
                         <Check />
@@ -202,7 +211,7 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
                         <small>{groupItemLine(t, a, today, locale)}</small>
                       </span>
                     </span>
-                    <button className="voice-x" aria-label={t.voice.remove(a.item.title)} onClick={() => drop({ ...preview, groupItems: preview.groupItems.filter((_, j) => j !== i) })}>
+                    <button className="voice-x" disabled={busy} aria-label={t.voice.remove(a.item.title)} onClick={() => drop({ ...preview, groupItems: preview.groupItems.filter((_, j) => j !== i) })}>
                       <Cross />
                     </button>
                   </li>
@@ -216,8 +225,8 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
             {(both || groupsShown.length > 0) && <h3 className="voice-section">{groupsShown.length > 0 && !both ? t.voice.mine : t.voiceTodos}</h3>}
             <ul className="voice-list">
               {preview.todos.map((d, i) => (
-                <li key={`t${i}-${d.title}`}>
-                  <button className="voice-row" onClick={() => setEditingTodo(i)}>
+                <li key={d.key ?? `t${i}-${d.title}`}>
+                  <button className="voice-row" disabled={busy} onClick={() => setEditingTodo(i)}>
                     <span className="todo-tile" aria-hidden>
                       <Check />
                     </span>
@@ -226,7 +235,7 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
                       <small>{[todoWhen(t, d.day || today, today, locale) ?? t.todo.today.toLowerCase(), d.time && d.duration_min ? [d.time, endTime(d.time, d.duration_min)].filter(Boolean).join('–') : d.time, d.location].filter(Boolean).join(' · ')}</small>
                     </span>
                   </button>
-                  <button className="voice-x" aria-label={t.voice.remove(d.title)} onClick={() => drop({ ...preview, todos: preview.todos.filter((_, j) => j !== i) })}>
+                  <button className="voice-x" disabled={busy} aria-label={t.voice.remove(d.title)} onClick={() => drop({ ...preview, todos: preview.todos.filter((_, j) => j !== i) })}>
                     <Cross />
                   </button>
                 </li>
@@ -239,15 +248,15 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
             {both && <h3 className="voice-section">{t.voiceHabits}</h3>}
             <ul className="voice-list">
               {preview.habits.map((h, i) => (
-                <li key={`h${i}-${h.title}`} className={i >= fit ? 'wont-fit' : undefined}>
-                  <button className="voice-row" onClick={() => onEdit(i)}>
+                <li key={h.key ?? `h${i}-${h.title}`} className={i >= fit ? 'wont-fit' : undefined}>
+                  <button className="voice-row" disabled={busy} onClick={() => onEdit(i)}>
                     <KindTile kind={h.kind} title={h.title} />
                     <span className="voice-text">
                       <b>{h.title}</b>
                       <small>{describe(t, h)}</small>
                     </span>
                   </button>
-                  <button className="voice-x" aria-label={t.voice.remove(h.title)} onClick={() => drop({ ...preview, habits: preview.habits.filter((_, j) => j !== i) })}>
+                  <button className="voice-x" disabled={busy} aria-label={t.voice.remove(h.title)} onClick={() => drop({ ...preview, habits: preview.habits.filter((_, j) => j !== i) })}>
                     <Cross />
                   </button>
                 </li>
@@ -260,11 +269,11 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
         <button
           className="act primary wide"
           disabled={busy || fit + preview.todos.length + preview.groupItems.length === 0}
-          onClick={() => void add(preview.todos, preview.habits.slice(0, fit), preview.groupItems)}
+          onClick={() => void add()}
         >
           {t.voice.addN(preview.todos.length + preview.groupItems.length, fit)}
         </button>
-        <button className="voice-link" onClick={() => void record()}>
+        <button className="voice-link" disabled={busy} onClick={() => void record()}>
           <MicIcon size={18} />
           {t.voice.again}
         </button>
