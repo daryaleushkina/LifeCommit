@@ -75,6 +75,14 @@ Kotlin и Compose). Дизайн-навыки и `grilling` нужны толь�
   подключать.
 - **`mobilebuildmcp init` не запускать**: он ставит себя в глобальные папки
   агентов. Гейт перед пушем MCP не использует — там простой `xcodebuild test`.
+- **Разбор трейсов в `swiftui-expert-skill`** (`scripts/instruments_parser/`) —
+  сторонний код с ошибками: повторный стек по ссылке `<backtrace ref>` теряется,
+  корреляция берёт главные потоки всех процессов трейса, а покрытие главного
+  потока считается из 1 мс на семпл. Выводы «поток заблокирован» и горячие
+  символы сверять в самом Instruments.
+- **`compose-state-and-effects` и `compose-ui-testing-patterns` ссылаются на
+  `compose-focus-navigation`**, которого в наборе нет. Фокус, клавиатура и
+  D-pad — по документации Compose.
 - **Не взяты:** Material 3 (`hamen/material-3-skill`, тянет к стандартному
   Material), Dimillian/Skills (старые имена инструментов XcodeBuildMCP),
   Axiom (276 навыков), ECC — для мобильных там короткие шпаргалки с
