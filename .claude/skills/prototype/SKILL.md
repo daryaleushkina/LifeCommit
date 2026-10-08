@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Build multiple genuinely different versions of a UI piece you describe, rendered behind a visual picker so you can flip through them live and promote the one that feels right. Only runs when explicitly invoked; it does not trigger on its own.
+description: Build multiple genuinely different versions of a UI piece you describe, rendered behind a visual picker (in an isolated harness or right in the real page) so you can flip through them live and promote the one that feels right. Only runs when explicitly invoked; it does not trigger on its own.
 disable-model-invocation: true
 ---
 
@@ -45,6 +45,16 @@ Default **3 variants**; up to 5 when the user asks or the design space is genuin
 
 Before writing any code, list the set: a name and an axis for each. Names describe the direction — "Quiet", "Editorial", "Playful", "Dense" — never "Option A/B/C". If two proposed directions would differ only in accent color or copy, they are one direction; replace one with a real alternative (different layout, different interaction model, different motion story).
 
+When the piece already lives in the product, pick **one primary axis** and give each variant a different position on it; secondary choices follow from it. Varying every axis at once gives three unattributable results — you learn which one won, not why.
+
+| Axis | What varies |
+| --- | --- |
+| Structure | Grouping, order, column count, what collapses |
+| Density | Spacing scale, hit areas, how much fits |
+| Emphasis | Where filled color goes, what recedes |
+| Type | Scale steps, weight contrast, measure |
+| Voice | Labels, tone, how much copy |
+
 **Completion criterion:** every variant has a name and a stated axis, and no two variants share an axis position.
 
 ### Phase 4 — Build the picker harness
@@ -52,6 +62,7 @@ Before writing any code, list the set: a name and an axis for each. Names descri
 Two branches, by what exists:
 
 - **In a project with a dev server** — an isolated route or page (`/prototypes/<slug>`, or the framework's equivalent), one file per variant plus a small harness file. Nothing imports from the prototype surface into production code.
+- **In the real page** — when the piece already exists and context decides the choice, host the variants on the page that will contain it, with the real chrome, neighbours and realistic data. Same picker, same `?v=` param, so every variant is a link. The harness never imports from production and production never imports from the harness until promotion.
 - **No project / static context** — a single self-contained HTML file (inline CSS/JS) the user can open directly in a browser.
 
 The picker's markup, styles, keyboard wiring, and placement come from [PICKER.md](PICKER.md), verbatim — load it now and build exactly that. Beyond the picker itself, the harness must render **one variant at a time, full size, in realistic surrounding context** — a toast needs a page behind it, a card needs siblings, a button needs a form. Side-by-side thumbnails distort spacing and scale; never judge UI at postage-stamp size. Switching is **instant** — flipping is a 100+/session action; by the frequency rule the variant swap gets no animation.
@@ -59,6 +70,8 @@ The picker's markup, styles, keyboard wiring, and placement come from [PICKER.md
 ### Phase 5 — Verify and hand off
 
 Run the harness. Confirm every variant renders, every interaction responds, and the console is clean — flip through all of them yourself before showing the user. If browser tooling is available, screenshot each variant.
+
+Every variant clears the same floor before it enters the picker: every control has an accessible name, the keyboard reaches everything a pointer does, focus is visible, nothing clips at 320px and no meaning rides on color alone. The floor is not an axis and never trades against one; a direction that only works by breaking it is dropped. Judge at the widths the piece really lives at — the answer can change between 375px and 1440px — and say which width you judged at.
 
 Then present the set and **stop — the choice belongs to the user**:
 
@@ -84,6 +97,17 @@ When the user picks: integrate that variant where it belongs, following the proj
 | `riff <variant>` | New round: keep the harness, generate a fresh set diverging around the named variant's direction |
 | `keep <variant>` | Promote that variant into the codebase and delete the prototype surface |
 | `keep <variant>, leave the picker` | Promote, but keep the prototype surface around |
+
+## Before you finish
+
+| Mistake | Fix |
+| --- | --- |
+| Variants differ only in accent color or copy | Move one to a different position on the primary axis, or cut it |
+| Every axis varies at once | Vary one; let the rest follow from it |
+| Lorem ipsum, three rows, "Jane Doe" | Real copy and the item count the page will really carry |
+| The boldest variant skips keyboard or focus | Clear the floor or drop the direction |
+| Picker restyled with the project's tokens | Keep it visibly outside the design system |
+| Harness left behind after promotion | Delete it unless asked to keep it |
 
 ## Tone
 
