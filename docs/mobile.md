@@ -191,7 +191,7 @@ Telegram принимает своё имя схемы в `redirect_uri` (SDK т
 | --- | --- | --- |
 | GET `/today` | → `TodayResponse` | |
 | POST `/tasks` | `TaskInput` → 201 `{id}` | 400 `title_required` `bad_kind` `bad_target` `bad_schedule` `bad_visibility` `bad_date`; 402 `task_limit` (лимит сейчас выключен) |
-| POST `/tasks/batch` | `{tasks: TaskInput[], keys?: string[]}` (до 8) → 201 `{ids}` | + 400 `no_tasks`, `bad_input`, `bad_request` |
+| POST `/tasks/batch` | `{tasks: TaskInput[], keys?: string[]}` (до 8) → 201 `{ids}` | + 400 `no_tasks`, `bad_input`, `bad_json` |
 | PATCH `/tasks/:id` | `Partial<TaskInput>` → `{ok, goal_effective_from}` (цель стала меньше — действует с завтра) | 404, 400 как выше |
 | POST `/tasks/:id/archive`, `/restore` | → `{ok}` | 404; restore — 402 `task_limit` |
 | DELETE `/tasks/:id` | → `{ok}` (стирает и историю) | |
@@ -204,7 +204,7 @@ Telegram принимает своё имя схемы в `redirect_uri` (SDK т
 | Метод и путь | Тело → ответ | Ошибки |
 | --- | --- | --- |
 | POST `/todos` | `TodoInput` → 201 `{id}` | 400 `title_required`, `bad_time` |
-| POST `/todos/batch` | `{todos, keys?: string[]}` (до 12) → 201 `{ids}` | 400 `no_todos`, `bad_input`, `bad_request` |
+| POST `/todos/batch` | `{todos, keys?: string[]}` (до 12) → 201 `{ids}` | 400 `no_todos`, `bad_input`, `bad_json` |
 | PATCH `/todos/:id` | `{title?, day?, time?, done?, on?, location?, hidden?}`; `on` — день у повторяющегося | 404; 400 `event_not_checkable` |
 | DELETE `/todos/:id` | → `{ok}` (удаляет и событие в календаре) | |
 | GET `/todos/later` | → `Todo[]` | |
@@ -223,8 +223,10 @@ Telegram принимает своё имя схемы в `redirect_uri` (SDK т
 прежним id в 201 `{ids}`, без изменения уже созданной строки. В бесплатный лимит привычек входят только новые
 строки; привычка, цель и подзадачи записываются одной транзакцией. Клиент повторяет только ошибки связи и 5xx;
 4xx, включая 402 `task_limit`, не повторяет. Нативные клиенты пока не отправляют эти поля: голос у них «ждёт».
-Неверный JSON или тело, которое не является объектом, — 400 `bad_request`; неверная форма строки списка или
-тип поля — 400 `bad_input` (для известных полей также действуют коды из таблиц).
+Неверный JSON или тело, которое не является объектом, — 400 `bad_json`; неверная форма строки списка — 400
+`bad_input` (для полей действуют коды из таблиц). Прежние приведения полей сохраняются: нестроковое `location`
+игнорируется, некорректная дата дела становится сегодняшней, числовые поля приводятся к числам и ограничиваются
+как при добавлении без ключей.
 
 **Возврат после входа Google.** Приложение берёт адрес с `?client=app` и открывает его во внешнем окне входа
 (iOS/Mac — `ASWebAuthenticationSession` со схемой `lifecommit`, Android — Custom Tab). Google возвращает браузер на
@@ -275,7 +277,9 @@ Telegram в браузер не переходят). Раньше чужая с�
 Проверка и область ключа — как у `keys` выше: повтор в той же группе возвращает прежний id, без дубля и без
 изменения дела; права проверяются и при повторе. Ключ уже использован в другой группе — 409
 `request_key_conflict`, id из неё не раскрывается. Неверный JSON или тело, которое не является объектом, — 400
-`bad_request`; неверный тип поля — 400 `bad_input`.
+`bad_json`; неверная форма списка `assignees` — 400 `bad_input`. Значения в `assignees` приводятся к числам,
+повторы и люди вне группы отбрасываются, порядок оставшихся сохраняется. Флаги `all_members` и `rotate`
+приводятся к boolean, как при добавлении без ключа.
 
 `PATCH /groups/:id`: `title`, если передан, — строка; после очистки пробелов, управляющих и невидимых символов
 не должен быть пустым. Иначе **400 `no_title`**, прежнее имя и остальные настройки сохраняются (раньше пустое имя

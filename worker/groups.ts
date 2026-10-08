@@ -7,8 +7,7 @@ import { dayCount, dayItem, type GroupDayBlock, type GoalUnit, type GroupItemRow
 import { parseRRule } from '../shared/rrule';
 import { cleanText } from '../shared/text';
 import { insertKeyed, requestKeys } from './requestKey';
-import { body } from './desktop';
-import { inputObject, optionalBoolean, optionalNumber, optionalText } from './input';
+import { inputBody, inputObject, jsonNumber, optionalNumber, optionalText } from './input';
 import type { App, UserRow } from './api';
 import { addDays, logicalDay } from './day';
 import { checkChat, disconnectChat, refreshChat } from './groupBot';
@@ -269,7 +268,7 @@ groups.post('/invites/:code/join', async (c) => {
 // ── Групповые дела ──
 
 /** Проверить и привести поля дела. Участники — только из этой группы. */
-function cleanItem(raw: unknown, today: string, memberIds: number[], partial: boolean): Record<string, unknown> {
+export function cleanItem(raw: unknown, today: string, memberIds: number[], partial: boolean): Record<string, unknown> {
   const body = inputObject(raw);
   const out: Record<string, unknown> = {};
   if (body.title !== undefined || !partial) {
@@ -284,7 +283,7 @@ function cleanItem(raw: unknown, today: string, memberIds: number[], partial: bo
   }
   if (body.day !== undefined || !partial) out.day = isDay(body.day) ? body.day : today;
   if (body.time !== undefined) out.time = body.time === null ? null : isTime(body.time) ? body.time : (() => { throw bad('bad_time'); })();
-  if (body.duration_min !== undefined) out.duration_min = body.duration_min === null ? null : Math.min(20160, Math.max(1, Math.round(optionalNumber(body.duration_min) ?? 0)));
+  if (body.duration_min !== undefined) out.duration_min = body.duration_min === null ? null : Math.min(20160, Math.max(1, Math.round(jsonNumber(body.duration_min) || 0)));
   if (body.rrule !== undefined) {
     if (body.rrule !== null && !parseRRule(optionalText(body.rrule, 'bad_repeat') ?? '')) throw bad('bad_repeat');
     out.rrule = body.rrule;
@@ -292,13 +291,13 @@ function cleanItem(raw: unknown, today: string, memberIds: number[], partial: bo
   if (body.due_day !== undefined) out.due_day = isDay(body.due_day) ? body.due_day : null;
   if (body.assignees !== undefined) {
     const assignees: unknown = body.assignees ?? [];
-    if (!Array.isArray(assignees) || !assignees.every((id): id is number => typeof id === 'number' && Number.isSafeInteger(id))) throw bad('bad_input');
-    out.assignees = [...new Set(assignees)].filter((id) => memberIds.includes(id));
+    if (!Array.isArray(assignees)) throw bad('bad_input');
+    out.assignees = [...new Set(assignees.map(jsonNumber))].filter((id) => Number.isSafeInteger(id) && memberIds.includes(id));
   }
-  if (body.all_members !== undefined) out.all_members = optionalBoolean(body.all_members);
-  if (body.rotate !== undefined) out.rotate = optionalBoolean(body.rotate);
+  if (body.all_members !== undefined) out.all_members = Boolean(body.all_members);
+  if (body.rotate !== undefined) out.rotate = Boolean(body.rotate);
   if (body.target !== undefined) {
-    const t = optionalNumber(body.target, 'bad_target');
+    const t = body.target === null ? null : optionalNumber(jsonNumber(body.target), 'bad_target');
     if (t != null && !(t > 0 && t < 1e12)) throw bad('bad_target');
     out.target = t;
   }
@@ -338,7 +337,7 @@ groups.post('/groups/:id/items', async (c) => {
   const user = c.get('user');
   const { canEdit } = await membership(sb, id, user.id);
   if (!canEdit) throw new HTTPException(403, { message: 'admins_only' });
-  const input = await body(c.req);
+  const input = await inputBody(c.req);
   const fields = cleanItem(input, todayOf(user), await memberIds(sb, id), false);
   // Ключ повтора (голос «Добавить всё» повторяет не дошедшее): то же дело второй раз не создаётся.
   const { ids, fresh } = await insertKeyed(sb, 'group_items', [{ ...fields, group_id: id, created_by: user.id }], requestKeys([input.key], 1, user.id), { group_id: id, created_by: user.id });
@@ -353,7 +352,7 @@ groups.patch('/groups/:id/items/:item', async (c) => {
   const user = c.get('user');
   const { canEdit } = await membership(sb, id, user.id);
   if (!canEdit) throw new HTTPException(403, { message: 'admins_only' });
-  const fields = cleanItem(await body(c.req), todayOf(user), await memberIds(sb, id), true);
+  const fields = cleanItem(await inputBody(c.req), todayOf(user), await memberIds(sb, id), true);
   if (Object.keys(fields).length) {
     const res = await sb.from('group_items').update(fields).eq('id', itemId).eq('group_id', id);
     // Остальные поля cleanItem уже проверил — нарушить проверку базы может только цель без числа

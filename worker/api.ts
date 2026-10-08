@@ -41,7 +41,7 @@ import { feedbackApi } from './feedbackApi';
 import { body, desktopApi, tokenHash } from './desktop';
 import { GOOGLE_PENDING_TTL_MS } from './google';
 import { insertKeyed, requestKeys } from './requestKey';
-import { inputObject, optionalNumber, optionalText } from './input';
+import { inputBody, inputObject, normalizeTaskInput, normalizeTodoInput, optionalNumber, optionalText } from './input';
 
 export type App = { Bindings: Env; Variables: AuthVars & { sb: SupabaseClient; user: UserRow } };
 
@@ -284,15 +284,15 @@ export async function insertTasks(sb: SupabaseClient, user: UserRow, inputs: unk
 }
 
 api.post('/tasks', async (c) => {
-  const input: unknown = await body(c.req);
+  const input = normalizeTaskInput(await inputBody(c.req));
   const [id] = await insertTasks(c.get('sb'), c.get('user'), [input]);
   return c.json({ id }, 201);
 });
 
 // Несколько привычек сразу — из голосового разбора. Лимит бесплатных проверяется на всю пачку.
 api.post('/tasks/batch', async (c) => {
-  const { tasks, keys } = await body(c.req);
-  const list = (Array.isArray(tasks) ? tasks : []).slice(0, MAX_HABITS);
+  const { tasks, keys } = await inputBody(c.req);
+  const list = (Array.isArray(tasks) ? tasks : []).slice(0, MAX_HABITS).map(normalizeTaskInput);
   if (!list.length) throw new HTTPException(400, { message: 'no_tasks' });
   const ids = await insertTasks(c.get('sb'), c.get('user'), list, requestKeys(keys, list.length, c.get('user').id));
   return c.json({ ids }, 201);
@@ -440,15 +440,16 @@ function pushLater(c: Context<App>, ids: number[]) {
 }
 
 api.post('/todos', async (c) => {
-  const [id] = await insertTodos(c.get('sb'), c.get('user'), [await body(c.req)]);
+  const [id] = await insertTodos(c.get('sb'), c.get('user'), [normalizeTodoInput(await inputBody(c.req))]);
   if (id) pushLater(c, [id]);
   return c.json({ id }, 201);
 });
 
 api.post('/todos/batch', async (c) => {
-  const { todos, keys } = await body(c.req);
+  const { todos, keys } = await inputBody(c.req);
   if (!Array.isArray(todos) || !todos.length) throw new HTTPException(400, { message: 'no_todos' });
-  const ids = await insertTodos(c.get('sb'), c.get('user'), todos, requestKeys(keys, Math.min(todos.length, MAX_TODOS), c.get('user').id));
+  const list = todos.slice(0, MAX_TODOS).map(normalizeTodoInput);
+  const ids = await insertTodos(c.get('sb'), c.get('user'), list, requestKeys(keys, list.length, c.get('user').id));
   pushLater(c, ids);
   return c.json({ ids }, 201);
 });
@@ -475,7 +476,7 @@ api.patch('/todos/:id', async (c) => {
     );
   }
   const fields: Record<string, unknown> = {};
-  if (body.title !== undefined) fields.title = cleanTodo({ title: body.title }, day).title;
+  if (body.title !== undefined) fields.title = cleanTodo(normalizeTodoInput({ title: body.title }), day).title;
   // У повторяющегося дела день начала не двигаем: он задаёт, в какие дни оно бывает.
   if (body.day !== undefined && !todo.rrule) fields.day = todoDay(body.day, day);
   if (body.time !== undefined) fields.time = todoTime(body.time);

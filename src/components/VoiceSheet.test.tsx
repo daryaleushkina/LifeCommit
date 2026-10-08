@@ -531,16 +531,53 @@ describe('список', () => {
   });
 
   it('длинные названия: «Добавить всё» видно без прокрутки шторки', async () => {
-    await setup({ preview: {
-      text: '',
-      todos: [{ title: 'Записаться к стоматологу на четверг после работы и не забыть взять полис' }],
-      habits: [habit({ title: 'Читатьпоутрамхотябыдесятьстраницкаждыйдень', kind: 'check', target: 1, unit: null })],
-      groupItems: [gi({ title: 'Вынестимусориразобратьбалконпередзимойвсемвместе' })],
-    } }).r;
-    const add = page.getByRole('button', { name: 'Добавить всё · 3' });
-    await expect.element(add).toBeVisible();
-    await expect.poll(() => add.element().getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
-    await expect.poll(() => add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight);
+    const previousViewport = { width: window.innerWidth, height: window.innerHeight };
+    const style = document.documentElement.style;
+    const insets = {
+      '--tg-viewport-stable-height': '659px',
+      '--tg-viewport-safe-area-inset-top': '59px',
+      '--tg-viewport-safe-area-inset-bottom': '34px',
+      '--tg-viewport-content-safe-area-inset-top': '46px',
+      '--tg-viewport-content-safe-area-inset-bottom': '0px',
+    };
+    const previous = Object.keys(insets).map((name) => [name, style.getPropertyValue(name)] as const);
+    await page.viewport(393, 659);
+    for (const [name, value] of Object.entries(insets)) style.setProperty(name, value);
+    try {
+      await setup({ preview: {
+        text: '',
+        todos: [{ title: 'Записаться к стоматологу на четверг после работы и не забыть взять полис' }],
+        habits: [habit({ title: 'Читатьпоутрамхотябыдесятьстраницкаждыйдень', kind: 'check', target: 1, unit: null })],
+        groupItems: [gi({ title: 'Вынестимусориразобратьбалконпередзимойвсемвместе' })],
+      } }).r;
+      const add = page.getByRole('button', { name: 'Добавить всё · 3' });
+      await expect.element(add).toBeVisible();
+      await expect.poll(() => add.element().getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
+      await expect.poll(() => add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight - 34);
+      const sheet = document.querySelector<HTMLElement>('.voice-sheet')!;
+      const list = document.querySelector<HTMLElement>('.voice-preview-scroll')!;
+      await expect.poll(() => getComputedStyle(sheet).transform).toBe('none');
+      expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+      const buttonTop = add.element().getBoundingClientRect().top;
+      list.scrollTop = list.scrollHeight;
+      await expect.poll(() => list.scrollTop).toBeGreaterThan(0);
+      await expect.poll(() => add.element().getBoundingClientRect().top).toBeCloseTo(buttonTop);
+      expect(sheet.scrollTop).toBe(0);
+      expect(add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight - 34);
+      // Telegram может сообщить меньшую видимую высоту, чем окно WebView.
+      style.setProperty('--tg-viewport-stable-height', '520px');
+      await expect.poll(() => add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(520 - 34);
+      expect(sheet.getBoundingClientRect().top).toBeGreaterThanOrEqual(59 + 46);
+      list.scrollTop = list.scrollHeight;
+      await expect.poll(() => list.scrollTop).toBeGreaterThan(0);
+      expect(add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(520 - 34);
+    } finally {
+      for (const [name, value] of previous) {
+        if (value) style.setProperty(name, value);
+        else style.removeProperty(name);
+      }
+      await page.viewport(previousViewport.width, previousViewport.height);
+    }
   });
 
   it('по-английски — английские даты', async () => {

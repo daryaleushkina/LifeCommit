@@ -195,88 +195,92 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
       <>
         <h2>{t.voice.previewTitle}</h2>
         <p className="voice-hint">{t.voice.previewHint}</p>
-        {groupsShown.map((g) => (
-          <section key={g.id}>
-            <h3 className="voice-section">{t.voice.toGroup(g.title)}</h3>
-            <ul className="voice-list">
-              {preview.groupItems.map((a, i) =>
-                a.group.id !== g.id ? null : (
-                  <li key={a.key ?? `g${i}-${a.item.title}`}>
-                    <span className="voice-row">
-                      <span className="todo-tile group" aria-hidden>
+        <div key="preview-list" className="voice-preview-scroll">
+          {groupsShown.map((g) => (
+            <section key={g.id}>
+              <h3 className="voice-section">{t.voice.toGroup(g.title)}</h3>
+              <ul className="voice-list">
+                {preview.groupItems.map((a, i) =>
+                  a.group.id !== g.id ? null : (
+                    <li key={a.key ?? `g${i}-${a.item.title}`}>
+                      <span className="voice-row">
+                        <span className="todo-tile group" aria-hidden>
+                          <Check />
+                        </span>
+                        <span className="voice-text">
+                          <b>{a.item.title}</b>
+                          <small>{groupItemLine(t, a, today, locale)}</small>
+                        </span>
+                      </span>
+                      <button className="voice-x" disabled={busy} aria-label={t.voice.remove(a.item.title)} onClick={() => drop({ ...preview, groupItems: preview.groupItems.filter((_, j) => j !== i) })}>
+                        <Cross />
+                      </button>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </section>
+          ))}
+          {preview.todos.length > 0 && (
+            <>
+              {(both || groupsShown.length > 0) && <h3 className="voice-section">{groupsShown.length > 0 && !both ? t.voice.mine : t.voiceTodos}</h3>}
+              <ul className="voice-list">
+                {preview.todos.map((d, i) => (
+                  <li key={d.key ?? `t${i}-${d.title}`}>
+                    <button className="voice-row" disabled={busy} onClick={() => setEditingTodo(i)}>
+                      <span className="todo-tile" aria-hidden>
                         <Check />
                       </span>
                       <span className="voice-text">
-                        <b>{a.item.title}</b>
-                        <small>{groupItemLine(t, a, today, locale)}</small>
+                        <b>{d.title}</b>
+                        <small>{[todoWhen(t, d.day || today, today, locale) ?? t.todo.today.toLowerCase(), d.time && d.duration_min ? [d.time, endTime(d.time, d.duration_min)].filter(Boolean).join('–') : d.time, d.location].filter(Boolean).join(' · ')}</small>
                       </span>
-                    </span>
-                    <button className="voice-x" disabled={busy} aria-label={t.voice.remove(a.item.title)} onClick={() => drop({ ...preview, groupItems: preview.groupItems.filter((_, j) => j !== i) })}>
+                    </button>
+                    <button className="voice-x" disabled={busy} aria-label={t.voice.remove(d.title)} onClick={() => drop({ ...preview, todos: preview.todos.filter((_, j) => j !== i) })}>
                       <Cross />
                     </button>
                   </li>
-                ),
-              )}
-            </ul>
-          </section>
-        ))}
-        {preview.todos.length > 0 && (
-          <>
-            {(both || groupsShown.length > 0) && <h3 className="voice-section">{groupsShown.length > 0 && !both ? t.voice.mine : t.voiceTodos}</h3>}
-            <ul className="voice-list">
-              {preview.todos.map((d, i) => (
-                <li key={d.key ?? `t${i}-${d.title}`}>
-                  <button className="voice-row" disabled={busy} onClick={() => setEditingTodo(i)}>
-                    <span className="todo-tile" aria-hidden>
-                      <Check />
-                    </span>
-                    <span className="voice-text">
-                      <b>{d.title}</b>
-                      <small>{[todoWhen(t, d.day || today, today, locale) ?? t.todo.today.toLowerCase(), d.time && d.duration_min ? [d.time, endTime(d.time, d.duration_min)].filter(Boolean).join('–') : d.time, d.location].filter(Boolean).join(' · ')}</small>
-                    </span>
-                  </button>
-                  <button className="voice-x" disabled={busy} aria-label={t.voice.remove(d.title)} onClick={() => drop({ ...preview, todos: preview.todos.filter((_, j) => j !== i) })}>
-                    <Cross />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {preview.habits.length > 0 && (
-          <>
-            {both && <h3 className="voice-section">{t.voiceHabits}</h3>}
-            <ul className="voice-list">
-              {preview.habits.map((h, i) => (
-                <li key={h.key ?? `h${i}-${h.title}`} className={i >= fit ? 'wont-fit' : undefined}>
-                  <button className="voice-row" disabled={busy} onClick={() => onEdit(i)}>
-                    <KindTile kind={h.kind} title={h.title} />
-                    <span className="voice-text">
-                      <b>{h.title}</b>
-                      <small>{describe(t, h)}</small>
-                    </span>
-                  </button>
-                  <button className="voice-x" disabled={busy} aria-label={t.voice.remove(h.title)} onClick={() => drop({ ...preview, habits: preview.habits.filter((_, j) => j !== i) })}>
-                    <Cross />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {fit < preview.habits.length && <p className="voice-hint">{t.voice.wontFit(fit, FREE_TASK_LIMIT ?? 0)}</p>}
-        {message && <p className="error">{message}</p>}
-        <button
-          className="act primary wide"
-          disabled={busy || fit + preview.todos.length + preview.groupItems.length === 0}
-          onClick={() => void add()}
-        >
-          {t.voice.addN(preview.todos.length + preview.groupItems.length, fit)}
-        </button>
-        <button className="voice-link" disabled={busy} onClick={() => void record()}>
-          <MicIcon size={18} />
-          {t.voice.again}
-        </button>
+                ))}
+              </ul>
+            </>
+          )}
+          {preview.habits.length > 0 && (
+            <>
+              {both && <h3 className="voice-section">{t.voiceHabits}</h3>}
+              <ul className="voice-list">
+                {preview.habits.map((h, i) => (
+                  <li key={h.key ?? `h${i}-${h.title}`} className={i >= fit ? 'wont-fit' : undefined}>
+                    <button className="voice-row" disabled={busy} onClick={() => onEdit(i)}>
+                      <KindTile kind={h.kind} title={h.title} />
+                      <span className="voice-text">
+                        <b>{h.title}</b>
+                        <small>{describe(t, h)}</small>
+                      </span>
+                    </button>
+                    <button className="voice-x" disabled={busy} aria-label={t.voice.remove(h.title)} onClick={() => drop({ ...preview, habits: preview.habits.filter((_, j) => j !== i) })}>
+                      <Cross />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {fit < preview.habits.length && <p className="voice-hint">{t.voice.wontFit(fit, FREE_TASK_LIMIT ?? 0)}</p>}
+        </div>
+        <div className="voice-preview-footer">
+          {message && <p className="error">{message}</p>}
+          <button
+            className="act primary wide"
+            disabled={busy || fit + preview.todos.length + preview.groupItems.length === 0}
+            onClick={() => void add()}
+          >
+            {t.voice.addN(preview.todos.length + preview.groupItems.length, fit)}
+          </button>
+          <button className="voice-link" disabled={busy} onClick={() => void record()}>
+            <MicIcon size={18} />
+            {t.voice.again}
+          </button>
+        </div>
         {todoDraft && (
           <TodoSheet
             title={todoDraft.title}
@@ -368,8 +372,8 @@ export function VoiceSheet({ preview, setPreview, room, today, groupId = null, g
   }
 
   return createPortal(
-    <div className="sheet-backdrop" onClick={phase === 'recording' && !preview ? undefined : close}>
-      <div className="sheet voice-sheet" role="dialog" aria-modal="true" aria-label={t.voice.mic} onClick={(e) => e.stopPropagation()}>
+    <div className={`sheet-backdrop${preview ? ' voice-preview-backdrop' : ''}`} onClick={phase === 'recording' && !preview ? undefined : close}>
+      <div className={`sheet voice-sheet${preview ? ' voice-sheet-preview' : ''}`} role="dialog" aria-modal="true" aria-label={t.voice.mic} onClick={(e) => e.stopPropagation()}>
         <span className="sheet-handle" aria-hidden />
         {body}
       </div>
