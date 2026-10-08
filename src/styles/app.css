@@ -550,7 +550,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .group-card { margin-top: 0; padding: 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; color: inherit; }
 .group-card-head { display: flex; align-items: center; gap: 12px; }
 .group-card-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.group-card-title b { font-size: 17px; }
+.group-card-title b { font-size: 17px; overflow-wrap: anywhere; }
 .group-card-title small, .group-card-note { font-size: 13px; color: var(--muted); }
 .group-progress { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .group-progress .goal-bar { flex: 1; margin: 0; }
@@ -604,7 +604,7 @@ button.task-value { align-self: flex-start; min-height: 28px; padding-right: 12p
 .group-header { margin: 28px 0 16px; display: flex; align-items: center; gap: 14px; }
 .group-header > .group-header-text { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .group-header > .icon-btn { align-self: flex-start; }
-.group-header h1 { margin: 0; font-size: 26px; line-height: 30px; letter-spacing: -0.02em; }
+.group-header h1 { margin: 0; font-size: 26px; line-height: 30px; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .group-sub { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); flex-wrap: wrap; }
 .member-row { gap: 12px; padding: 8px 12px; }
 .fab { position: fixed; right: 20px; bottom: calc(var(--app-inset-bottom) + 104px); height: 56px; padding: 0 22px; border-radius: 28px; background: var(--accent); color: var(--accent-text); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent); z-index: 5; }
