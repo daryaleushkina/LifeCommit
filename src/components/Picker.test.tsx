@@ -27,6 +27,41 @@ describe('шторка', () => {
     backdrop().click();
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  // 04.10.2026, /lc-explore: «Потом» → дело поверх — Escape закрывал обе шторки сразу.
+  it('две шторки одна над другой: Escape закрывает только верхнюю, потом — нижнюю', async () => {
+    const lower = vi.fn();
+    const upper = vi.fn();
+    function Two() {
+      const [top, setTop] = useState(true);
+      return (
+        <>
+          <Sheet title="Нижняя" onClose={lower}>
+            <p>Снизу</p>
+          </Sheet>
+          {top && (
+            <Sheet
+              title="Верхняя"
+              onClose={() => {
+                upper();
+                setTop(false);
+              }}
+            >
+              <p>Сверху</p>
+            </Sheet>
+          )}
+        </>
+      );
+    }
+    await renderApp(<Two />);
+    await expect.element(dialog('Верхняя')).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    expect(upper).toHaveBeenCalledOnce();
+    expect(lower).not.toHaveBeenCalled();
+    await expect.element(dialog('Верхняя')).not.toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(lower).toHaveBeenCalledOnce();
+  });
 });
 
 describe('выбор из списка', () => {

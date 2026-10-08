@@ -15,13 +15,24 @@ const Tick = () => (
   </svg>
 );
 
+// Открытые шторки по порядку: Escape закрывает только верхнюю (04.10.2026: «Потом» → дело — закрывались обе).
+const openSheets: { current: () => void }[] = [];
+
 /** Шторка снизу — вместо системных выпадающих списков, в стиле приложения. */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }): ReactNode {
+  const close = useRef(onClose);
+  useLayoutEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    openSheets.push(close);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && openSheets.at(-1) === close && close.current();
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    return () => {
+      openSheets.splice(openSheets.lastIndexOf(close), 1);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
   return createPortal(
     <div className="sheet-backdrop" onClick={onClose}>
