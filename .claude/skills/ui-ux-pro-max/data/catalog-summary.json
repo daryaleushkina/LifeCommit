@@ -3,10 +3,10 @@
   "verifiedAt": "2026-08-26",
   "counts": {
     "styles": {
-      "total": 88,
-      "searchable": 79,
+      "total": 74,
+      "searchable": 65,
       "active": 50,
-      "supplemental": 29,
+      "supplemental": 15,
       "deprecated": 9
     },
     "products": 192,
@@ -14,13 +14,13 @@
     "reasoningProfiles": 192,
     "fontPairings": 74,
     "googleFonts": 1934,
-    "curatedIcons": 105,
+    "curatedIcons": 101,
     "upstreamPhosphorIcons": 1512,
     "uxGuidelines": 119,
     "motionPresets": 17,
     "chartTypes": 25,
-    "stacks": 22,
-    "stackGuidelines": 1271
+    "stacks": 20,
+    "stackGuidelines": 1168
   },
   "snapshots": {
     "google-fonts.csv": {
@@ -30,7 +30,7 @@
       "sha256": "35688523f2955795caa1a47c53b83099e60c1708461476f9cc3a050cf3b0148a"
     },
     "icons.csv": {
-      "sha256": "50816c6012030178195a16ee481ebf58b47bd985d70e8ec58886cc83f6eddafc"
+      "sha256": "b3981a00be83a211b4d75554fe857c1241fc40d0353bef8e0ae78e9e83e77d0f"
     },
     "phosphor-icons-upstream.json": {
       "sha256": "2399325233b277b5c97a80e6a5e8941154f5d057beee4e7613db87c87d700236"
