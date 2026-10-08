@@ -56,10 +56,11 @@ const draft = (p: Partial<GroupItemDraft>): GroupItemDraft => ({
   title: 'Дело', mode: 'one', day: TODAY, time: null, rrule: null, assignees: [], all_members: false, rotate: false, target: null, unit: null, duration_min: null, ...p,
 });
 const gi = (item: Partial<GroupItemDraft>, names: string[] = [], group = { id: 10, title: 'Семья' }): GroupVoiceItem => ({ type: 'create_group_item', group, item: draft(item), names });
+const keyed = <T extends object>(row: T) => ({ ...row, key: expect.stringMatching(/^[0-9a-f]{32}$/) });
 
 let latest: VoicePreview | null;
 function setup(opts: { preview?: VoicePreview; room?: number | null; groupId?: number | null; groups?: { id: number; title: string }[] } = {}) {
-  const cb = { setPreview: vi.fn(), onEdit: vi.fn(), onAdd: vi.fn(async () => {}), onManual: vi.fn(), onClose: vi.fn() };
+  const cb = { setPreview: vi.fn(), onEdit: vi.fn(), onAdd: vi.fn<Parameters<typeof VoiceSheet>[0]['onAdd']>(async () => {}), onManual: vi.fn(), onClose: vi.fn() };
   latest = opts.preview ?? null;
   function Host() {
     const [preview, setPreview] = useState<VoicePreview | null>(opts.preview ?? null);
@@ -243,7 +244,7 @@ describe('разбор', () => {
     const todo: TodoInput = { title: 'Купить молоко' };
     finish([{ type: 'create_todo', todo }]);
     await expect.element(heading()).toHaveTextContent('Вот что получилось');
-    expect(setPreview).toHaveBeenLastCalledWith({ text: 'купить молоко', habits: [], todos: [todo], groupItems: [] });
+    expect(setPreview).toHaveBeenLastCalledWith({ text: 'купить молоко', habits: [], todos: [keyed(todo)], groupItems: [] });
     expect(tg.notify).toHaveBeenCalledWith('success');
   });
 
@@ -256,7 +257,8 @@ describe('разбор', () => {
     await r;
     await stopBtn().click();
     await expect.element(heading()).toHaveTextContent('Вот что получилось');
-    expect(setPreview).toHaveBeenLastCalledWith({ text: '', habits: [h], todos: [todo], groupItems: [g] });
+    expect(setPreview).toHaveBeenLastCalledWith({ text: '', habits: [keyed(h)], todos: [keyed(todo)], groupItems: [keyed(g)] });
+    expect(new Set([latest!.habits[0]!.key, latest!.todos[0]!.key, latest!.groupItems[0]!.key]).size).toBe(3);
   });
 
   it('двойное нажатие «Готово» отправляет запись один раз; пока она дописывается, таймер стоит на нуле', async () => {
@@ -421,13 +423,15 @@ describe('список', () => {
     onAdd.mockReturnValueOnce(new Promise((_res, rej) => (fail = rej)));
     const add = page.getByRole('button', { name: 'Добавить всё · 15' });
     await add.click();
-    expect(onAdd).toHaveBeenCalledWith(full.todos, full.habits, full.groupItems);
+    expect(onAdd).toHaveBeenCalledWith(full.todos.map(keyed), full.habits.map(keyed), full.groupItems.map(keyed));
+    const first = onAdd.mock.calls[0];
     await expect.element(add).toBeDisabled();
     fail(new ApiError(403, 'task_limit'));
     await expect.element(page.getByText('Бесплатно — до 0 привычек. Можно отложить какую-нибудь.')).toBeVisible();
     await expect.element(add).toBeEnabled();
     onAdd.mockRejectedValueOnce(new Error('offline'));
     await add.click();
+    expect(onAdd.mock.calls[1]).toEqual(first);
     await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
     await expect.element(page.getByText(/Можно отложить/)).not.toBeInTheDocument();
   });
@@ -488,11 +492,92 @@ describe('список', () => {
     expect(page.getByText('Вода', { exact: true }).element().closest('li')!.className).toBe('wont-fit');
     await expect.element(page.getByText(/добавятся первые 1/)).toBeVisible();
     await page.getByRole('button', { name: 'Добавить 1 привычку' }).click();
-    expect(onAdd).toHaveBeenCalledWith([], [preview.habits[0]], []);
+    expect(onAdd).toHaveBeenCalledWith([], [keyed(preview.habits[0]!)], []);
     await unmount();
     await setup({ preview, room: 0 }).r;
     await expect.element(page.getByText(/все места заняты/)).toBeVisible();
     await expect.element(page.getByRole('button', { name: /^Добавить/ })).toBeDisabled();
+  });
+
+  it('редактирование дела сохраняет ключ, повторное нажатие отправляет его снова', async () => {
+    const todo = { title: 'Молоко', key: 'same-row' };
+    const { r, onAdd } = setup({ preview: { text: '', todos: [todo], habits: [], groupItems: [] } });
+    await r;
+    await page.getByText('Молоко', { exact: true }).click();
+    await page.getByRole('textbox', { name: 'Дело' }).fill('Молоко и хлеб');
+    await page.getByRole('dialog', { name: 'Дело' }).getByRole('button', { name: 'Готово' }).click();
+    expect(latest!.todos[0]!.key).toBe('same-row');
+    onAdd.mockRejectedValue(new TypeError('Failed to fetch'));
+    await page.getByRole('button', { name: 'Добавить 1 дело' }).click();
+    await expect.element(page.getByRole('button', { name: 'Добавить 1 дело' })).toBeEnabled();
+    await page.getByRole('button', { name: 'Добавить 1 дело' }).click();
+    expect(onAdd.mock.calls[0]).toEqual(onAdd.mock.calls[1]);
+    expect(onAdd.mock.calls[0]![0][0]).toMatchObject({ title: 'Молоко и хлеб', key: 'same-row' });
+  });
+
+  it('двойное нажатие добавляет один раз; во время добавления строки и новая запись недоступны', async () => {
+    const { r, onAdd } = setup({ preview: { text: '', todos: [{ title: 'Молоко' }], habits: [], groupItems: [] } });
+    await r;
+    let done!: () => void;
+    onAdd.mockReturnValueOnce(new Promise((res) => (done = res)));
+    const btn = page.getByRole('button', { name: 'Добавить 1 дело' }).element() as HTMLButtonElement;
+    btn.click();
+    btn.click();
+    expect(onAdd).toHaveBeenCalledOnce();
+    await expect.element(page.getByRole('button', { name: 'Убрать «Молоко»' })).toBeDisabled();
+    await expect.element(page.getByRole('button', { name: 'Сказать ещё раз' })).toBeDisabled();
+    done();
+    await expect.element(page.getByRole('button', { name: 'Добавить 1 дело' })).toBeEnabled();
+  });
+
+  it('длинные названия: «Добавить всё» видно без прокрутки шторки', async () => {
+    const previousViewport = { width: window.innerWidth, height: window.innerHeight };
+    const style = document.documentElement.style;
+    const insets = {
+      '--tg-viewport-stable-height': '659px',
+      '--tg-viewport-safe-area-inset-top': '59px',
+      '--tg-viewport-safe-area-inset-bottom': '34px',
+      '--tg-viewport-content-safe-area-inset-top': '46px',
+      '--tg-viewport-content-safe-area-inset-bottom': '0px',
+    };
+    const previous = Object.keys(insets).map((name) => [name, style.getPropertyValue(name)] as const);
+    await page.viewport(393, 659);
+    for (const [name, value] of Object.entries(insets)) style.setProperty(name, value);
+    try {
+      await setup({ preview: {
+        text: '',
+        todos: [{ title: 'Записаться к стоматологу на четверг после работы и не забыть взять полис' }],
+        habits: [habit({ title: 'Читатьпоутрамхотябыдесятьстраницкаждыйдень', kind: 'check', target: 1, unit: null })],
+        groupItems: [gi({ title: 'Вынестимусориразобратьбалконпередзимойвсемвместе' })],
+      } }).r;
+      const add = page.getByRole('button', { name: 'Добавить всё · 3' });
+      await expect.element(add).toBeVisible();
+      await expect.poll(() => add.element().getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
+      await expect.poll(() => add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight - 34);
+      const sheet = document.querySelector<HTMLElement>('.voice-sheet')!;
+      const list = document.querySelector<HTMLElement>('.voice-preview-scroll')!;
+      await expect.poll(() => getComputedStyle(sheet).transform).toBe('none');
+      expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+      const buttonTop = add.element().getBoundingClientRect().top;
+      list.scrollTop = list.scrollHeight;
+      await expect.poll(() => list.scrollTop).toBeGreaterThan(0);
+      await expect.poll(() => add.element().getBoundingClientRect().top).toBeCloseTo(buttonTop);
+      expect(sheet.scrollTop).toBe(0);
+      expect(add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight - 34);
+      // Telegram может сообщить меньшую видимую высоту, чем окно WebView.
+      style.setProperty('--tg-viewport-stable-height', '520px');
+      await expect.poll(() => add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(520 - 34);
+      expect(sheet.getBoundingClientRect().top).toBeGreaterThanOrEqual(59 + 46);
+      list.scrollTop = list.scrollHeight;
+      await expect.poll(() => list.scrollTop).toBeGreaterThan(0);
+      expect(add.element().getBoundingClientRect().bottom).toBeLessThanOrEqual(520 - 34);
+    } finally {
+      for (const [name, value] of previous) {
+        if (value) style.setProperty(name, value);
+        else style.removeProperty(name);
+      }
+      await page.viewport(previousViewport.width, previousViewport.height);
+    }
   });
 
   it('по-английски — английские даты', async () => {
