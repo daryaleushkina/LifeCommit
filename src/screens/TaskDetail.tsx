@@ -28,7 +28,8 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
   const t = useT();
   const lang = useContext(LangContext);
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
-  const { log, error, clearError } = useTaskLog(setCache, t.error);
+  const [error, setError] = useState<string | null>(null);
+  const { log } = useTaskLog(setCache, t.error, setError);
   const onLog = (change: LogChange) => void log(task, change);
   // История подтянута в фоне после запуска — числа и календарь сразу настоящие.
   const [history, setHistory] = useState<TaskHistory | null>(caches.history.get(task.id) ?? null);
@@ -203,7 +204,7 @@ export function TaskDetail({ task, today, setCache, onEdit, onClose }: Props): R
       </header>
 
       {error && (
-        <p className="error" onClick={clearError}>
+        <p className="error" onClick={() => setError(null)}>
           {error}
         </p>
       )}

@@ -3,6 +3,7 @@
 // так одинаково в любом WebView Telegram и без библиотек. Размер сторис — 1080×1920; координаты ниже —
 // как в макете (360×640), холст просто увеличен в 3 раза. На каждой картинке — знак, QR на бота и @LifeCommit_bot,
 // всегда (переключателей нет — решение владелицы). Никаких пояснительных фраз — только цифра и что она значит.
+import { graphemes } from '../../shared/text';
 import { BOT_QR, QR_LOGO } from './qr';
 
 export const W = 360;
@@ -480,21 +481,23 @@ function numUnit(ctx: CanvasRenderingContext2D, r: SumRow, x: number, y: number,
   ctx.fillText(r.n, x, y);
   let end = x + ctx.measureText(r.n).width;
   if (r.u) {
-    const us = fit(ctx, r.u, 600, num * 0.58, Math.max(20, maxW - (end - x) - 6));
-    font(ctx, 600, us);
+    const room = Math.max(20, maxW - (end - x) - 6);
+    font(ctx, 600, fit(ctx, r.u, 600, num * 0.58, room));
+    // Даже самым мелким шрифтом не влезла (единица из 20 широких букв) — обрезаем, а не вылезаем за край.
+    const u = clip(ctx, r.u, room);
     ctx.fillStyle = unitColor;
-    ctx.fillText(r.u, end + num * 0.22, y);
-    end += num * 0.22 + ctx.measureText(r.u).width;
+    ctx.fillText(u, end + num * 0.22, y);
+    end += num * 0.22 + ctx.measureText(u).width;
   }
   return end;
 }
 
-/** Текст, обрезанный многоточием по ширине (название цели может быть длинным). */
+/** Текст, обрезанный многоточием по ширине (название цели может быть длинным) — по целым символам, без половинок эмодзи. */
 function clip(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
   if (ctx.measureText(text).width <= maxW) return text;
-  let t = text;
-  while (t.length > 1 && ctx.measureText(`${t}…`).width > maxW) t = t.slice(0, -1);
-  return `${t.trimEnd()}…`;
+  const g = graphemes(text);
+  while (g.length > 1 && ctx.measureText(`${g.join('')}…`).width > maxW) g.pop();
+  return `${g.join('').trimEnd()}…`;
 }
 
 function drawSumList(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind: 'sum-list' }>, l: Labels) {
@@ -656,8 +659,16 @@ function drawSumNeon(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind:
   line(ctx, t.caption, x0, SUM_TOP + 22 + big + cap * 0.9, 700, cap, C.light);
   const top = SUM_TOP + 22 + big + cap * 1.3 + 12;
   const rowH = (CONTENT_BOTTOM - top) / n;
-  const num = Math.min(24, rowH * 0.5);
   const text = clamp(rowH * 0.32, 12, 15);
+  // Колонка единиц — по самому широкому числу, измеренному тем же шрифтом, каким оно нарисовано (04.10.2026: мерили
+  // прежним шрифтом после restore — «300 000» налезало на «шагов»). Числа не шире 55% строки — иначе шрифт мельче.
+  let num = Math.min(24, rowH * 0.5);
+  const widest = () => {
+    font(ctx, 800, num);
+    return Math.max(...t.rows.map((r) => ctx.measureText(r.n).width));
+  };
+  while (num > 12 && widest() > w * 0.55) num -= 1;
+  const tx = x0 + Math.min(w * 0.6, Math.max(num * 3.8, widest() + 10));
   t.rows.forEach((r, i) => {
     const ry = top + i * rowH;
     if (i) {
@@ -671,12 +682,12 @@ function drawSumNeon(ctx: CanvasRenderingContext2D, t: Extract<Template, { kind:
     font(ctx, 800, num);
     ctx.fillStyle = C.neon;
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(r.n, x0, base);
+    ctx.fillText(clip(ctx, r.n, tx - x0 - 6), x0, base);
     ctx.restore();
-    const tx = x0 + Math.max(num * 3.8, ctx.measureText(r.n).width + 10);
     font(ctx, 600, text);
     ctx.fillStyle = C.light;
-    const unit = r.u ? `${r.u} ` : '';
+    // Единице — не больше 60% остатка строки: название цели остаётся видно.
+    const unit = r.u ? `${clip(ctx, r.u, (x0 + w - tx) * 0.6)} ` : '';
     ctx.fillText(unit, tx, base);
     const ux = tx + ctx.measureText(unit).width;
     font(ctx, 400, text);
