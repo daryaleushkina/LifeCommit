@@ -5,7 +5,7 @@ import { GroupBlocks } from '../components/GroupBlocks';
 import { SwipeRow, type SwipeAction } from '../components/SwipeRow';
 import { TodoList } from '../components/TodoList';
 import { LangContext, useT } from '../i18n';
-import { removeWithUndo, useRemoved } from '../removal';
+import { notify, removeWithUndo, useRemoved } from '../removal';
 import type { TodayTask } from '../../shared/types';
 import { currentChange, useTaskLog, type Cache } from '../useTaskLog';
 import { useTodos } from '../useTodos';
@@ -29,8 +29,9 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onD
   const t = useT();
   const lang = useContext(LangContext);
   const data = cache.today;
-  const { log, error, clearError } = useTaskLog(setCache, t.error);
-  const todos = useTodos(setCache, t.error);
+  // Ошибки отметок и дел — плашкой внизу (решение владелицы 04.10.2026): вверху длинного списка их не видно.
+  const { log } = useTaskLog(setCache, t.error, notify);
+  const todos = useTodos(setCache, t.error, notify);
   const isRemoved = useRemoved();
   // Удалить привычку свайпом (02.10.2026: раньше — только из редактора, «слишком глубоко»). Как у дел: 5 секунд «Вернуть»,
   // на сервер удаление уходит, когда плашка закрылась.
@@ -82,17 +83,6 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onD
       </header>
 
       {/* Полосы карты здесь больше нет (01.10.2026): на «Сегодня» она лишняя, карта — во вкладке «Я». */}
-      {(error ?? todos.error) && (
-        <p
-          className="error"
-          onClick={() => {
-            clearError();
-            todos.clearError();
-          }}
-        >
-          {error ?? todos.error}
-        </p>
-      )}
 
       {/* Разовые дела — над привычками: их обычно надо сделать сегодня и один раз. */}
       <TodoList
@@ -101,7 +91,7 @@ export function Today({ cache, setCache, onEdit, onArchive, me, onOpenGroup, onD
         later={data.todos_later}
         today={data.day}
         onToggle={(d) => void todos.toggle(d)}
-        onAdd={(title) => void todos.add(title, data.day)}
+        onAdd={(title) => todos.add(title, data.day)}
         onUpdate={todos.update}
         onRemove={todos.remove}
         onHide={todos.hide}

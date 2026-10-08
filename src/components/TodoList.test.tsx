@@ -338,7 +338,58 @@ describe('удаление свайпом', () => {
   });
 });
 
+describe('новое дело не сохранилось', () => {
+  it('пока запрос идёт, текст сохраняется; повторный Enter и уход из поля не создают второе дело', async () => {
+    let resolve!: (ok: boolean) => void;
+    const pending = new Promise<boolean>((done) => { resolve = done; });
+    const { r, onAdd } = setup([]);
+    onAdd.mockReturnValueOnce(pending);
+    await r;
+    await page.getByRole('button', { name: 'Дело на сегодня' }).click();
+    const input = page.getByRole('textbox', { name: 'Дело на сегодня' });
+    await input.fill('  Записаться к стоматологу  ');
+    await userEvent.keyboard('{Enter}');
+    await expect.element(input).toHaveValue('  Записаться к стоматологу  ');
+    await expect.element(input).toHaveAttribute('readonly');
+    await userEvent.keyboard('{Enter}');
+    await page.getByRole('heading', { name: 'Дела' }).click();
+    expect(onAdd).toHaveBeenCalledExactlyOnceWith('Записаться к стоматологу');
+    resolve(false);
+    await expect.element(input).toHaveValue('  Записаться к стоматологу  ');
+    await expect.element(input).not.toHaveAttribute('readonly');
+  });
+
+  // lc-explore 04.10.2026: длинную фразу приходилось набирать заново — теперь набранное возвращается в поле.
+  it('onAdd вернул false — текст снова в поле, поле открыто; true — пусто', async () => {
+    const { r, onAdd } = setup([]);
+    await r;
+    onAdd.mockResolvedValueOnce(false);
+    await page.getByRole('button', { name: 'Дело на сегодня' }).click();
+    const input = page.getByRole('textbox', { name: 'Дело на сегодня' });
+    await input.fill('Записаться к стоматологу');
+    await userEvent.keyboard('{Enter}');
+    await expect.element(input).toHaveValue('Записаться к стоматологу');
+    onAdd.mockResolvedValueOnce(true);
+    await userEvent.keyboard('{Enter}');
+    await expect.element(input).toHaveValue('');
+  });
+});
+
 describe('«Потом»', () => {
+  // lc-explore 04.10.2026: список не загрузился — шторка была пустой и молчала.
+  it('список не загрузился — строка ошибки; тап — загрузить снова', async () => {
+    vi.mocked(api.laterTodos).mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue([todo({ id: 21, title: 'Стрижка', day: '2026-10-04' })]);
+    const { r } = setup([], { later: 1 });
+    await r;
+    await page.getByRole('button', { name: 'Потом · 1' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Запланировано' });
+    const error = sheet.getByRole('button', { name: 'Что-то пошло не так. Попробуй ещё раз.' });
+    await expect.element(error).toBeVisible();
+    await error.click();
+    await expect.element(sheet.getByText('Стрижка')).toBeVisible();
+    await expect.element(error).not.toBeInTheDocument();
+  });
+
   const later = [
     todo({ id: 21, title: 'Стрижка', day: '2026-10-04', time: '15:00' }),
     todo({ id: 22, title: 'Отчёт', day: '2026-10-06' }),

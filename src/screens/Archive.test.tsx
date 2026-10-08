@@ -84,6 +84,17 @@ describe('Отложенные', () => {
     expect(onChanged).toHaveBeenCalledWith(true);
   });
 
+  // lc-explore 04.10.2026: «Удалить» при сбое молча ничего не делало.
+  it('«Удалить» не прошло — сказано, привычка на месте', async () => {
+    m.api.deleteTask.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const onChanged = vi.fn(async () => {});
+    await renderApp(<Archive archived={list} onChanged={onChanged} onClose={() => {}} />);
+    await page.getByRole('button', { name: 'Удалить' }).nth(1).click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('Читать')).toBeVisible();
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
   it('в Telegram спрашивает; «Отмена» ничего не удаляет, «Удалить» — удаляет', async () => {
     m.popup.available = true;
     m.popup.answer = null;
