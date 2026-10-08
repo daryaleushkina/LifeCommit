@@ -119,3 +119,47 @@ test('«Сообщить о проблеме»: лимит — «Уже мног
   await expect(sheet.getByRole('textbox', { name: 'Что случилось?' })).toHaveValue('Белый экран');
   await closeSheet(page);
 });
+
+// 04.10.2026 (/lc-explore): отказ сервера уходил в необработанную ошибку, на экране — ничего.
+for (const [code, message] of [
+  ['linked_account', 'Удалить аккаунт можно только из того Telegram, в котором он создан.'],
+  ['telegram_only', 'Удалить аккаунт можно в Telegram или в приложении LifeCommit на телефоне.'],
+] as const) {
+  test(`удалить аккаунт не вышло — сказано почему (${code})`, async ({ app: page }) => {
+    await goTab(page, 'Я');
+    await page.route('**/api/account', (r) => (r.request().method() === 'DELETE' ? r.fulfill({ status: 403, json: { error: code } }) : r.fallback()));
+    await page.getByRole('button', { name: 'Удалить аккаунт' }).click();
+    await expect(page.getByText(message, { exact: true })).toBeVisible();
+  });
+}
+
+// 04.10.2026 (/lc-explore): сменили «День заканчивается» так, что «сегодня» стало другим днём, — «Сегодня» до минуты
+// показывал прошлый день и его отметки, а отметки уже уходили в новый. Пояс выбираем так, чтобы там сейчас было 02:xx:
+// при конце дня 04:00 «сегодня» — вчерашний день, при 00:00 — сегодняшний. Так тест не зависит от времени суток.
+const zoneAt2am = (() => {
+  const h = new Date().getUTCHours();
+  const off = [2 - h, 2 - h + 24, 2 - h - 24].find((o) => o >= -12 && o <= 14)!;
+  return off === 0 ? 'Etc/GMT' : `Etc/GMT${off > 0 ? '-' : '+'}${Math.abs(off)}`;
+})();
+
+test.describe('конец дня сменили — «сегодня» стало другим днём', () => {
+  test.use({ timezoneId: zoneAt2am });
+  test('«Сегодня» сразу показывает новый день и его отметки', async ({ app: page, me }) => {
+    const { id } = await me.api<{ id: number }>('POST', '/tasks', { title: 'Спортзал', kind: 'check', target: 1, schedule: 'daily' });
+    await me.api('PUT', '/logs', { task_id: id, value: 1 });
+    await page.reload();
+    const card = page.locator('article.task', { hasText: 'Спортзал' });
+    await expect(card).toHaveClass(/done/);
+    await goTab(page, 'Я');
+    await page.getByRole('button', { name: /День заканчивается/ }).click();
+    const hours = page.getByRole('listbox', { name: 'Часы' });
+    await hours.getByRole('option', { name: '00', exact: true }).click();
+    await expect(hours.getByRole('option', { name: '00', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: 'Готово' }).click();
+    await expect(page.getByRole('button', { name: /День заканчивается/ })).toContainText('00:00');
+    await goTab(page, 'Сегодня');
+    const now = new Intl.DateTimeFormat('ru-RU', { timeZone: zoneAt2am, day: 'numeric', month: 'long' }).format(new Date());
+    await expect(page.locator('.page-head p').first()).toContainText(now);
+    await expect(card).not.toHaveClass(/done/);
+  });
+});

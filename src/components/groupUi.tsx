@@ -6,6 +6,7 @@ import { askGroupRemoval, removeWithUndo, useRemoved } from '../removal';
 import { SwipeRow, type SwipeAction } from './SwipeRow';
 import type { GroupDayItem, GroupKind, GroupMember } from '../../shared/groups';
 import { plural } from '../../shared/groups';
+import { firstGrapheme } from '../../shared/text';
 import { useT } from '../i18n';
 import { Check } from './TodoList';
 
@@ -35,7 +36,7 @@ export function Avatar({ member, size = 28 }: { member: Pick<GroupMember, 'id' |
     <img className="avatar" src={member.photo} alt="" width={size} height={size} style={{ width: size, height: size }} />
   ) : (
     <span className="avatar" aria-hidden style={{ width: size, height: size, background: bg, color: fg, fontSize: Math.round(size * 0.42) }}>
-      {(member.name || '?').slice(0, 1).toUpperCase()}
+      {(firstGrapheme(member.name) || '?').toUpperCase()}
     </span>
   );
 }
@@ -57,7 +58,7 @@ export function GroupBadge({ id, title, size = 48 }: { id: number; title: string
   const [bg, fg] = palette[Math.abs(id) % palette.length]!;
   return (
     <span className="group-badge" aria-hidden style={{ width: size, height: size, background: bg, color: fg, fontSize: Math.round(size * 0.42), borderRadius: Math.round(size * 0.33) }}>
-      {title.slice(0, 1).toUpperCase()}
+      {firstGrapheme(title).toUpperCase()}
     </span>
   );
 }
