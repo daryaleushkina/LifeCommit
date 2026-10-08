@@ -38,16 +38,6 @@ struct TogetherModelTests {
         return (server, m)
     }
 
-    /// Дождаться, пока условие станет верным (правки, которые модель отправляет в фоне), — без пауз вслепую.
-    func until(_ what: Comment, _ check: () -> Bool) async {
-        for _ in 0..<2000 {
-            if check() { return }
-            await Task.yield()
-            try? await Task.sleep(for: .milliseconds(2))
-        }
-        Issue.record(what)
-    }
-
     @Test("отметка на экране группы: галочка сразу, сервер принял; потом «Сегодня» и экран — с сервера")
     func mark() async {
         let (server, m) = setup()
@@ -87,26 +77,37 @@ struct TogetherModelTests {
         #expect(m.together.note?.text == "Уже кто-то сделал")
     }
 
-    @Test("перечитка экрана группы, начатая до отметки, не затирает её")
-    func staleReload() async {
+    @Test("перечитка группы до или во время отметки не затирает её", arguments: [false, true])
+    func staleReload(duringEdit: Bool) async {
         let (server, m) = setup()
         await m.together.loadGroup(1)
         let gate = server.hold("GET groups/1")
+        let mark = server.hold("PUT groups/1/items/11/mark")
+        var readingFinished = false
+        let marking: Task<Void, Never>
+        if duringEdit {
+            marking = Task { await m.together.mark(groupId: 1, Self.trash()) }
+            await mark.entered()
+        } else {
+            // Правка начнётся только после сбора старого ответа чтения.
+            marking = Task { await gate.entered(); await m.together.mark(groupId: 1, Self.trash()) }
+        }
         let reading = Task {
             await m.together.loadGroup(1)
             #expect(m.together.details[1]?.items.first?.done == true, "по завершении чтения старый ответ не снял отметку")
+            readingFinished = true
         }
-        await server.seen("GET groups/1", times: 2)
-        let mark = server.hold("PUT groups/1/items/11/mark")
-        let marking = Task { await m.together.mark(groupId: 1, Self.trash()) }
-        await server.seen("PUT groups/1/items/11/mark")
+        await gate.entered()
+        await mark.entered()
         await gate.open()
-        // Перечитка теперь ждёт правку: держать её до await reading означало бы ждать друг друга.
+        await until("ответ обработан: чтение ждёт правку или ошибочно закончилось") { readingFinished || m.together.waitingForEdits }
+        #expect(!readingFinished, "старый ответ не применяется, пока отметка придержана")
         #expect(m.together.details[1]?.items.first?.done == true, "старый ответ без отметки не лёг поверх неё")
         await mark.open()
         await reading.value
         await marking.value
         #expect(m.together.details[1]?.items.first?.done == true)
+        #expect(server.calls("GET groups/1").count == 3, "начальное чтение, устаревшее и общий свежий повтор")
     }
 
     @Test("группы нет (404) — «не найдено»; моргнула сеть, а экран уже был — остаётся как был")
@@ -337,6 +338,118 @@ struct TogetherModelTests {
         #expect(!m.together.missing.contains(2))
     }
 
+    @Test("четвёртый ответ группы или списка применяется без ожидания правки и без пятого запроса", arguments: [false, true])
+    func fourthResponse(list: Bool) async throws {
+        let (server, m) = setup()
+        server.groups.withLock { $0[2] = GroupToday(id: 2, title: "Бег 1", role: .member) }
+        let key = list ? "GET groups" : "GET groups/2"
+        let title = { list ? m.together.list?.first { $0.id == 2 }?.title : m.together.details[2]?.title }
+        var gate = server.hold(key)
+        let reading = Task {
+            if list { await m.together.loadList() } else { await m.together.loadGroup(2) }
+        }
+        for attempt in 1...4 {
+            await gate.entered()
+            let edit = server.hold("PATCH groups/1/items/11")
+            let saving = Task { try await m.together.saveItem(groupId: 1, itemId: 11, GroupItemInput(title: "Мусор", mode: .one, day: Self.day)) }
+            await edit.entered()
+            let next = server.hold(key)
+            if attempt < 4 { server.groups.withLock { $0[2]?.title = "Бег \(attempt + 1)" } }
+            await gate.open()
+            if attempt == 4 {
+                await until("четвёртый ответ показан, хотя правка ещё придержана") { title() == "Бег 4" }
+                #expect(title() == "Бег 4", "применён последний ответ, а не один из предыдущих")
+            }
+            await edit.open()
+            try await saving.value
+            gate = next
+        }
+        await gate.open() // Если появился лишний пятый запрос, тест завершится и поймает его счётчиком.
+        await reading.value
+        #expect(server.calls(key).count == 4)
+    }
+
+    @Test("три открытия одной группы во время правки: всего три GET — начальное, устаревшее и общий повтор")
+    func sharedGroupRead() async {
+        let (server, m) = setup()
+        await m.together.loadGroup(1)
+        let edit = server.hold("PUT groups/1/items/11/mark")
+        let marking = Task { await m.together.mark(groupId: 1, Self.trash()) }
+        await edit.entered()
+        let first = server.hold("GET groups/1")
+        var started = 0
+        let reads = (0..<3).map { _ in Task { started += 1; await m.together.loadGroup(1) } }
+        await until("все три открытия начались") { started == 3 }
+        await first.entered()
+        let retry = server.hold("GET groups/1", times: 4)
+        await first.open()
+        await edit.open()
+        await retry.entered()
+        await retry.open()
+        for read in reads { await read.value }
+        await marking.value
+        #expect(server.calls("GET groups/1").count == 3, "1 начальное + 1 устаревшее + 1 общий повтор после правки")
+        #expect(m.together.details[1]?.items.first?.done == true)
+    }
+
+    @Test("quiet не ослабляет открытие без quiet, присоединившееся к тому же чтению", arguments: [true, false])
+    func sharedGroupFailure(firstQuiet: Bool) async {
+        let (server, m) = setup()
+        server.fail("GET groups/1", status: 0, code: "", times: 2)
+        let gate = server.hold("GET groups/1")
+        let first = Task { await m.together.loadGroup(1, quiet: firstQuiet) }
+        await gate.entered()
+        var started = false
+        let second = Task { started = true; await m.together.loadGroup(1, quiet: !firstQuiet) }
+        await until("второе открытие началось") { started }
+        await gate.open()
+        await first.value
+        await second.value
+        #expect(server.calls("GET groups/1").count == 1)
+        #expect(m.together.missing.contains(1), "чтение для открытого пустого экрана не стало тихим")
+    }
+
+    @Test("правка прошлого аккаунта не держит чтение нового и её defer не портит новый счётчик")
+    func oldEditAfterReset() async throws {
+        let (server, m) = setup()
+        let edit = server.hold("PATCH groups/1/items/11")
+        let saving = Task { try await m.together.saveItem(groupId: 1, itemId: 11, GroupItemInput(title: "Мусор", mode: .one, day: Self.day)) }
+        await edit.entered()
+        m.together.reset()
+        server.groups.withLock { $0[2] = GroupToday(id: 2, title: "Новый аккаунт", role: .member) }
+        let reading = Task { await m.together.loadGroup(2) }
+        await until("новый аккаунт загружен до ответа на старую правку") { m.together.details[2]?.title == "Новый аккаунт" }
+        let ready = m.together.details[2]?.title == "Новый аккаунт"
+        #expect(ready)
+        await edit.open()
+        try await saving.value
+        if !ready {
+            // Даже при регрессии счётчика не оставляем проверку ждать подвешенное чтение навсегда.
+            m.together.reset()
+            await reading.value
+            return
+        }
+        await reading.value
+        await m.together.loadGroup(2)
+        #expect(server.calls("GET groups/2").count == 2, "по одному свежему чтению до и после завершения старой правки")
+    }
+
+    @Test("список, прочитанный во время переименования, ждёт правку и спрашивает заново")
+    func listDuringEdit() async {
+        let (server, m) = setup()
+        await m.together.loadGroup(1)
+        let edit = server.hold("PATCH groups/1")
+        m.together.rename(groupId: 1, title: "Дом")
+        await edit.entered()
+        let reading = Task { await m.together.loadList() }
+        await server.seen("GET groups")
+        await edit.open()
+        await reading.value
+        #expect(m.together.list?.first?.title == "Дом")
+        #expect(server.calls("GET groups").count == 2, "устаревший список повторно прочитан")
+        await until("переименование завершилось") { !server.calls("GET today").isEmpty }
+    }
+
     @Test("«только сегодня» прячет один день: в другие дни и на «Сегодня» дело видно, пока идёт «Вернуть»")
     func skipHidesOneDay() {
         let (_, m) = setup()
@@ -372,13 +485,19 @@ struct TogetherModelTests {
         let held = server.hold("PUT groups/1/items/13/mark")
         let b = Task { await m.together.mark(groupId: 1, second) }
         await server.seen("PUT groups/1/items/13/mark")
-        // Первая отметка дошла и перечитала экран, пока вторая ещё идёт.
-        let a = Task { await m.together.mark(groupId: 1, Self.trash()) }
+        var firstFinished = false
+        let a = Task {
+            await m.together.mark(groupId: 1, Self.trash())
+            #expect(m.together.details[1]?.items.first { $0.id == 13 }?.done == true, "вторая галочка на месте после перечитки")
+            firstFinished = true
+        }
         await server.seen("GET groups/1", times: 2)
-        #expect(m.together.details[1]?.items.first { $0.id == 13 }?.done == true, "вторая галочка на месте")
+        await until("перечитка обработала ответ, пока вторая отметка придержана") { firstFinished || m.together.waitingForEdits }
+        #expect(!firstFinished)
         await held.open()
         await a.value
         await b.value
+        #expect(server.calls("GET groups/1").count == 3, "начальное, устаревшее и повторённое после обеих отметок чтение")
         #expect(m.together.details[1]?.items.first { $0.id == 13 }?.done == true)
     }
 

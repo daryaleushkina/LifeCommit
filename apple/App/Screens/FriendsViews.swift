@@ -252,11 +252,15 @@ struct AddFriendSheet: View {
     }
 
     private func call(_ person: Person) {
+        let searchedName = name
+        let username = person.username ?? searchedName
         busy = true
         Task {
             do {
-                let status = try await tg.request(username: person.username ?? name)
-                found = FoundPerson(person: person, status: status)
+                let status = try await tg.request(username: username)
+                if FriendsLogic.requestIsCurrent(started: searchedName, current: name) {
+                    found = FoundPerson(person: person, status: status)
+                }
             } catch {
                 if (error as? APIError)?.isSignedOut == true { return model.signOutLocally() }
                 friendsLog.notice("friend request failed: \(String(describing: error), privacy: .public)")

@@ -471,7 +471,12 @@ describe.skipIf(!ready)('отметки и цели', () => {
       expect(res.status, String(bad)).toBe(400);
       expect(res.body.error, String(bad)).toBe('bad_day');
     }
-    expect((await mark(day)).status).toBe(200);
+    const beforeToday = await sb.from('group_item_marks').select('day').eq('item_id', daily).order('day');
+    expect(beforeToday.error).toBeNull();
+    expect(beforeToday.data?.map((m) => m.day)).toEqual([addDays(day, -7), addDays(day, -3)]);
+    const today = await mark(day);
+    expect(today.status).toBe(200);
+    expect(today.body.taken).toBe(false);
     const days = (await sb.from('group_item_marks').select('day').eq('item_id', daily).order('day')).data?.map((m) => m.day);
     expect(days).toEqual([addDays(day, -7), addDays(day, -3), day]);
   });

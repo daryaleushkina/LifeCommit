@@ -382,16 +382,29 @@ struct TogetherMiscTests {
         #expect(!FriendsLogic.searchable("@ann") && FriendsLogic.searchable("@anna") && FriendsLogic.searchable("anna"))
     }
 
-    @Test("поиск: неверное имя — 400 bad_username, такого нет — 404, прочие ошибки — сбой")
+    @Test("поиск: неверное имя — код bad_username, такого нет — 404, прочие ошибки — сбой")
     func searchProblem() {
         // Что сказать, если поиск не удался: «такого нет» — только когда сервер так и ответил (404).
         #expect(FriendsLogic.searchProblem(APIError(.http(status: 400, code: "bad_username"))) == .badUsername)
         #expect(FriendsLogic.searchProblem(APIError(.http(status: 404, code: "not_found"))) == .notFound)
         #expect(FriendsLogic.searchProblem(APIError(.http(status: 500, code: "internal"))) == .error)
-        #expect(FriendsLogic.searchProblem(APIError(.http(status: 500, code: "bad_username"))) == .error)
+        #expect(FriendsLogic.searchProblem(APIError(.http(status: 500, code: "bad_username"))) == .badUsername)
         #expect(FriendsLogic.searchProblem(APIError(.http(status: 400, code: "bad_request"))) == .error)
         #expect(FriendsLogic.searchProblem(APIError(.network)) == .error)
         #expect(FriendsLogic.searchProblem(URLError(.notConnectedToInternet)) == .error)
+    }
+
+    @Test("ответ заявки — только для того имени, которое по-прежнему в поле")
+    func requestIsCurrent() {
+        #expect(FriendsLogic.requestIsCurrent(started: "masha", current: "masha"))
+        #expect(!FriendsLogic.requestIsCurrent(started: "masha", current: "masha2"))
+        #expect(!FriendsLogic.requestIsCurrent(started: "masha", current: ""))
+    }
+
+    @Test("незнакомый вид группы — other; известный вид сохранён")
+    func unknownGroupKind() throws {
+        #expect(try APIClient.decoder.decode(GroupKind.self, from: Data(#""future""#.utf8)) == .other)
+        #expect(try APIClient.decoder.decode(GroupKind.self, from: Data(#""family""#.utf8)) == .family)
     }
 
     @Test("свайп по общему делу: повторяющееся — спросить «только сегодня или у всех», разовое и цель — сразу")

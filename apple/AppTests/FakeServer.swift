@@ -9,8 +9,19 @@ import Synchronization
 actor Gate {
     private var isOpen = false
     private var waiting: [CheckedContinuation<Void, Never>] = []
+    private var wasEntered = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Ответ уже собран и дошёл до двери: следующий hold не может заменить дверь этого запроса.
+    func entered() async {
+        if wasEntered { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
 
     func wait() async {
+        wasEntered = true
+        entryWaiters.forEach { $0.resume() }
+        entryWaiters = []
         if isOpen { return }
         await withCheckedContinuation { waiting.append($0) }
     }

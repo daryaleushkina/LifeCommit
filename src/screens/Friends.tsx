@@ -212,6 +212,7 @@ export function AddFriendSheet({ onClose }: { onClose: () => void }): ReactNode 
   const fr = t.fr;
   const [link, setLink] = useState(caches.friends?.link ?? '');
   const [name, setName] = useState('');
+  const currentName = useRef('');
   const [found, setFound] = useState<{ person: Person; status: PersonStatus } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -235,7 +236,6 @@ export function AddFriendSheet({ onClose }: { onClose: () => void }): ReactNode 
         },
         (e) => {
           if (stale) return;
-          setFound(null);
           setProblem(e instanceof ApiError && e.code === 'bad_username' ? fr.badUsername : e instanceof ApiError && e.status === 404 ? fr.notFound : t.error);
         },
       );
@@ -253,10 +253,11 @@ export function AddFriendSheet({ onClose }: { onClose: () => void }): ReactNode 
   };
 
   const call = async (p: Person) => {
+    const searchedName = currentName.current;
     setBusy(true);
     try {
-      const { status } = await api.requestFriend({ username: p.username ?? name });
-      setFound({ person: p, status });
+      const { status } = await api.requestFriend({ username: p.username ?? searchedName });
+      if (currentName.current === searchedName) setFound({ person: p, status });
       await reloadFriends();
     } catch {
       setProblem(t.error);
@@ -278,7 +279,10 @@ export function AddFriendSheet({ onClose }: { onClose: () => void }): ReactNode 
         placeholder={fr.usernamePh}
         aria-label={fr.usernamePh}
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e) => {
+          currentName.current = e.target.value;
+          setName(e.target.value);
+        }}
       />
       {problem && <p className="find-note">{problem}</p>}
       {found && (

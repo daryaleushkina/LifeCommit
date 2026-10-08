@@ -69,6 +69,9 @@ final class TogetherModel {
 
     func reset() {
         epoch += 1
+        editsInFlight = 0
+        groupReads.values.forEach { $0.task.cancel() }
+        groupReads = [:]
         version += 1
         friendsSeq += 1
         list = nil
@@ -112,6 +115,9 @@ final class TogetherModel {
     private var editsInFlight = 0
     @ObservationIgnored private var editWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
+    /// Чтение уже получило ответ и ждёт завершения правок.
+    var waitingForEdits: Bool { !editWaiters.isEmpty }
+
     private func resumeEditWaiters() {
         let waiting = editWaiters.values
         editWaiters = [:]
@@ -138,18 +144,48 @@ final class TogetherModel {
     }
 
     private func track<T>(_ edit: () async throws -> T) async throws -> T {
+        let session = epoch
         version += 1
         editsInFlight += 1
         defer {
-            editsInFlight -= 1
-            version += 1
-            if editsInFlight == 0 { resumeEditWaiters() }
+            if session == epoch {
+                editsInFlight -= 1
+                version += 1
+                if editsInFlight == 0 { resumeEditWaiters() }
+            }
         }
         return try await edit()
     }
 
     /// Ответ чтения, начатого при номере seq, ещё верен: за это время ничего не правили и ничего не идёт на сервер.
     private func fresh(_ seq: Int, _ session: Int) -> Bool { seq == version && editsInFlight == 0 && session == epoch }
+
+    /// Как load.group: до четырёх чтений; на пределе применяем последний ответ, а не оставляем экран пустым.
+    private func readAfterEdits<Value>(_ what: String, session: Int, read: () async throws -> Value) async throws -> Value {
+        var attempt = 0
+        while true {
+            try Task.checkCancellation()
+            guard session == epoch else { throw CancellationError() }
+            let seq = version
+            let value = try await read()
+            try Task.checkCancellation()
+            guard session == epoch else { throw CancellationError() }
+            attempt += 1
+            if fresh(seq, session) { return value }
+            if attempt == 4 {
+                togetherLog.notice("\(what, privacy: .public): applying last response after 4 attempts")
+                return value
+            }
+            await settleEdits()
+        }
+    }
+
+    private struct GroupRead {
+        let token: UUID
+        let task: Task<Void, Error>
+    }
+
+    @ObservationIgnored private var groupReads: [Int: GroupRead] = [:]
 
     /// После правки: «Сегодня» с календарём и экран группы — с сервера, одновременно.
     private func reload(_ groupId: Int) async {
@@ -161,10 +197,9 @@ final class TogetherModel {
     // MARK: Группы
 
     func loadList() async {
-        let seq = version, session = epoch
+        let session = epoch
         do {
-            let fresh = try await api.groups()
-            if self.fresh(seq, session) { list = fresh }
+            list = try await readAfterEdits("groups", session: session) { try await api.groups() }
         } catch {
             // Не вышло — остаётся то, что было (на экране — группы из «Сегодня»), а не «нет групп».
             if session == epoch { handle(error, "groups") }
@@ -174,30 +209,31 @@ final class TogetherModel {
     /// quiet — чтение в фоне (после отметки на «Сегодня», после удаления): «группа не найдена» — только если сервер так и
     /// сказал (404), а не когда моргнула сеть, а экран группы ещё ни разу не открывали.
     func loadGroup(_ id: Int, quiet: Bool = false) async {
+        guard !Task.isCancelled else { return }
         let session = epoch
-        for _ in 0..<4 {
-            guard session == epoch, !Task.isCancelled else { return }
-            let seq = version
-            do {
-                let g = try await api.group(id: id)
-                guard session == epoch, !Task.isCancelled else { return }
-                if fresh(seq, session) {
+        let task: Task<Void, Error>
+        if let reading = groupReads[id] {
+            task = reading.task
+        } else {
+            let token = UUID()
+            task = Task {
+                defer { if groupReads[id]?.token == token { groupReads[id] = nil } }
+                let g = try await readAfterEdits("group \(id)", session: session) { try await api.group(id: id) }
+                if session == epoch {
                     details[id] = g
                     missing.remove(id)
-                    return
                 }
-                // Ответ ещё не знает правок: сначала сервер примет их все, потом спросим заново.
-                await settleEdits()
-            } catch {
-                guard session == epoch, !Task.isCancelled, !(error is CancellationError) else { return }
-                // «Не найдено» — только когда группы правда нет (404) или показать нечего; моргнула сеть — экран как был.
-                if (error as? APIError)?.status == 404 || (!quiet && details[id] == nil) { missing.insert(id) }
-                handle(error, "group \(id)")
-                return
             }
+            groupReads[id] = GroupRead(token: token, task: task)
         }
-        guard session == epoch, !Task.isCancelled else { return }
-        togetherLog.notice("group \(id): no fresh response after 4 attempts")
+        do {
+            try await task.value
+        } catch {
+            guard session == epoch, !Task.isCancelled, !(error is CancellationError) else { return }
+            // Каждый присоединившийся экран сохраняет своё quiet: фон не ослабляет открытие пустого экрана.
+            if (error as? APIError)?.status == 404 || (!quiet && details[id] == nil) { missing.insert(id) }
+            handle(error, "group \(id)")
+        }
     }
 
     /// Новая группа: только название. Экран новой группы — сразу целиком, и в списке она уже есть.

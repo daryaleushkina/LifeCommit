@@ -1,7 +1,8 @@
 // Друзья: список во «Вместе», «Позвать друга», заявки, экран друга, чужая ссылка и «Что показать друзьям?».
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
-import type { FriendCard, FriendProfile, FriendsResponse, TodayTask } from '../../shared/types';
+import { act } from 'react';
+import type { FriendCard, FriendProfile, FriendsResponse, Person, PersonStatus, TodayTask } from '../../shared/types';
 import { ApiError } from '../api';
 import { caches } from '../caches';
 import { renderApp } from '../test/render';
@@ -298,6 +299,63 @@ describe('сеть подвела', () => {
 });
 
 describe('«Позвать друга»', () => {
+  it('заявка ушла, пока имя сменилось: старый человек не возвращается после нового 404, список перечитан', async () => {
+    caches.friends = list();
+    m.api.friends.mockResolvedValue(list());
+    m.api.findPerson
+      .mockResolvedValueOnce({ person: { id: 9, first_name: 'Маша', username: 'masha', photo_url: null }, status: 'none' })
+      .mockRejectedValueOnce(new ApiError(404, 'not_found'));
+    let finish!: (value: { status: PersonStatus }) => void;
+    m.api.requestFriend.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    await renderApp(<AddFriendSheet onClose={() => {}} />);
+    const input = page.getByRole('textbox', { name: 'Найти по @username' });
+    await input.fill('masha');
+    await page.getByRole('button', { name: 'Позвать' }).click();
+    expect(m.api.requestFriend).toHaveBeenCalledWith({ username: 'masha' });
+    await input.fill('masha2');
+    await expect.element(page.getByText('Такого человека нет в LifeCommit')).toBeVisible();
+    await act(async () => { finish({ status: 'sent' }); });
+    await expect.poll(() => m.api.friends.mock.calls.length).toBe(1);
+    await expect.element(page.getByText('Маша', { exact: true })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Позвать' })).not.toBeInTheDocument();
+    await expect.element(page.getByText('Заявка отправлена')).not.toBeInTheDocument();
+    await expect.element(page.getByText('Такого человека нет в LifeCommit')).toBeVisible();
+  });
+
+  it('старый успех приходит после нового 404: «Маша» и «Позвать» не возвращаются', async () => {
+    caches.friends = list();
+    let finish!: (value: { person: Person; status: PersonStatus }) => void;
+    m.api.findPerson.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+      .mockRejectedValueOnce(new ApiError(404, 'not_found'));
+    await renderApp(<AddFriendSheet onClose={() => {}} />);
+    const input = page.getByRole('textbox', { name: 'Найти по @username' });
+    await input.fill('masha');
+    await expect.poll(() => m.api.findPerson.mock.calls.length).toBe(1);
+    await input.fill('masha2');
+    await expect.element(page.getByText('Такого человека нет в LifeCommit')).toBeVisible();
+    await act(async () => { finish({ person: { id: 9, first_name: 'Маша', username: 'masha', photo_url: null }, status: 'none' }); });
+    await expect.element(page.getByText('Маша', { exact: true })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: 'Позвать' })).not.toBeInTheDocument();
+    await expect.element(page.getByText('Такого человека нет в LifeCommit')).toBeVisible();
+  });
+
+  it('старый 404 приходит после нового успеха: новая строка остаётся, «Такого нет» не появляется', async () => {
+    caches.friends = list();
+    let fail!: (error: Error) => void;
+    m.api.findPerson.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)))
+      .mockResolvedValueOnce({ person: { id: 10, first_name: 'Новая Маша', username: 'masha2', photo_url: null }, status: 'none' });
+    await renderApp(<AddFriendSheet onClose={() => {}} />);
+    const input = page.getByRole('textbox', { name: 'Найти по @username' });
+    await input.fill('masha');
+    await expect.poll(() => m.api.findPerson.mock.calls.length).toBe(1);
+    await input.fill('masha2');
+    await expect.element(page.getByText('Новая Маша')).toBeVisible();
+    await act(async () => { fail(new ApiError(404, 'not_found')); });
+    await expect.element(page.getByText('Новая Маша')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Позвать' })).toBeVisible();
+    await expect.element(page.getByText('Такого человека нет в LifeCommit')).not.toBeInTheDocument();
+  });
+
   it('ссылка — в Telegram, человек по @username — «Позвать», потом «Заявка отправлена»', async () => {
     caches.friends = list();
     m.tg.link = true;

@@ -270,50 +270,12 @@ struct ScreenSnapshotTests {
         m.showForTests(user: Self.user, today: Self.today)
         await m.together.loadGroup(Self.family.id)
         server.fail("PATCH groups/1")
-        // Ошибка возникает в уже открытой шторке: при новом открытии onAppear очищает прошлую ошибку.
-        let screen = snapshotScreen(GroupSettingsSheet(group: Self.family, onLeft: {}), model: m, scheme: scheme, named: "group-settings-error", sheet: true)
-            .onAppear { m.together.rename(groupId: Self.family.id, title: "Новое название") }
-        #if os(iOS)
-        let controller = UIHostingController(rootView: screen.ignoresSafeArea())
-        let previousWindow = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows).first { $0.isKeyWindow }
-        let window = UIWindow(windowScene: try #require(previousWindow?.windowScene))
-        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
-        window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
-        defer {
-            window.isHidden = true
-            window.rootViewController = nil
-            previousWindow?.makeKeyAndVisible()
-        }
-        controller.view.layoutIfNeeded()
-        #else
-        let host = NSHostingView(rootView: screen.frame(width: 420, height: 860))
-        host.frame = CGRect(x: 0, y: 0, width: 420, height: 860)
-        host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
-        // Первое рисование запускает onAppear; этот кадр не становится эталоном.
-        await withCheckedContinuation { continuation in
-            Snapshotting<NSView, NSImage>.image.snapshot(host).run { _ in continuation.resume() }
-        }
-        #endif
-        await TogetherModelTests().until("ошибка переименования видна в шторке") { m.together.settingsFailed == Self.family.id }
-        try #require(m.together.settingsFailed == Self.family.id)
-        #expect(m.together.details[Self.family.id]?.title == Self.family.title, "название откатилось после ошибки")
-        withSnapshotTesting(record: recording) {
-            #if os(iOS)
-            controller.view.layoutIfNeeded()
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = 1
-            format.preferredRange = .standard
-            let image = UIGraphicsImageRenderer(bounds: controller.view.bounds, format: format).image { _ in
-                _ = controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
-            }
-            assertSnapshot(of: image, as: .image(precision: 0.999), named: "iphone-\(scheme == .dark ? "dark" : "light")-group-settings-error", testName: "screen")
-            #else
-            assertSnapshot(of: host, as: .image(precision: 0.999), named: "mac-\(scheme == .dark ? "dark" : "light")-group-settings-error", testName: "screen")
-            #endif
-        }
+        try await check(GroupSettingsSheet(group: Self.family, onLeft: {}), model: m, scheme: scheme, named: "group-settings-error", sheet: true, afterFirstFrame: {
+            m.together.rename(groupId: Self.family.id, title: "Новое название")
+            await until("ошибка переименования видна в шторке") { m.together.settingsFailed == Self.family.id }
+            try #require(m.together.settingsFailed == Self.family.id)
+            #expect(m.together.details[Self.family.id]?.title == Self.family.title, "название откатилось после ошибки")
+        })
         #expect(m.together.settingsFailed == Self.family.id, "снимали открытую шторку, не открывали её повторно")
     }
 
@@ -401,36 +363,93 @@ struct ScreenSnapshotTests {
         }
     }
 
-    private func check(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String, sheet: Bool = false) {
+    /// Один рендер для всех снимков; у асинхронного сценария хост живёт между кадрами.
+    @MainActor
+    private struct ScreenHost {
+        let firstFrame: @MainActor () async -> Void
+        let assertFrame: @MainActor () -> Void
+        let close: @MainActor () -> Void
+    }
+
+    private func makeHost(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String, sheet: Bool, persistent: Bool) throws -> ScreenHost {
         let screen = snapshotScreen(view, model: model, scheme: scheme, named: name, sheet: sheet)
-        withSnapshotTesting(record: recording) {
-            #if os(iOS)
-            let controller = UIHostingController(rootView: screen)
-            // Масштаб 1: эталоны в git весят в 9 раз меньше, чем при 3×, а вёрстку видно так же.
-            let traits = UITraitCollection { t in
-                t.userInterfaceStyle = scheme == .dark ? .dark : .light
-                t.displayScale = 1
-                // sRGB, а не Display P3: эталон одинаков на любом устройстве и переживает пережатие PNG.
-                t.displayGamut = .SRGB
-            }
-            let config = ViewImageConfig(safeArea: .zero, size: CGSize(width: 402, height: 874), traits: traits)
-            assertSnapshot(
-                of: controller,
-                as: .image(drawHierarchyInKeyWindow: true, precision: 0.999, size: config.size, traits: traits),
-                named: "iphone-\(scheme == .dark ? "dark" : "light")-\(name)",
-                testName: "screen"
-            )
-            #else
-            let host = NSHostingView(rootView: screen.frame(width: 420, height: 860))
-            host.frame = CGRect(x: 0, y: 0, width: 420, height: 860)
-            host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
-            assertSnapshot(
-                of: host,
-                as: .image(precision: 0.999),
-                named: "mac-\(scheme == .dark ? "dark" : "light")-\(name)",
-                testName: "screen"
-            )
-            #endif
+        let record = recording
+        #if os(iOS)
+        let controller = UIHostingController(rootView: screen.ignoresSafeArea(edges: persistent ? .all : []))
+        let traits = UITraitCollection { t in
+            t.userInterfaceStyle = scheme == .dark ? .dark : .light
+            t.displayScale = 1
+            t.displayGamut = .SRGB
         }
+        let size = CGSize(width: 402, height: 874)
+        let named = "iphone-\(scheme == .dark ? "dark" : "light")-\(name)"
+        if persistent {
+            let previousWindow = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows).first { $0.isKeyWindow }
+            let window = UIWindow(windowScene: try #require(previousWindow?.windowScene))
+            window.frame = CGRect(origin: .zero, size: size)
+            window.overrideUserInterfaceStyle = scheme == .dark ? .dark : .light
+            window.rootViewController = controller
+            window.makeKeyAndVisible()
+            let render = {
+                controller.view.layoutIfNeeded()
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                format.preferredRange = .standard
+                return UIGraphicsImageRenderer(bounds: controller.view.bounds, format: format).image { _ in
+                    _ = controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
+                }
+            }
+            return ScreenHost(firstFrame: { _ = render() }, assertFrame: {
+                withSnapshotTesting(record: record) {
+                    assertSnapshot(of: render(), as: .image(precision: 0.999), named: named, testName: "screen")
+                }
+            }, close: {
+                window.isHidden = true
+                window.rootViewController = nil
+                previousWindow?.makeKeyAndVisible()
+            })
+        }
+        return ScreenHost(firstFrame: {}, assertFrame: {
+            withSnapshotTesting(record: record) {
+                assertSnapshot(of: controller, as: .image(drawHierarchyInKeyWindow: true, precision: 0.999, size: size, traits: traits), named: named, testName: "screen")
+            }
+        }, close: {})
+        #else
+        let host = NSHostingView(rootView: screen.frame(width: 420, height: 860))
+        host.frame = CGRect(x: 0, y: 0, width: 420, height: 860)
+        host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+        let strategy = Snapshotting<NSView, NSImage>.image(precision: 0.999)
+        return ScreenHost(firstFrame: {
+            await withCheckedContinuation { continuation in
+                strategy.snapshot(host).run { _ in continuation.resume() }
+            }
+        }, assertFrame: {
+            withSnapshotTesting(record: record) {
+                assertSnapshot(of: host, as: strategy, named: "mac-\(scheme == .dark ? "dark" : "light")-\(name)", testName: "screen")
+            }
+        }, close: {})
+        #endif
+    }
+
+    private func check(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String, sheet: Bool = false) {
+        do {
+            let host = try makeHost(view, model: model, scheme: scheme, named: name, sheet: sheet, persistent: false)
+            defer { host.close() }
+            host.assertFrame()
+        } catch {
+            Issue.record(error)
+        }
+    }
+
+    /// Первый кадр запускает onAppear; шаг меняет состояние, не закрывая и не открывая экран заново.
+    private func check(_ view: some View, model: AppModel, scheme: ColorScheme, named name: String, sheet: Bool = false, afterFirstFrame: (@MainActor () async throws -> Void)?) async throws {
+        let host = try makeHost(view, model: model, scheme: scheme, named: name, sheet: sheet, persistent: afterFirstFrame != nil)
+        defer { host.close() }
+        if let afterFirstFrame {
+            await host.firstFrame()
+            try await afterFirstFrame()
+        }
+        host.assertFrame()
     }
 }

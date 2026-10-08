@@ -9,7 +9,13 @@ public enum GroupKind: String, Codable, Sendable, CaseIterable {
     /// Тип группы на экране не нужен (значок — по id), поэтому незнакомый тип с сервера — «other», а не сбой всего
     /// «Сегодня».
     public init(from decoder: Decoder) throws {
-        self = GroupKind(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .other
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if let kind = GroupKind(rawValue: raw) {
+            self = kind
+        } else {
+            apiLog.error("GroupKind: unknown kind \(raw, privacy: .public), using other")
+            self = .other
+        }
     }
 }
 
