@@ -1,13 +1,14 @@
 #!/bin/sh
-# Файлы, которые правит и коммитит сама владелица (CLAUDE.md: .claude/skills/*, .mcp.json, .idea/*), не уезжают
-# в чужой коммит. Удаление не ловим — только добавленное и изменённое в индексе. Тест: scripts/hooks/git-hooks.test.ts.
+# Настройки IDE владелицы (.idea/) не уезжают в коммит (AGENTS.md, «Нельзя»). Скиллы .claude/skills и .mcp.json
+# коммитятся обычными PR, как остальной код (решение владелицы 08.10.2026). Удаление не ловим — только добавленное и
+# изменённое в индексе. Тест: scripts/hooks/git-hooks.test.ts.
 
-staged="$(git diff --cached --name-only --diff-filter=ACMR -- .claude/skills .mcp.json .idea)"
+staged="$(git diff --cached --name-only --diff-filter=ACMR -- .idea)"
 [ -z "$staged" ] && exit 0
 
 {
-  echo "pre-commit: в коммит попали файлы, которые правит владелица (CLAUDE.md):"
+  echo "pre-commit: в коммит попали настройки IDE владелицы (.idea/, AGENTS.md):"
   printf '%s\n' "$staged" | sed 's/^/  /'
-  echo "Убери их из индекса: git restore --staged -- .claude/skills .mcp.json .idea"
+  echo "Убери их из индекса: git restore --staged -- .idea"
 } >&2
 exit 1

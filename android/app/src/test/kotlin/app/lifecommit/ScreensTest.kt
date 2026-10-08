@@ -1,5 +1,5 @@
 // Эталонные снимки экранов (Roborazzi на JVM): светлая и тёмная тема. Переснимать — только при намеренной правке вида
-// (./gradlew :app:recordRoborazziDebug), сверка — :app:verifyRoborazziDebug (CLAUDE.md, «Тесты»).
+// (./gradlew :app:recordRoborazziDebug), сверка — :app:verifyRoborazziDebug (AGENTS.md, «Тесты»).
 package app.lifecommit
 
 import androidx.compose.ui.test.onNodeWithTag
