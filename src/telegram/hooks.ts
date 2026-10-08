@@ -37,7 +37,26 @@ export function useMainButton(text: string, state: SubmitState, onPress: () => v
   }, []);
 }
 
-/** Кнопка «назад» в шапке Telegram, привязанная к экрану. */
+// Кто сейчас держит «назад»: экран, поверх него — шторка голоса и т. п. Нажатие получает верхний; кнопка видна,
+// пока стек не пуст (04.10.2026: шторка голоса, закрываясь, прятала кнопку — с экрана группы было не уйти).
+const backStack: { current: (() => void) | null }[] = [];
+let backSub: (() => void) | null = null;
+
+function syncBackButton() {
+  if (backStack.length) {
+    backButton.show.ifAvailable();
+    if (!backSub) {
+      const sub = backButton.onClick.ifAvailable(() => backStack.at(-1)?.current?.());
+      if (sub.ok) backSub = sub.data;
+    }
+  } else {
+    backButton.hide.ifAvailable();
+    backSub?.();
+    backSub = null;
+  }
+}
+
+/** Кнопка «назад» в шапке Telegram, привязанная к экрану. null — на этом экране «назад» нет. */
 export function useBackButton(onBack: (() => void) | null): void {
   const handler = useRef(onBack);
   useLayoutEffect(() => {
@@ -47,15 +66,14 @@ export function useBackButton(onBack: (() => void) | null): void {
 
   useEffect(() => {
     if (!visible) {
-      backButton.hide.ifAvailable();
+      syncBackButton();
       return;
     }
-    backButton.show.ifAvailable();
-    const sub = backButton.onClick.ifAvailable(() => handler.current?.());
+    backStack.push(handler);
+    syncBackButton();
     return () => {
-      if (sub.ok) sub.data();
-      // Экран закрылся — на корневом экране кнопки «назад» быть не должно.
-      backButton.hide.ifAvailable();
+      backStack.splice(backStack.lastIndexOf(handler), 1);
+      syncBackButton();
     };
   }, [visible]);
 }

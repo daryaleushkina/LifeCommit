@@ -344,7 +344,7 @@ export function Requests({ onBack }: { onBack: () => void }): ReactNode {
           {t.error}
         </p>
       )}
-      {list.length === 0 && <p className="empty">{fr.nothingFound}</p>}
+      {list.length === 0 && <p className="empty">{fr.noRequests}</p>}
       <div className="friend-list">
         {list.map((p) => (
           <div key={p.id} className="card request-card">
@@ -476,9 +476,11 @@ export function FriendLink({ code, onClose, onFriends }: { code: string; onClose
   const [who, setWho] = useState<{ person: Person; status: PersonStatus } | null>(null);
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // «Ссылка не работает» — только когда сервер так и сказал (404); моргнула сеть — «попробуйте ещё раз».
+  const [error, setError] = useState(false);
   useBackButton(onClose);
   useEffect(() => {
-    api.friendLink(code).then(setWho, () => setMissing(true));
+    api.friendLink(code).then(setWho, (e) => (e instanceof ApiError && e.status === 404 ? setMissing(true) : setError(true)));
   }, [code]);
 
   if (missing) {
@@ -491,17 +493,19 @@ export function FriendLink({ code, onClose, onFriends }: { code: string; onClose
       </main>
     );
   }
-  if (!who) return <main className="app-shell" />;
+  if (!who) return <main className="app-shell">{error && <p className="error">{t.error}</p>}</main>;
 
   const name = who.person.first_name;
   const ask = async () => {
     setBusy(true);
+    setError(false);
     try {
       const { status } = await api.requestFriend({ code });
       setWho({ ...who, status });
       await reloadFriends();
-    } catch {
-      setMissing(true);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) setMissing(true);
+      else setError(true);
     }
     setBusy(false);
   };
@@ -514,6 +518,7 @@ export function FriendLink({ code, onClose, onFriends }: { code: string; onClose
         <h1>{who.status === 'self' ? name : fr.linkTitle(name)}</h1>
         <span className="join-from">{line}</span>
       </div>
+      {error && <p className="error">{t.error}</p>}
       {who.status === 'none' || who.status === 'incoming' ? (
         <button className="act primary wide" disabled={busy} onClick={() => void ask()}>
           {fr.linkBtn}

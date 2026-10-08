@@ -89,6 +89,10 @@ describe('«обновлено … назад»', () => {
     expect(syncedLabel(t, null)).toBe('');
     expect(syncedLabel(t, new Date().toISOString())).toBe('обновлено только что');
     expect(syncedLabel(t, minutesAgo(12))).toBe('обновлено 12 мин назад');
+    // 04.10.2026, /lc-explore: двое суток показывались «2880 мин назад».
+    expect(syncedLabel(t, minutesAgo(5 * 60 + 3))).toBe('обновлено 5 часов назад');
+    expect(syncedLabel(t, minutesAgo(25 * 60))).toBe('обновлено вчера');
+    expect(syncedLabel(t, minutesAgo(2 * 24 * 60 + 10))).toBe('обновлено 2 дня назад');
   });
 });
 
@@ -290,8 +294,8 @@ describe('Google', () => {
     await expect.element(page.getByRole('button', { name: /^Наши дела — в/ })).not.toBeInTheDocument();
   });
 
-  it('ошибка без ссылки входа — без кнопки «Подключить заново»', async () => {
-    caches.accounts = [google({ status: 'error', collections: [] })];
+  it('доступ отозван, а ссылки входа нет — без кнопки «Подключить заново»', async () => {
+    caches.accounts = [google({ status: 'auth_failed', collections: [] })];
     vi.mocked(api.googleUrl).mockRejectedValue(new Error('down'));
     await setup().r;
     await expect.element(page.getByText(/Google больше не пускает/)).toBeVisible();
@@ -431,6 +435,52 @@ describe('что сказать, если код подключения не п�
     expect(finishErrorText(t, new ApiError(502, 'internal'), [google()])).toBe('Не достучался до Google. Попробуйте ещё раз чуть позже.');
     expect(finishErrorText(t, new TypeError('Failed to fetch'), [])).toBe('Не достучался до Google. Попробуйте ещё раз чуть позже.');
   });
+});
+
+// 04.10.2026, /lc-explore: временный сбой подавался как «пароль отозван» / «доступ истёк».
+it('временный сбой (error) — «попробуем сами», без «пароль отозван» и «подключить заново»', async () => {
+  caches.accounts = [google({ status: 'error' }), apple({ status: 'error' })];
+  await setup().r;
+  await expect.poll(() => page.getByText(/не получилось обновить — попробуем ещё раз сами/).elements().length).toBe(2);
+  expect(page.getByText(/Apple перестал пускать|Google больше не пускает/).elements()).toEqual([]);
+  expect(page.getByRole('button', { name: /Подключить заново|Ввести новый пароль/ }).elements()).toEqual([]);
+});
+
+// 04.10.2026, /lc-explore: строка ошибки стояла вверху шторки — с длинным списком календарей её не было видно.
+it('ошибка — прямо под тем, что не сохранилось', async () => {
+  tg.popup = false;
+  caches.accounts = [google()];
+  const { r } = setup();
+  await r;
+  const error = () => page.getByText('Что-то пошло не так. Попробуй ещё раз.').element();
+  vi.mocked(api.toggleCollection).mockRejectedValueOnce(new Error('offline'));
+  await page.getByRole('checkbox', { name: 'Работа' }).click();
+  await expect.poll(() => error().previousElementSibling?.contains(page.getByRole('checkbox', { name: 'Работа' }).element())).toBe(true);
+  vi.mocked(api.setDefaultCalendar).mockRejectedValueOnce(new Error('offline'));
+  await page.getByRole('button', { name: /^Наши дела — в/ }).click();
+  await page.getByRole('option', { name: 'Работа' }).click();
+  await expect.poll(() => error().previousElementSibling?.contains(page.getByRole('button', { name: /^Наши дела — в/ }).element())).toBe(true);
+  vi.mocked(api.disconnectCalendar).mockRejectedValueOnce(new Error('offline'));
+  await page.getByRole('button', { name: 'Отключить Google Календарь' }).click();
+  await expect.poll(() => error().previousElementSibling?.textContent).toBe('Отключить Google Календарь');
+  await page.getByText('Что-то пошло не так. Попробуй ещё раз.').click();
+  await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
+});
+
+it('отключить: пока идёт, второй тап ничего не шлёт', async () => {
+  tg.popup = false;
+  caches.accounts = [google()];
+  let finish!: () => void;
+  vi.mocked(api.disconnectCalendar).mockReturnValue(new Promise((r) => (finish = () => r({ ok: true }))));
+  const { r, onChanged } = setup();
+  await r;
+  const off = page.getByRole('button', { name: 'Отключить Google Календарь' });
+  await off.click();
+  await expect.poll(() => api.disconnectCalendar).toHaveBeenCalledTimes(1);
+  off.element().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  expect(api.disconnectCalendar).toHaveBeenCalledTimes(1);
+  finish();
+  await expect.poll(() => onChanged).toHaveBeenCalledOnce();
 });
 
 describe('Apple', () => {

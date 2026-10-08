@@ -131,3 +131,53 @@ test('свайп по карточке привычки: «Вернуть» во
   await page.getByRole('button', { name: 'Вернуть' }).click();
   await expect(card(page, 'Йога')).toHaveCount(1);
 });
+
+// Находки /lc-explore 04.10.2026: не вышло — сказано, а не молча.
+const ERR = 'Что-то пошло не так. Попробуй ещё раз.';
+
+test('две привычки свайпом подряд, первую сервер не удалил — об этом сказано', async ({ app: page, me }) => {
+  await me.api('POST', '/tasks', { title: 'Йога', kind: 'check', target: 1, schedule: 'daily' });
+  await me.api('POST', '/tasks', { title: 'Бег', kind: 'check', target: 1, schedule: 'daily' });
+  await page.reload();
+  let deletes = 0;
+  await page.route('**/api/tasks/*', (r) => (r.request().method() !== 'DELETE' ? r.fallback() : ++deletes === 1 ? r.abort('failed') : r.fallback()));
+  await swipeLeft(page, page.locator('.swipe-card', { hasText: 'Йога' }).locator('.swipe-body'));
+  await expect(card(page, 'Йога')).toHaveCount(0);
+  await swipeLeft(page, page.locator('.swipe-card', { hasText: 'Бег' }).locator('.swipe-body'));
+  await expect(card(page, 'Бег')).toHaveCount(0);
+  await expect(card(page, 'Йога')).toHaveCount(1, { timeout: 8_000 });
+  await expect(page.getByRole('status').filter({ hasText: ERR })).toBeVisible({ timeout: 8_000 });
+});
+
+test('редактор: «Отложить» не прошло — сказано', async ({ app: page, me }) => {
+  await me.api('POST', '/tasks', { title: 'Медитация', kind: 'check', target: 1, schedule: 'daily' });
+  await page.reload();
+  await openHabit(page, 'Медитация');
+  await page.locator('.detail-head').getByRole('button').last().click();
+  await page.route('**/api/tasks/*/archive', (r) => r.abort('failed'));
+  await page.getByRole('button', { name: 'Отложить' }).click();
+  await expect(page.getByText(ERR)).toBeVisible();
+});
+
+test('«Отложенные»: «Удалить» не прошло — сказано, привычка на месте', async ({ app: page, me }) => {
+  const { id } = await me.api<{ id: number }>('POST', '/tasks', { title: 'Скакалка', kind: 'check', target: 1, schedule: 'daily' });
+  await me.api('POST', `/tasks/${id}/archive`);
+  await page.reload();
+  await page.getByRole('button', { name: /Отложенные/ }).click();
+  await page.route('**/api/tasks/*', (r) => (r.request().method() === 'DELETE' ? r.abort('failed') : r.fallback()));
+  await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+  await expect(page.getByText(ERR)).toBeVisible();
+  await expect(page.getByText('Скакалка')).toBeVisible();
+});
+
+test('много дел: отметка привычки внизу списка не дошла — ошибку видно внизу экрана', async ({ app: page, me }) => {
+  for (let i = 1; i <= 12; i++) await me.api('POST', '/todos', { title: `Дело ${i}` });
+  await me.api('POST', '/tasks', { title: 'Спортзал', kind: 'check', target: 1, schedule: 'daily' });
+  await page.reload();
+  await page.route('**/api/logs', (r) => r.abort('failed'));
+  const b = card(page, 'Спортзал').locator('button.rb.ok');
+  await center(b);
+  await b.click();
+  await expect(b).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('status').filter({ hasText: ERR })).toBeInViewport();
+});

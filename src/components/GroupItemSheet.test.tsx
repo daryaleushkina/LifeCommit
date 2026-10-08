@@ -18,10 +18,10 @@ const existing = (p: Partial<GroupDayItem> = {}): GroupDayItem => ({
   target: null, total: null, unit: null, goal_until: null, start: '2026-09-29', rrule: 'FREQ=WEEKLY;BYDAY=TU', assignees: [1, 2], ...p,
 });
 
-function setup(item?: GroupDayItem, today = TODAY) {
+function setup(item?: GroupDayItem, opts: { readOnly?: boolean; today?: string } = {}) {
   const onSaved = vi.fn();
   const onClose = vi.fn();
-  const r = renderApp(<GroupItemSheet group={group} me={ME} today={today} item={item} onSaved={onSaved} onClose={onClose} />);
+  const r = renderApp(<GroupItemSheet group={group} me={ME} today={opts.today ?? TODAY} item={item} readOnly={opts.readOnly} onSaved={onSaved} onClose={onClose} />);
   return { r, onSaved, onClose };
 }
 
@@ -178,7 +178,7 @@ describe('новое дело', () => {
 
 describe('правка дела', () => {
   it('перенесли еженедельное дело на среду — повтор пересобран по новому дню', async () => {
-    await setup(existing(), '2026-09-29').r;
+    await setup(existing(), { today: '2026-09-29' }).r;
     await page.getByRole('button', { name: /^Когда/ }).click();
     await page.getByRole('dialog', { name: 'Когда' }).getByRole('button', { name: '30', exact: true }).click();
     await page.getByRole('button', { name: 'Сохранить' }).click();
@@ -234,14 +234,26 @@ describe('правка дела', () => {
     expect(api.updateItem).toHaveBeenCalledWith(10, 7, expect.objectContaining({ title: 'Полить цветы и кактус', rrule: 'FREQ=WEEKLY;BYDAY=TU,TH' }));
   });
 
-  it('удалить дело — даже если сервер не ответил, экран перечитывается', async () => {
+  // 04.10.2026: сервер не удалил — шторка остаётся открыта и говорит об ошибке.
+  it('удалить дело: сервер не удалил — шторка открыта и говорит, кнопку можно нажать снова', async () => {
     vi.mocked(api.deleteItem).mockRejectedValueOnce(new Error('offline'));
     const { r, onSaved } = setup(existing());
     await r;
     await page.getByRole('button', { name: 'Удалить дело' }).click();
     expect(api.deleteItem).toHaveBeenCalledWith(10, 7);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    expect(onSaved).not.toHaveBeenCalled();
+    await expect.element(page.getByRole('button', { name: 'Удалить дело' })).toBeEnabled();
+    await page.getByRole('button', { name: 'Удалить дело' }).click();
     await expect.poll(() => onSaved).toHaveBeenCalledOnce();
-    await expect.element(page.getByRole('button', { name: 'Удалить дело' })).toBeDisabled();
+  });
+
+  it('только смотреть (группа «только админы», я участник): ни «Сохранить», ни «Удалить»', async () => {
+    const { r } = setup(existing(), { readOnly: true });
+    await r;
+    await expect.element(page.getByRole('heading', { name: 'Полить цветы' })).toBeVisible();
+    expect(page.getByRole('button', { name: 'Удалить дело' }).elements()).toEqual([]);
+    expect(page.getByRole('button', { name: 'Сохранить' }).elements()).toEqual([]);
   });
 
   it('«Все» у дела; ушедший из группы в очереди без имени; цель со сроком', async () => {
