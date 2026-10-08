@@ -2,6 +2,7 @@
 // друзья — списком (Friends.tsx; «Позвать друга» — плюс рядом с поиском, 27F). Последний выбор помним на устройстве.
 import { useEffect, useState, type ReactNode } from 'react';
 import type { GroupToday } from '../../shared/groups';
+import { cleanText } from '../../shared/text';
 import type { TodayTask } from '../../shared/types';
 import { api } from '../api';
 import { caches, load as fetchInto } from '../caches';
@@ -135,11 +136,13 @@ function NewGroupSheet({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
+  // Как на сервере: из одних невидимых символов название не получится — кнопка неактивна.
+  const name = cleanText(title, 60);
   const create = async () => {
     setBusy(true);
     setError(false);
     try {
-      const { id } = await api.createGroup(title.trim(), 'other');
+      const { id } = await api.createGroup(name, 'other');
       // Экран новой группы — сразу целиком, и в списке она уже есть, когда вернутся.
       const detail = await fetchInto.group(id).catch(() => null);
       if (detail) caches.groupList = [...(caches.groupList ?? []).filter((x) => x.id !== id), detail];
@@ -155,13 +158,13 @@ function NewGroupSheet({ onClose, onCreated }: { onClose: () => void; onCreated:
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (title.trim() && !busy) void create();
+          if (name && !busy) void create();
         }}
       >
         <input className="sheet-input" autoFocus maxLength={60} enterKeyHint="done" placeholder={g.namePh} aria-label={g.namePh} value={title} onChange={(e) => setTitle(e.target.value)} />
       </form>
       {error && <p className="error">{t.error}</p>}
-      <button className="act primary wide" disabled={busy || !title.trim()} onClick={() => void create()}>
+      <button className="act primary wide" disabled={busy || !name} onClick={() => void create()}>
         {g.create}
       </button>
     </Sheet>

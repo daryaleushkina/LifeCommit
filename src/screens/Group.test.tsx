@@ -38,8 +38,8 @@ vi.mock('@tma.js/sdk-react', async (orig) => {
 vi.mock('../components/GroupItemSheet', async () => {
   const { createElement: h } = await import('react');
   return {
-    GroupItemSheet: ({ item, onSaved, onClose }: { item?: GroupDayItem; onSaved: () => void; onClose: () => void }) =>
-      h('div', { role: 'dialog', 'aria-label': item ? `Правка: ${item.title}` : 'Новое дело' }, h('button', { onClick: onSaved }, 'Сохранить дело'), h('button', { onClick: onClose }, 'Закрыть дело')),
+    GroupItemSheet: ({ item, readOnly, onSaved, onClose }: { item?: GroupDayItem; readOnly?: boolean; onSaved: () => void; onClose: () => void }) =>
+      h('div', { role: 'dialog', 'aria-label': item ? `Правка: ${item.title}` : 'Новое дело' }, !readOnly && h('button', { onClick: onSaved }, 'Сохранить дело'), h('button', { onClick: onClose }, 'Закрыть дело')),
   };
 });
 
@@ -102,6 +102,17 @@ afterEach(() => {
 });
 
 describe('дела группы', () => {
+  it('участнику «только админы» нельзя создавать и сохранять, но можно смотреть и отмечать', async () => {
+    await setup(detail({ role: 'member', settings: { ...detail().settings, admins_only_edit: true } }));
+    await expect.element(page.getByRole('button', { name: 'Дело', exact: true })).not.toBeInTheDocument();
+    await page.getByRole('button', { name: /Вынести мусор кто-то один/ }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Правка: Вынести мусор' })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Сохранить дело' })).not.toBeInTheDocument();
+    await page.getByRole('button', { name: 'Закрыть дело' }).click();
+    await page.getByRole('button', { name: 'Сделано: Вынести мусор' }).click();
+    await expect.poll(() => m.api.markItem.mock.calls.length).toBe(1);
+  });
+
   it('из кэша сразу: шапка с прогрессом, цель, дела по порядку, «Скоро» — разовые и мероприятия', async () => {
     await setup();
     await expect.element(page.getByRole('heading', { name: 'Семья' })).toBeVisible();
@@ -176,6 +187,18 @@ describe('дела группы', () => {
     await expect.element(toast()).toHaveTextContent('Уже кто-то сделал');
     await toast().click();
     await expect.element(toast()).not.toBeInTheDocument();
+  });
+
+  it('отметка без сети: галочка откатывается и в кэше, даже если перечитать не вышло', async () => {
+    const { onChanged } = await setup();
+    m.api.markItem.mockRejectedValue(new TypeError('Failed to fetch'));
+    m.api.group.mockRejectedValue(new TypeError('Failed to fetch'));
+    await page.getByRole('button', { name: 'Сделано: Вынести мусор' }).click();
+    await expect.element(toast()).toHaveTextContent('Что-то пошло не так. Попробуй ещё раз.');
+    await expect.poll(() => onChanged.mock.calls.length).toBe(1);
+    await expect.element(page.getByRole('button', { name: 'Сделано: Вынести мусор' })).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(() => caches.groups.get(10)?.items.find((it) => it.id === 1)?.done).toBe(false);
+    expect(caches.groups.get(10)?.items.find((it) => it.id === 1)?.done_by).toEqual([]);
   });
 
   it('не моё дело — «Это дело сегодня не на тебе»; другая ошибка — общая; подсказка уходит сама', async () => {
@@ -277,6 +300,18 @@ describe('вклад в общую цель', () => {
 });
 
 describe('люди', () => {
+  it('«Позвать» — ссылки нет: сказано, переход не открыт; повторить можно', async () => {
+    m.tg.link = true;
+    m.api.invite.mockRejectedValueOnce(new Error('сеть'));
+    await setup();
+    await page.getByRole('radio', { name: 'Люди' }).click();
+    await page.getByRole('button', { name: 'Позвать в группу' }).click();
+    await expect.element(toast()).toHaveTextContent('Что-то пошло не так. Попробуй ещё раз.');
+    expect(m.tg.links).toEqual([]);
+    await page.getByRole('button', { name: 'Позвать в группу' }).click();
+    await expect.element(toast()).toHaveTextContent('Ссылка готова — отправь её в чат');
+    expect(m.tg.links).toHaveLength(1);
+  });
   it('участники, я отмечена, кто что сделал сегодня', async () => {
     await setup();
     await page.getByRole('radio', { name: 'Люди' }).click();
@@ -369,6 +404,69 @@ describe('настройки группы', () => {
     expect(m.api.updateGroup).not.toHaveBeenCalled();
   });
 
+  it('невидимое имя: в поле и шапке прежнее, в шторке ошибка', async () => {
+    await setup();
+    await openSettings();
+    const name = settings().getByRole('textbox');
+    await name.fill('\u200B\u2060');
+    name.element().closest('form')!.requestSubmit();
+    await expect.element(settings().getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(name).toHaveValue('Семья');
+    await expect.element(page.getByRole('heading', { name: 'Семья' })).toBeVisible();
+    expect(m.api.updateGroup).not.toHaveBeenCalled();
+  });
+
+  it('Enter и закрытие до ответа: переименование уходит один раз', async () => {
+    let answer!: () => void;
+    m.api.updateGroup.mockReturnValue(new Promise<void>((resolve) => (answer = resolve)));
+    await setup();
+    await openSettings();
+    const name = settings().getByRole('textbox');
+    await name.fill('Дача');
+    name.element().closest('form')!.requestSubmit();
+    settings().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect.element(settings()).not.toBeInTheDocument();
+    expect(m.api.updateGroup).toHaveBeenCalledTimes(1);
+    answer();
+    await expect.element(page.getByRole('heading', { name: 'Дача' })).toBeVisible();
+  });
+
+  it('«только админы» туда-сюда: оба запроса отказали — остаётся подтверждённое сервером значение', async () => {
+    let fail!: (error: Error) => void;
+    m.api.updateGroup.mockReturnValueOnce(new Promise<void>((_, reject) => (fail = reject))).mockRejectedValueOnce(new Error('сеть'));
+    await setup();
+    await openSettings();
+    const box = settings().getByRole('checkbox');
+    await box.click();
+    await expect.poll(() => m.api.updateGroup.mock.calls.length).toBe(1);
+    await box.click();
+    await expect.element(box).not.toBeChecked();
+    fail(new Error('сеть'));
+    await expect.poll(() => m.api.updateGroup.mock.settledResults.filter((r) => r.type === 'rejected').length).toBe(2);
+    await expect.element(settings().getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(box).not.toBeChecked();
+  });
+
+  it('«только админы» включили, закрыли и открыли настройки, выключили — запросы всё ещё идут по очереди', async () => {
+    let answer!: () => void;
+    let server = false;
+    m.api.updateGroup.mockImplementationOnce(() => new Promise<void>((resolve) => (answer = () => { server = true; resolve(); })))
+      .mockImplementationOnce(async () => { server = false; });
+    await setup();
+    await openSettings();
+    await settings().getByRole('checkbox').click();
+    await expect.poll(() => m.api.updateGroup.mock.calls.length).toBe(1);
+    settings().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect.element(settings()).not.toBeInTheDocument();
+    await openSettings();
+    await settings().getByRole('checkbox').click();
+    await expect.element(settings().getByRole('checkbox')).not.toBeChecked();
+    answer();
+    await expect.poll(() => m.api.updateGroup.mock.settledResults.filter((r) => r.type === 'fulfilled').length).toBe(2);
+    expect(server).toBe(false);
+    await expect.element(settings().getByRole('checkbox')).not.toBeChecked();
+  });
+
   it('«Дела заводят только админы» — сразу на экране и на сервер', async () => {
     await setup();
     await openSettings();
@@ -447,13 +545,40 @@ describe('настройки группы', () => {
     expect(m.api.disconnectGroupChat).toHaveBeenCalledWith(10);
   });
 
-  it('отключить вне Telegram — сразу; не вышло — экран перечитывается', async () => {
+  // 04.10.2026 (/lc-explore, «откатить и сказать»): раньше молча перечитывал экран — человек не знал, что чат не отключён.
+  it('отключить вне Telegram — сразу; не вышло — чат снова в настройках и сказано', async () => {
     m.api.checkGroupChat.mockRejectedValue(new Error('сеть'));
     m.api.disconnectGroupChat.mockRejectedValue(new Error('сеть'));
     await setup(detail({ settings: { ...detail().settings, tg_chat_title: 'Чат' } }));
     await openSettings();
     await settings().getByRole('button', { name: 'Отключить' }).click();
-    await expect.poll(() => m.api.group.mock.calls.length).toBe(2);
+    await expect.element(settings().getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(settings().getByText('Чат')).toBeVisible();
+  });
+
+  it('подключить чат: ссылки нет — сказано в шторке', async () => {
+    m.tg.link = true;
+    m.api.invite.mockRejectedValue(new Error('сеть'));
+    await setup();
+    await openSettings();
+    await settings().getByRole('button', { name: 'Подключить чат Telegram' }).click();
+    await expect.element(settings().getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    expect(m.tg.links).toEqual([]);
+  });
+
+  it('отключение отказало после закрытия настроек — ошибка на экране, чат возвращается в кэш', async () => {
+    let fail!: (error: Error) => void;
+    m.api.checkGroupChat.mockResolvedValue({ tg_chat_title: 'Чат' });
+    m.api.disconnectGroupChat.mockReturnValue(new Promise<void>((_, reject) => (fail = reject)));
+    await setup(detail({ settings: { ...detail().settings, tg_chat_title: 'Чат' } }));
+    await openSettings();
+    await settings().getByRole('button', { name: 'Отключить' }).click();
+    await expect.element(settings().getByRole('button', { name: 'Подключить чат Telegram' })).toBeVisible();
+    settings().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await expect.element(settings()).not.toBeInTheDocument();
+    fail(new Error('сеть'));
+    await expect.element(toast()).toHaveTextContent('Что-то пошло не так. Попробуй ещё раз.');
+    await expect.poll(() => caches.groups.get(10)?.settings.tg_chat_title).toBe('Чат');
   });
 
   it('чат удалили в Telegram — из настроек пропадает сразу', async () => {

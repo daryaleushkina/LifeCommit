@@ -2,6 +2,7 @@
 import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { hapticFeedback, openTelegramLink, popup } from '@tma.js/sdk-react';
 import type { GroupDayItem } from '../../shared/groups';
+import { cleanText } from '../../shared/text';
 import { api, ApiError, type GroupDetail } from '../api';
 import { caches, load as fetchInto, trackEdit } from '../caches';
 import { GroupItemSheet } from '../components/GroupItemSheet';
@@ -42,6 +43,9 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   const [editing, setEditing] = useState<GroupDayItem | 'new' | null>(null);
   const [putting, setPutting] = useState<GroupDayItem | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Очередь живёт с экраном, а не со шторкой: закрытие и повторное открытие не меняют порядок запросов.
+  const settingsQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const adminsEdit = useRef({ confirmed: group?.settings.admins_only_edit ?? false, revision: 0 });
   useEffect(() => {
     if (!note) return;
     const id = window.setTimeout(() => setNote(null), 3500);
@@ -51,7 +55,10 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   useBackButton(onBack);
   const load = useCallback(
     () =>
-      fetchInto.group(id).then(setGroup, (e) => {
+      fetchInto.group(id).then((next) => {
+        adminsEdit.current.confirmed = next.settings.admins_only_edit;
+        setGroup(next);
+      }, (e) => {
         // «Не найдено» — только когда группы правда нет (404) или показать нечего; моргнула сеть — экран остаётся как был.
         if ((e instanceof ApiError && e.status === 404) || !caches.groups.has(id)) setMissing(true);
       }),
@@ -62,6 +69,13 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
   }, [load]);
   // Правка на экране (отметка, имя, «только админы»): перечитки, начатые раньше или во время неё, её не затрут.
   const edit = <T,>(run: () => Promise<T>): Promise<T> => trackEdit(run());
+  const editSettings = <T,>(run: () => Promise<T>): Promise<T> => {
+    // После отказа предыдущей правки следующую всё равно отправляем. Отказ получает вызывающая шторка.
+    const request = settingsQueue.current.then(run, run);
+    settingsQueue.current = request;
+    // В перечитках учитываются и запросы, ещё ждущие своей очереди.
+    return edit(() => request);
+  };
   // Чат ещё жив? Проверяем в фоне раз за открытие: удалённый в Telegram чат пропадает из настроек сразу.
   const chatChecked = useRef(false);
   useEffect(() => {
@@ -86,45 +100,83 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
     await load();
   };
 
+  const setAdminsOnly = async (on: boolean) => {
+    const state = adminsEdit.current;
+    const revision = ++state.revision;
+    setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, admins_only_edit: on } });
+    try {
+      await editSettings(async () => {
+        await api.updateGroup(group.id, { admins_only_edit: on });
+        state.confirmed = on;
+      });
+    } catch (e) {
+      // Старый отказ не затирает более новое нажатие; последний откатывается к подтверждённому сервером.
+      if (revision === state.revision) setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, admins_only_edit: state.confirmed } });
+      setNote(t.error);
+      throw e;
+    }
+  };
+
   const toggle = async (it: GroupDayItem) => {
     const done = !it.done;
-    // Сразу на экране; если не вышло — вернём как было.
-    setGroup((cur) => cur && { ...cur, items: cur.items.map((x) => (x.id === it.id ? { ...x, done, done_by: done ? [...x.done_by, me] : x.done_by.filter((u) => u !== me) } : x)) });
+    // Сразу на экране; если не вышло — вернём как было (и в кэше экрана: перечитка без сети его не поправит).
+    const setMark = (d: boolean, by: number[]) => setGroup((cur) => cur && { ...cur, items: cur.items.map((x) => (x.id === it.id ? { ...x, done: d, done_by: by } : x)) });
+    setMark(done, done ? [...it.done_by, me] : it.done_by.filter((u) => u !== me));
     if (done) hapticFeedback.notificationOccurred.ifAvailable('success');
     try {
       const res = await edit(() => api.markItem(group.id, it.id, done));
       if (res.taken) setNote(g.taken);
     } catch (e) {
+      setMark(it.done, it.done_by);
       setNote(e instanceof ApiError && e.code === 'not_yours' ? g.notYours : t.error);
     }
     void changed();
   };
 
   const invite = async () => {
-    const { link } = await api.invite(group.id);
+    let link: string;
+    try {
+      ({ link } = await api.invite(group.id));
+    } catch {
+      setNote(t.error);
+      return;
+    }
     const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(`${group.title} · LifeCommit`)}`;
     if (openTelegramLink.isAvailable()) openTelegramLink(share);
     else window.open(share, '_blank');
     setNote(g.inviteSent);
   };
 
-  // Добавить бота в чат Telegram: тот же код приглашения, но ссылка «в группу» (startgroup).
-  const connectChat = async () => {
-    const { link } = await api.invite(group.id);
+  // Добавить бота в чат Telegram: тот же код приглашения, но ссылка «в группу» (startgroup). Ссылки нет — сказать.
+  const connectChat = async (): Promise<boolean> => {
+    let link: string;
+    try {
+      ({ link } = await api.invite(group.id));
+    } catch {
+      return false;
+    }
     const url = link.replace('?startapp=', '?startgroup=');
     if (openTelegramLink.isAvailable()) openTelegramLink(url);
     else window.open(url, '_blank');
+    return true;
   };
 
-  // «Отключить» чат: бот прощается и выходит; на экране — сразу «Подключить чат Telegram».
-  const disconnectChat = async () => {
+  // «Отключить» чат: бот прощается и выходит; на экране — сразу «Подключить чат Telegram». Сервер не отключил —
+  // чат возвращается в настройки, а шторка говорит, что не вышло.
+  const disconnectChat = async (): Promise<boolean> => {
     const title = group.settings.tg_chat_title ?? '';
     if (popup.show.isAvailable()) {
       const answer = await popup.show({ message: g.chatOffConfirm(title), buttons: [{ id: 'ok', type: 'destructive', text: g.chatOff }, { type: 'cancel' }] });
-      if (answer !== 'ok') return;
+      if (answer !== 'ok') return true;
     }
     setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, tg_chat_title: null } });
-    await api.disconnectGroupChat(group.id).catch(() => void load());
+    try {
+      await api.disconnectGroupChat(group.id);
+      return true;
+    } catch {
+      setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, tg_chat_title: title } });
+      return false;
+    }
   };
 
   const leave = async (remove: boolean) => {
@@ -146,6 +198,8 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
     onBack();
   };
 
+  // «Только админы заводят дела»: участнику кнопок создания и правки не показываем вовсе (решение владелицы 04.10.2026).
+  const canEdit = group.role !== 'member' || !group.settings.admins_only_edit;
   const goals = group.items.filter((it) => it.mode === 'goal');
   const items = group.items.filter((it) => it.mode !== 'goal').sort((a, b) => order(a) - order(b) || (a.time ?? '').localeCompare(b.time ?? ''));
   // «Скоро» — разовые дела и мероприятия; повторяющиеся и так видны каждый день.
@@ -218,12 +272,14 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
               ))}
             </>
           )}
-          <button className="fab" onClick={() => setEditing('new')}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            {g.addItem}
-          </button>
+          {canEdit && (
+            <button className="fab" onClick={() => setEditing('new')}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              {g.addItem}
+            </button>
+          )}
         </>
       ) : (
         <>
@@ -256,11 +312,11 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
             setGroup((cur) => cur && { ...cur, title });
             onChanged();
           }}
-          onAdminsOnly={(on) => setGroup((cur) => cur && { ...cur, settings: { ...cur.settings, admins_only_edit: on } })}
+          onAdminsOnly={setAdminsOnly}
           onFailed={() => setNote(t.error)}
-          edit={edit}
-          onConnectChat={() => void connectChat()}
-          onDisconnectChat={() => void disconnectChat()}
+          edit={editSettings}
+          onConnectChat={connectChat}
+          onDisconnectChat={disconnectChat}
           onLeave={() => void leave(false)}
           onDelete={() => void leave(true)}
         />
@@ -271,6 +327,7 @@ export function Group({ id, me, today, onBack, onChanged }: Props): ReactNode {
           me={me}
           today={today}
           item={editing === 'new' ? undefined : editing}
+          readOnly={!canEdit}
           onSaved={() => {
             setEditing(null);
             void changed();
@@ -336,13 +393,14 @@ function GroupSettingsSheet({
   group: GroupDetail;
   onClose: () => void;
   onRenamed: (title: string) => void;
-  onAdminsOnly: (on: boolean) => void;
+  onAdminsOnly: (on: boolean) => Promise<void>;
   /** Сервер не сохранил настройку — подсказка на экране группы (видна, когда шторка закрыта). */
   onFailed: () => void;
   /** Запрос правки к серверу: см. edit в Group — начатые раньше перечитки её не затрут. */
   edit: <T>(run: () => Promise<T>) => Promise<T>;
-  onConnectChat: () => void;
-  onDisconnectChat: () => void;
+  /** false — не вышло (сказать в шторке). */
+  onConnectChat: () => Promise<boolean>;
+  onDisconnectChat: () => Promise<boolean>;
   onLeave: () => void;
   onDelete: () => void;
 }): ReactNode {
@@ -356,13 +414,23 @@ function GroupSettingsSheet({
     setError(true);
     onFailed();
   };
+  // Имя уходит один раз: Enter, потеря фокуса и закрытие шторки зовут save подряд (было три PATCH на одно имя).
+  const sentTitle = useRef(group.title);
   const save = async () => {
-    const next = title.trim();
-    if (!next || next === group.title) return;
+    // Те же правила, что на сервере: из одних невидимых символов имя не делается — остаётся прежнее.
+    const next = cleanText(title, 60);
+    if (!next) {
+      setTitle(group.title);
+      failed();
+      return;
+    }
+    if (next === sentTitle.current) return;
+    sentTitle.current = next;
     setError(false);
     try {
       await edit(() => api.updateGroup(group.id, { title: next }));
     } catch {
+      sentTitle.current = group.title;
       setTitle(group.title);
       failed();
       return;
@@ -371,13 +439,15 @@ function GroupSettingsSheet({
   };
   const setAdminsOnly = async (on: boolean) => {
     setError(false);
-    onAdminsOnly(on);
     try {
-      await edit(() => api.updateGroup(group.id, { admins_only_edit: on }));
+      await onAdminsOnly(on);
     } catch {
-      onAdminsOnly(!on);
       failed();
     }
+  };
+  const chat = async (run: () => Promise<boolean>) => {
+    setError(false);
+    if (!(await run())) failed();
   };
   return (
     <Sheet title={g.settings} onClose={() => { void save(); onClose(); }}>
@@ -422,9 +492,9 @@ function GroupSettingsSheet({
             <b>{group.settings.tg_chat_title}</b>
             {canManage && (
               <span className="chat-actions">
-                <button onClick={onConnectChat}>{g.chatOther}</button>
+                <button onClick={() => void chat(onConnectChat)}>{g.chatOther}</button>
                 <span aria-hidden>·</span>
-                <button className="warn" onClick={onDisconnectChat}>
+                <button className="warn" onClick={() => void chat(onDisconnectChat)}>
                   {g.chatOff}
                 </button>
               </span>
@@ -434,7 +504,7 @@ function GroupSettingsSheet({
       ) : (
         canManage && (
           <>
-            <button className="act wide chat-connect" onClick={onConnectChat}>
+            <button className="act wide chat-connect" onClick={() => void chat(onConnectChat)}>
               {g.connectChat}
             </button>
             <p className="sheet-note center">{g.connectChatHint}</p>
