@@ -4,6 +4,7 @@ import { page } from 'vitest/browser';
 import type { SummaryItem } from '../../shared/summary';
 import type { HeatDay, UserSettings } from '../../shared/types';
 import type { Template } from '../share/draw';
+import { ApiError } from '../api';
 import { renderApp } from '../test/render';
 import { Profile } from './Profile';
 
@@ -91,6 +92,24 @@ describe('шапка и карта', () => {
     await expect.element(page.getByRole('heading', { name: 'Даша' })).toBeVisible();
     await expect.element(page.getByText('@dasha')).toBeVisible();
     expect(document.querySelector('.profile-head .avatar')!.textContent).toBe('Д');
+  });
+
+  // 04.10.2026 (/lc-explore): имя «🦊 Лиса» давало в кружке половинку эмодзи («�»).
+  it('имя начинается с эмодзи — в кружке эмодзи целиком', async () => {
+    await setup({ first_name: '\u{1F98A} Лиса' });
+    await expect.element(page.getByRole('heading', { name: '\u{1F98A} Лиса' })).toBeVisible();
+    expect(document.querySelector('.profile-head .avatar')!.textContent).toBe('\u{1F98A}');
+  });
+
+  // Имя из одних невидимых символов («ㅤ») сервер чистит до пустой строки — пустой кружок и пустой заголовок.
+  it('имя пустое — вместо него ник; нет и ника — «Я»', async () => {
+    await setup({ first_name: '', username: 'dasha' });
+    await expect.element(page.getByRole('heading', { name: '@dasha' })).toBeVisible();
+    expect(document.querySelector('.profile-head .avatar')!.textContent).toBe('D');
+    expect(page.getByText('@dasha').elements()).toHaveLength(1);
+    await setup({ first_name: '', username: null });
+    await expect.element(page.getByRole('heading', { name: 'Я', exact: true })).toBeVisible();
+    expect(document.querySelectorAll('.profile-head .avatar')[1]!.textContent).toBe('Я');
   });
 
   it('фото из Telegram — картинкой', async () => {
@@ -247,6 +266,53 @@ describe('настройки', () => {
     expect(onUser).not.toHaveBeenCalled();
   });
 
+  // 04.10.2026 (/lc-explore): после удачной повторной попытки красная строка оставалась.
+  it('настройка не сохранилась, повтор удался — ошибки больше нет', async () => {
+    m.api.settings.mockRejectedValueOnce(new Error('сеть'));
+    await setup();
+    await page.getByRole('button', { name: /Язык/ }).click();
+    await page.getByRole('option', { name: 'English' }).click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await page.getByRole('button', { name: /Язык/ }).click();
+    await page.getByRole('option', { name: 'English' }).click();
+    await expect.poll(() => m.api.settings.mock.calls.length).toBe(2);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
+  });
+
+  it('разблокировали последнего — шторка закрывается, а не остаётся пустой', async () => {
+    m.api.blocks.mockResolvedValue([{ id: 5, first_name: 'Тимур', username: 'timur', photo_url: null }]);
+    await setup();
+    await page.getByRole('button', { name: /Заблокированные/ }).click();
+    const sheet = page.getByRole('dialog', { name: 'Заблокированные' });
+    await sheet.getByRole('button', { name: 'Разблокировать' }).click();
+    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /Заблокированные/ })).not.toBeInTheDocument();
+  });
+
+  it('разблокировать двоих подряд, обоим сервер отказал — оба на своих местах, по порядку', async () => {
+    m.api.blocks.mockResolvedValue([
+      { id: 5, first_name: 'Тимур', username: null, photo_url: null },
+      { id: 6, first_name: 'Аня', username: null, photo_url: null },
+    ]);
+    const fails: Record<number, () => void> = {};
+    m.api.unblock.mockImplementation((id: number) => new Promise((_, reject) => (fails[id] = () => reject(new Error('сеть')))));
+    await setup();
+    await page.getByRole('button', { name: /Заблокированные/ }).click();
+    const sheet = page.getByRole('dialog', { name: 'Заблокированные' });
+    await sheet.getByRole('button', { name: 'Разблокировать' }).first().click();
+    await expect.element(sheet.getByText('Тимур')).not.toBeInTheDocument();
+    await sheet.getByRole('button', { name: 'Разблокировать' }).first().click();
+    await expect.element(sheet.getByText('Аня')).not.toBeInTheDocument();
+    // Ещё ждём сервер — шторка не закрывается, хотя список пуст.
+    await expect.element(sheet).toBeVisible();
+    fails[5]!();
+    await expect.element(sheet.getByText('Тимур')).toBeVisible();
+    fails[6]!();
+    await expect.element(sheet.getByText('Аня')).toBeVisible();
+    expect([...document.querySelectorAll('.person-row b')].map((b) => b.textContent)).toEqual(['Тимур', 'Аня']);
+    await expect.element(sheet.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+  });
+
   it('заблокированные: строки нет, пока никого; есть — список и «Разблокировать»', async () => {
     await setup();
     await expect.element(page.getByRole('button', { name: /Язык/ })).toBeVisible();
@@ -319,6 +385,40 @@ describe('бот и аккаунт', () => {
     await expect.poll(() => onUser.mock.calls.length).toBe(1);
     expect(m.api.writeAccess).toHaveBeenCalled();
     expect(onUser.mock.calls[0]![0]).toMatchObject({ bot_chat_ok: true });
+  });
+
+  // 04.10.2026 (/lc-explore): отказ сервера уходил в необработанную ошибку, на экране — ничего.
+  it('«Удалить аккаунт» не вышло — сказано почему; связанный аккаунт — отдельным текстом', async () => {
+    m.tg.popup = true;
+    m.api.deleteAccount.mockRejectedValueOnce(new ApiError(403, 'linked_account')).mockRejectedValueOnce(new Error('сеть'));
+    await setup();
+    const del = page.getByRole('button', { name: 'Удалить аккаунт' });
+    await del.click();
+    await expect.element(page.getByText('Удалить аккаунт можно только из того Telegram, в котором он создан.')).toBeVisible();
+    await del.click();
+    await expect.poll(() => m.api.deleteAccount.mock.calls.length).toBe(2);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('Удалить аккаунт можно только из того Telegram, в котором он создан.')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { lang: 'ru' as const, button: 'Удалить аккаунт', message: 'Удалить аккаунт можно в Telegram или в приложении LifeCommit на телефоне.' },
+    { lang: 'en' as const, button: 'Delete account', message: 'You can delete your account in Telegram or in the LifeCommit app on your phone.' },
+  ])('$lang: telegram_only — сказано, где можно удалить аккаунт', async ({ lang, button, message }) => {
+    m.tg.popup = true;
+    m.api.deleteAccount.mockRejectedValue(new ApiError(403, 'telegram_only'));
+    await setup({}, lang);
+    await page.getByRole('button', { name: button, exact: true }).click();
+    await expect.element(page.getByText(message, { exact: true })).toBeVisible();
+    expect(m.api.deleteAccount).toHaveBeenCalledOnce();
+  });
+
+  it('EN: linked_account — отдельная причина отказа', async () => {
+    m.tg.popup = true;
+    m.api.deleteAccount.mockRejectedValue(new ApiError(403, 'linked_account'));
+    await setup({}, 'en');
+    await page.getByRole('button', { name: 'Delete account', exact: true }).click();
+    await expect.element(page.getByText('You can delete the account only from the Telegram account it was created in.', { exact: true })).toBeVisible();
   });
 
   it('«Удалить аккаунт»: вне Telegram — ничего; «Отмена» — ничего; подтвердили — удаляем', async () => {

@@ -33,6 +33,7 @@ const isDay = (v: unknown): v is string => {
   return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
 };
 const isTime = (v: unknown): v is string => typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const bad = (message: string) => new HTTPException(400, { message });
 
 interface RawGroup {
@@ -151,10 +152,16 @@ groups.patch('/groups/:id', async (c) => {
   const sb = c.get('sb');
   const { role } = await membership(sb, id, c.get('user').id);
   if (role === 'member') throw new HTTPException(403, { message: 'forbidden' });
-  const body = await c.req.json<Record<string, unknown>>();
+  const body = await c.req.json<unknown>();
+  if (!isRecord(body)) throw bad('bad_json');
   const fields: Record<string, unknown> = {};
-  if (typeof body.title === 'string' && cleanText(body.title)) fields.title = cleanText(body.title, 60);
-  if (KINDS.includes(body.kind as GroupKind)) fields.kind = body.kind;
+  if ('title' in body) {
+    if (typeof body.title !== 'string') throw bad('no_title');
+    // Имя из пробелов или одних невидимых символов — отказ, а не тихий пропуск: иначе экран покажет имя, которого нет.
+    fields.title = cleanText(body.title, 60);
+    if (!fields.title) throw bad('no_title');
+  }
+  if (KINDS.some((kind) => kind === body.kind)) fields.kind = body.kind;
   for (const k of ['admins_only_edit', 'rating_enabled', 'chat_digest', 'chat_reminders'] as const) if (typeof body[k] === 'boolean') fields[k] = body[k];
   if (Object.keys(fields).length) must(await sb.from('groups').update(fields).eq('id', id));
   return c.json({ ok: true });
@@ -390,6 +397,7 @@ export async function markItem(sb: SupabaseClient, user: UserRow, groupIdNum: nu
   const day = isDay(dayIn) && dayIn <= todayOf(user) && dayIn >= addDays(todayOf(user), -7) ? dayIn : todayOf(user);
   const g = (await groupsToday(sb, user, day)).find((x) => x.id === groupIdNum);
   const it = g?.items.find((x) => x.id === itemId);
+  if (it && !it.can_mark && done && it.mode === 'one' && it.done) return 'taken';
   if (!it || !it.can_mark) return 'forbidden';
   const solo = it.mode === 'one' || it.turn !== null;
   if (done) {

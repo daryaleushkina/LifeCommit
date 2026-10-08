@@ -31,6 +31,7 @@ const ru = {
     progress: (done: number, due: number) => `${ruNum.format(done)} из ${ruNum.format(due)}`,
     search: 'Найти среди друзей',
     nothingFound: 'Никого не нашли',
+    noRequests: 'Новых заявок нет',
     sendLink: 'Отправить ссылку в Telegram',
     shareText: 'Давай дружить в LifeCommit',
     usernamePh: 'Найти по @username',
@@ -329,6 +330,12 @@ const ru = {
     synced: (when: string) => `обновлено ${when}`,
     justNow: 'только что',
     minutesAgo: (n: number) => `${n} мин назад`,
+    hoursAgo: (n: number) => `${n} ${plural(n, 'час', 'часа', 'часов')} назад`,
+    daysAgo: (n: number) => (n === 1 ? 'вчера' : `${n} ${plural(n, 'день', 'дня', 'дней')} назад`),
+    notSynced: 'не обновилось',
+    syncError: 'В прошлый раз не получилось обновить — попробуем ещё раз сами. Пароль менять не нужно.',
+    syncFailed: 'Не получилось обновить календари. Попробуйте ещё раз.',
+    dayFailed: 'Не получилось загрузить. Нажмите, чтобы попробовать ещё раз.',
     authFailed: 'Apple перестал пускать: пароль приложения отозван или сменён пароль Apple ID.',
     newPassword: 'Ввести новый пароль',
     whatToTake: 'Что забирать',
@@ -471,6 +478,8 @@ const ru = {
     logoutConfirm: 'Выйти из LifeCommit на этом устройстве?',
     logoutOk: 'Выйти',
   },
+  deleteLinked: 'Удалить аккаунт можно только из того Telegram, в котором он создан.',
+  deleteTelegramOnly: 'Удалить аккаунт можно в Telegram или в приложении LifeCommit на телефоне.',
 };
 
 type Dict = typeof ru;
@@ -500,6 +509,12 @@ const en: Dict = {
     synced: (when) => `updated ${when}`,
     justNow: 'just now',
     minutesAgo: (n) => `${n} min ago`,
+    hoursAgo: (n) => `${n} h ago`,
+    daysAgo: (n) => (n === 1 ? 'yesterday' : `${n} days ago`),
+    notSynced: 'not updated',
+    syncError: 'Last time the update didn’t go through — we’ll try again ourselves. No need to change the password.',
+    syncFailed: 'Couldn’t update the calendars. Please try again.',
+    dayFailed: 'Couldn’t load. Tap to try again.',
     authFailed: 'Apple stopped letting us in: the app password was revoked or the Apple ID password changed.',
     newPassword: 'Enter a new password',
     whatToTake: 'What to bring in',
@@ -625,6 +640,7 @@ const en: Dict = {
     progress: (done, due) => `${enNum.format(done)} of ${enNum.format(due)}`,
     search: 'Search friends',
     nothingFound: 'Nobody found',
+    noRequests: 'No new requests',
     sendLink: 'Send a link in Telegram',
     shareText: 'Let’s be friends on LifeCommit',
     usernamePh: 'Find by @username',
@@ -808,7 +824,7 @@ const en: Dict = {
   nothingDue: 'All done for today',
   archivedLink: (n) => `Postponed · ${n}`,
   didIt: 'Did it work out today?',
-  didItShort: 'Worked out?',
+  didItShort: 'Made it today?',
   answerYes: 'Yes, it did',
   answerNo: 'No, it happened today',
   of: 'of',
@@ -921,6 +937,8 @@ const en: Dict = {
     logoutConfirm: 'Sign out of LifeCommit on this device?',
     logoutOk: 'Sign out',
   },
+  deleteLinked: 'You can delete the account only from the Telegram account it was created in.',
+  deleteTelegramOnly: 'You can delete your account in Telegram or in the LifeCommit app on your phone.',
 };
 
 function plural(n: number, one: string, few: string, many: string): string {

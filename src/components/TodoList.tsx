@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Todo } from '../../shared/types';
 import { caches, load as fetchInto } from '../caches';
 import { LangContext, useT } from '../i18n';
@@ -23,7 +23,8 @@ interface Props {
   /** Можно ли добавлять: в прошедший день календаря — нельзя. */
   canAdd?: boolean;
   onToggle: (todo: Todo) => void;
-  onAdd: (title: string) => void;
+  /** Добавить дело. Вернуло false — не сохранилось: набранное возвращается в поле, набирать заново не надо. */
+  onAdd: (title: string) => void | Promise<boolean>;
   onUpdate: (todo: Todo, edit: TodoEdit) => Promise<void>;
   onRemove: (todo: Todo) => Promise<void>;
   /** Скрыть событие из календаря у нас (в самом календаре оно остаётся). */
@@ -115,13 +116,30 @@ export function TodoList({ todos: all, later = 0, today, heading, addLabel, show
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US';
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const addPending = useRef(false);
   const [editing, setEditing] = useState<Todo | null>(null);
   const [laterOpen, setLaterOpen] = useState(false);
 
   const submit = () => {
+    if (addPending.current) return;
     const title = draft.trim();
-    if (title) onAdd(title);
-    setDraft('');
+    if (!title) {
+      setDraft('');
+      return;
+    }
+    // До ответа держим исходный текст: он не потеряется и не затрёт следующее дело при отказе.
+    addPending.current = true;
+    setSubmitting(true);
+    void Promise.resolve(onAdd(title)).then((ok) => {
+      if (ok === false) {
+        setAdding(true);
+      } else {
+        setDraft('');
+      }
+      addPending.current = false;
+      setSubmitting(false);
+    });
   };
 
   return (
@@ -176,12 +194,13 @@ export function TodoList({ todos: all, later = 0, today, heading, addLabel, show
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                submit(); // поле остаётся открытым: следующее дело можно вписать сразу
+                submit(); // поле остаётся открытым для следующего дела после ответа
               }}
             >
               <input
                 autoFocus
                 value={draft}
+                readOnly={submitting}
                 maxLength={120}
                 enterKeyHint="done"
                 placeholder={t.todo.addPh}
@@ -238,9 +257,15 @@ function LaterSheet({ today, onUpdate, onRemove, onClose }: { today: string; onU
   // Список подтянут в фоне, когда на «Сегодня» появилось «Потом», — шторка открывается сразу во весь рост.
   const [list, setList] = useState<Todo[] | null>(caches.later);
   const [editing, setEditing] = useState<Todo | null>(null);
+  // Не загрузилось — сказать и дать повторить: ссылка «Потом · N» обещала дела, пустая шторка выглядела бы как «пропали».
+  const [failed, setFailed] = useState(false);
   const load = () => {
     caches.later = null;
-    return fetchInto.later().then(setList, () => setList((cur) => cur ?? []));
+    setFailed(false);
+    return fetchInto.later().then(setList, () => {
+      setList((cur) => cur ?? []);
+      setFailed(true);
+    });
   };
   useEffect(() => {
     void load();
@@ -253,6 +278,11 @@ function LaterSheet({ today, onUpdate, onRemove, onClose }: { today: string; onU
   return (
     <>
       <Sheet title={t.todo.laterTitle} onClose={onClose}>
+        {failed && (
+          <button type="button" className="error later-retry" onClick={() => void load()}>
+            {t.error}
+          </button>
+        )}
         {[...groups].map(([day, items]) => (
           <section key={day} className="later-day">
             <h3>{todoWhen(t, day, today, locale)}</h3>

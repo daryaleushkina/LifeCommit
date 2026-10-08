@@ -5,6 +5,7 @@ import { renderHook } from 'vitest-browser-react';
 import type { TodayResponse, TodayTask } from '../shared/types';
 
 const haptic = vi.hoisted(() => vi.fn());
+const notify = vi.fn();
 vi.mock('@tma.js/sdk-react', () => ({ hapticFeedback: { notificationOccurred: { ifAvailable: haptic } } }));
 vi.mock('./api', () => ({ api: { log: vi.fn() } }));
 
@@ -18,11 +19,11 @@ const task = (over: Partial<TodayTask>): TodayTask =>
 
 const other = task({ id: 2, title: 'Чтение', kind: 'check', target: 1, value: 0, logged: false });
 
-function setup(tasks: TodayTask[]) {
+function setup(tasks: TodayTask[], onError: (text: string) => void = notify) {
   const initial: Cache = { today: { day: '2026-10-03', tasks, todos: [] } as unknown as TodayResponse, heat: [], loadedAt: 1 };
   return renderHook(() => {
     const [cache, setCache] = useState(initial);
-    return { cache, ...useTaskLog(setCache, 'Не сохранилось') };
+    return { cache, ...useTaskLog(setCache, 'Не сохранилось', onError) };
   });
 }
 
@@ -30,6 +31,7 @@ const byId = (cache: Cache, id: number) => cache.today.tasks.find((t) => t.id ==
 
 beforeEach(() => {
   haptic.mockReset();
+  notify.mockReset();
   log.mockReset();
   log.mockResolvedValue({ ok: true });
 });
@@ -45,7 +47,7 @@ describe('useTaskLog', () => {
     expect(haptic).toHaveBeenCalledWith('success');
     expect(log).toHaveBeenCalledWith(1, 8, undefined);
     expect(currentChange()).toBe(before + 1);
-    expect(result.current.error).toBeNull();
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it('не дотянули до цели — без хаптики', async () => {
@@ -88,15 +90,24 @@ describe('useTaskLog', () => {
     expect(haptic).toHaveBeenCalledTimes(2); // снятие не хлопает
   });
 
-  it('сервер не принял — откат к прежней отметке и текст ошибки; clearError убирает', async () => {
+  it('сервер не принял — откат к прежней отметке и текст ошибки', async () => {
     log.mockRejectedValueOnce(new Error('500'));
     const w = task({});
     const { result, act } = await setup([w]);
     await act(() => result.current.log(w, { value: 8 }));
     expect(byId(result.current.cache, 1)).toEqual(w);
-    expect(result.current.error).toBe('Не сохранилось');
-    await act(() => result.current.clearError());
-    expect(result.current.error).toBeNull();
+    expect(notify).toHaveBeenCalledWith('Не сохранилось');
+  });
+
+  // 04.10.2026: на «Сегодня» ошибка — плашкой внизу (notify): вверху длинного списка её не видно.
+  it('с notify — откат и плашка, состояние экрана без ошибки', async () => {
+    log.mockRejectedValueOnce(new Error('500'));
+    const notify = vi.fn();
+    const w = task({});
+    const { result, act } = await setup([w], notify);
+    await act(() => result.current.log(w, { value: 8 }));
+    expect(byId(result.current.cache, 1)).toEqual(w);
+    expect(notify).toHaveBeenCalledExactlyOnceWith('Не сохранилось');
   });
 });
 

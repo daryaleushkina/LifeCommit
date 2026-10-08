@@ -262,7 +262,7 @@ describe('запуск', () => {
     m.api.calendar.mockRejectedValue(new Error('сеть'));
     m.api.invitation.mockRejectedValue(new Error('сеть'));
     await boot({ start_param: 'g_abc123' });
-    await expect.element(page.getByText('Приглашение не найдено.')).toBeVisible();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
     await page.getByRole('button', { name: 'Не сейчас' }).click();
     await expect.element(heading('Сегодня')).toBeVisible();
   });

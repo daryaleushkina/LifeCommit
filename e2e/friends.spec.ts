@@ -154,3 +154,46 @@ test('сеть подвела: принять заявку и сохранить
   await show.getByRole('button', { name: 'Готово' }).click();
   await expect(show).toBeHidden();
 });
+
+// ── Находки /lc-explore 04.10.2026: сбой сети — не «не найдено», пустые заявки — не «результат поиска» ──
+
+test('сеть моргнула: чужая ссылка в друзья и поиск по @username — «попробуйте ещё раз», а не «не найдено»', async ({ app: page, people }) => {
+  const dasha = await people('Даша');
+  const { link } = await dasha.api<{ link: string }>('GET', '/friends');
+  const url = new URL(page.url());
+  url.searchParams.set('tgStart', `f_${link.split('startapp=f_')[1]}`);
+  await page.goto(url.toString());
+  await expect(page.getByRole('heading', { name: 'Даша зовёт в друзья' })).toBeVisible();
+  await page.route('**/api/friends/requests', (r) => r.abort('failed'));
+  await page.getByRole('button', { name: 'Хочу дружить' }).click();
+  await expect(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+  await expect(page.getByText('Ссылка не работает')).toHaveCount(0);
+  // Сеть вернулась — заявка уходит с той же кнопки.
+  await page.unroute('**/api/friends/requests');
+  await page.getByRole('button', { name: 'Хочу дружить' }).click();
+  await expect(page.getByText('Заявка отправлена — Даша подтвердит')).toBeVisible();
+
+  // Поиск по @username без сети.
+  const name = nick('masha');
+  await people('Маша', name);
+  url.searchParams.delete('tgStart');
+  await page.goto(url.toString());
+  await expect(page.locator('.page-head h1')).toHaveText('Сегодня');
+  await openFriends(page);
+  await page.getByRole('button', { name: 'Позвать друга' }).click();
+  await page.route('**/api/friends/find*', (r) => r.abort('failed'));
+  await page.locator('.sheet').getByRole('textbox', { name: 'Найти по @username' }).fill(`@${name}`);
+  await expect(page.locator('.sheet .find-note')).toHaveText('Что-то пошло не так. Попробуй ещё раз.');
+});
+
+test('заявки разобраны до конца — «Новых заявок нет», а не «Никого не нашли»', async ({ app: page, me, people }) => {
+  const { link } = await me.api<{ link: string }>('GET', '/friends');
+  const anya = await people('Аня');
+  await anya.api('POST', '/friends/requests', { code: link.split('startapp=f_')[1] });
+  await openFriends(page);
+  await page.getByRole('button', { name: /Заявки · 1/ }).click();
+  await page.getByRole('button', { name: 'Отклонить' }).click();
+  await expect(page.getByText('Аня')).toBeHidden();
+  await expect(page.getByText('Новых заявок нет')).toBeVisible();
+  await expect(page.getByText('Никого не нашли')).toHaveCount(0);
+});

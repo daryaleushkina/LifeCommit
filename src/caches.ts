@@ -5,6 +5,7 @@ import type { GroupDayBlock, GroupToday } from '../shared/groups';
 import type { TaskHistory } from '../shared/stats';
 import type { FriendProfile, FriendsResponse, Todo } from '../shared/types';
 import { api, type CalendarAccount, type GroupDetail, type Invitation } from './api';
+import { storeRange } from './calendarDays';
 import { bumpChange, currentChange } from './useTaskLog';
 
 /** Ссылка входа Google живёт 15 минут; берём запас. */
@@ -89,7 +90,7 @@ export const load = {
         if (edits.size) await Promise.allSettled([...edits]);
       } while (seq !== currentChange() && ++tries < 4);
       const v = { todos: res.todos, groups: res.groups ?? [] };
-      caches.days.set(`${from}:${to}`, v);
+      storeRange(caches.days, from, to, v);
       return v;
     }),
   groupList: () =>

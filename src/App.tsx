@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { mainButton, miniApp, themeParams, useSignal } from '@tma.js/sdk-react';
 import type { TaskKind, TodayResponse, UserSettings } from '../shared/types';
 import { api } from './api';
+import { syncToday } from './calendarDays';
 import { caches, load as fetchInto, logicalDayOf, warm } from './caches';
 import { RemovalHost } from './removal';
 import { paintTelegram } from './telegram/colors';
@@ -97,6 +98,13 @@ export function App(): ReactNode {
   const [boot, setBoot] = useState<Boot>({ state: 'loading' });
   const [route, setRoute] = useState<Route>({ name: 'today' });
   const [cache, setCache] = useState<Cache>(EMPTY_CACHE);
+  // Отметили, добавили или удалили дело на «Сегодня» — то же в уже загруженных днях «Календаря»: открыли вкладку —
+  // там то же, что на «Сегодня», даже пока «Календарь» перечитывается или связи нет (04.10.2026, /lc-explore).
+  const shownToday = useRef(cache.today);
+  useEffect(() => {
+    syncToday(caches.days, shownToday.current, cache.today);
+    shownToday.current = cache.today;
+  }, [cache.today]);
   // Шторка голоса и её список — здесь, а не в шторке: пока привычку из списка правят в редакторе, шторки нет.
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voicePreview, setVoicePreview] = useState<VoicePreview | null>(null);
@@ -294,7 +302,12 @@ export function App(): ReactNode {
         ) : route.name === 'requests' ? (
           <Requests onBack={() => setRoute(tab('groups'))} />
         ) : currentTab === 'me' ? (
-          <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => setBoot({ ...boot, user })} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
+          <Profile theme={isDark ? 'dark' : 'light'} onTheme={setTheme} user={boot.user} onUser={(user) => {
+            setBoot({ ...boot, user });
+            // Сменился конец дня — «сегодня» могло стать другим днём: перечитать «Сегодня» и карту сразу, а не через минуту
+            // (04.10.2026: экран показывал прошлый день и его отметки, а отметки уже уходили в новый).
+            if (user.day_start_hour !== boot.user.day_start_hour) void refresh(true);
+          }} heat={{ today: cache.today.day, days: heatWithToday(cache) }} />
         ) : currentTab === 'groups' ? (
           <Groups
             me={boot.user.id}

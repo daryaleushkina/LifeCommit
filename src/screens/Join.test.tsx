@@ -88,11 +88,30 @@ describe('Вступление по ссылке', () => {
     await expect.element(page.getByText('Приглашение не найдено.')).toBeVisible();
   });
 
-  it('вступить не вышло — «Приглашение не найдено»; экран группы не догрузился — всё равно открываем', async () => {
+  it('вступить без сети — ошибка, приглашение остаётся и повторное нажатие вступает', async () => {
     m.api.join.mockRejectedValueOnce(new Error('сеть'));
+    const onJoined = vi.fn();
+    await renderApp(<Join code="abc123" onJoined={onJoined} onClose={() => {}} />);
+    await page.getByRole('button', { name: 'Вступить' }).click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('Приглашение не найдено.')).not.toBeInTheDocument();
+    expect(onJoined).not.toHaveBeenCalled();
+    await page.getByRole('button', { name: 'Вступить' }).click();
+    await expect.poll(() => onJoined.mock.calls).toEqual([[7]]);
+  });
+
+  it.each([[404, 'not_found', 'Приглашение не найдено.'], [410, 'invite_expired', 'Ссылка устарела — попроси новую.']])('сервер отказал при вступлении: %s %s', async (status, code, text) => {
+    m.api.join.mockRejectedValue(new ApiError(Number(status), String(code)));
     await renderApp(<Join code="abc123" onJoined={() => {}} onClose={() => {}} />);
     await page.getByRole('button', { name: 'Вступить' }).click();
-    await expect.element(page.getByText('Приглашение не найдено.')).toBeVisible();
+    await expect.element(page.getByText(String(text))).toBeVisible();
+  });
+
+  it.each([new TypeError('Failed to fetch'), new ApiError(500, 'internal')])('приглашение не загрузилось — ошибка сети или сервера, без «не найдено»', async (error) => {
+    m.api.invitation.mockRejectedValue(error);
+    await renderApp(<Join code="abc123" onJoined={() => {}} onClose={() => {}} />);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(page.getByText('Приглашение не найдено.')).not.toBeInTheDocument();
   });
 
   it('группа не догрузилась после вступления — экран группы всё равно открывается', async () => {

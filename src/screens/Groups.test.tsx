@@ -137,6 +137,10 @@ describe('Вкладка «Вместе»', () => {
     await input.fill('   ');
     input.element().closest('form')!.requestSubmit();
     expect(m.api.createGroup).not.toHaveBeenCalled();
+    await input.fill('\u200B\u2060');
+    await expect.element(create).toBeDisabled();
+    input.element().closest('form')!.requestSubmit();
+    expect(m.api.createGroup).not.toHaveBeenCalled();
     await input.fill('  Бег  ');
     input.element().closest('form')!.requestSubmit();
     await expect.poll(() => onOpen.mock.calls).toEqual([[11]]);
