@@ -281,6 +281,8 @@ test('длинное слово в названии группы: в шапке 
   });
   expect(head.text, `название до ${head.text}px, шестерёнка с ${head.gear}px`).toBeLessThanOrEqual(head.gear);
   await page.keyboard.press('Escape');
+  // Список групп рисуется после ухода с экрана группы — мерить карточку, когда она уже есть.
+  await expect(page.locator('.group-card-title b', { hasText: long })).toBeVisible();
   const card = await page.evaluate(() => {
     const range = document.createRange();
     range.selectNodeContents(document.querySelector('.group-card-title b')!);
