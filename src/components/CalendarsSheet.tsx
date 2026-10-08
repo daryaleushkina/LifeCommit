@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { Fragment, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { openLink, popup } from '@tma.js/sdk-react';
 import { api, ApiError, type CalendarAccount } from '../api';
 import { caches, googleUrlFresh, load as fetchInto } from '../caches';
@@ -11,7 +11,20 @@ const APPLE_ID_URL = 'https://account.apple.com/account/manage';
 export function syncedLabel(t: ReturnType<typeof useT>, iso: string | null): string {
   if (!iso) return '';
   const min = Math.floor((Date.now() - Date.parse(iso)) / 60_000);
-  return t.cal.synced(min < 1 ? t.cal.justNow : t.cal.minutesAgo(min));
+  if (!Number.isFinite(min)) return '';
+  return t.cal.synced(min < 1 ? t.cal.justNow : min < 60 ? t.cal.minutesAgo(min) : min < 1440 ? t.cal.hoursAgo(Math.floor(min / 60)) : t.cal.daysAgo(Math.floor(min / 1440)));
+}
+
+type AccountAction = 'destination' | 'disconnect' | `collection:${string}`;
+interface ActionFeedback {
+  failed: AccountAction | null;
+  onStart: () => void;
+  onFailed: (action: AccountAction) => void;
+}
+
+function ActionError({ onClear }: { onClear: () => void }): ReactNode {
+  const t = useT();
+  return <p className="error" role="alert" onClick={onClear}>{t.error}</p>;
 }
 
 interface Props {
@@ -58,7 +71,13 @@ export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): Re
   const [form, setForm] = useState(false);
   // Сервер не сохранил правку (что забирать, куда писать, отключить) — на экране как было, здесь строка ошибки.
   const [failed, setFailed] = useState(false);
-  const onFailed = () => setFailed(true);
+  const [failedAction, setFailedAction] = useState<{ id: number; action: AccountAction } | null>(null);
+  const clearActionError = () => setFailedAction(null);
+  const feedback = (account: CalendarAccount): ActionFeedback => ({
+    failed: failedAction?.id === account.id ? failedAction.action : null,
+    onStart: clearActionError,
+    onFailed: (action) => setFailedAction({ id: account.id, action }),
+  });
   // Адрес входа Google: null — ещё грузится, '' — Google на сервере не настроен.
   const [googleUrl, setGoogleUrl] = useState<string | null>(googleUrlFresh());
   const load = () => fetchInto.accounts().then(setAccounts, () => setAccounts((cur) => cur ?? []));
@@ -160,6 +179,7 @@ export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): Re
 
   const changed = () => {
     setFailed(false);
+    clearActionError();
     void load();
     onChanged();
   };
@@ -195,7 +215,8 @@ export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): Re
         {accounts !== null && !google && googleUrl === '' && <span className="provider-soon">{t.cal.googleSoon}</span>}
       </div>
       {accounts !== null && !google && googleUrl !== '' && <p className="sheet-note">{t.cal.googleUnverified}</p>}
-      {google && (google.status === 'auth_failed' || google.status === 'error') && (
+      {google?.status === 'error' && <div className="cal-warn">{t.cal.syncError}</div>}
+      {google?.status === 'auth_failed' && (
         <div className="cal-warn">
           {t.cal.googleExpired}{' '}
           {googleUrl && (
@@ -205,8 +226,8 @@ export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): Re
           )}
         </div>
       )}
-      {google?.status === 'setup' && <GoogleSetup account={google} setAccounts={setAccounts} onDone={changed} onFailed={onFailed} />}
-      {google && google.status !== 'setup' && <AccountSettings account={google} name={t.cal.google} isDestination={destination?.id === google.id} setAccounts={setAccounts} onChanged={changed} onFailed={onFailed} />}
+      {google?.status === 'setup' && <GoogleSetup account={google} setAccounts={setAccounts} onDone={changed} {...feedback(google)} />}
+      {google && google.status !== 'setup' && <AccountSettings account={google} name={t.cal.google} isDestination={destination?.id === google.id} setAccounts={setAccounts} onChanged={changed} {...feedback(google)} />}
 
       <div className="provider">
         <span className="provider-logo apple">A</span>
@@ -222,7 +243,8 @@ export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): Re
         )}
       </div>
 
-      {apple && apple.status !== 'ok' && (
+      {apple?.status === 'error' && <div className="cal-warn">{t.cal.syncError}</div>}
+      {apple?.status === 'auth_failed' && (
         <div className="cal-warn">
           {t.cal.authFailed}{' '}
           <button className="inline-link" onClick={() => setForm(true)}>
@@ -231,7 +253,7 @@ export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): Re
         </div>
       )}
 
-      {apple && <AccountSettings account={apple} name={t.cal.apple} isDestination={destination?.id === apple.id} setAccounts={setAccounts} onChanged={changed} onFailed={onFailed} />}
+      {apple && <AccountSettings account={apple} name={t.cal.apple} isDestination={destination?.id === apple.id} setAccounts={setAccounts} onChanged={changed} {...feedback(apple)} />}
     </Sheet>
   );
 }
@@ -239,31 +261,40 @@ export function CalendarsSheet({ onClose, onChanged, googlePending }: Props): Re
 type SetAccounts = Dispatch<SetStateAction<CalendarAccount[] | null>>;
 
 /** Включить или выключить календарь: на экране сразу, сервер догоняет; не сохранил — вернуть как было. */
-function useToggle(account: CalendarAccount, setAccounts: SetAccounts, onFailed: () => void, onChanged?: () => void) {
+function useToggle(account: CalendarAccount, setAccounts: SetAccounts, feedback: ActionFeedback, onChanged?: () => void) {
+  const pending = useRef(new Set<string>());
   const set = (url: string, enabled: boolean) =>
     setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, collections: a.collections.map((x) => (x.url === url ? { ...x, enabled } : x)) } : a)) ?? list);
   return async (url: string, enabled: boolean) => {
+    if (pending.current.has(url)) return;
+    pending.current.add(url);
+    feedback.onStart();
     set(url, enabled);
     try {
       await api.toggleCollection(account.id, url, enabled);
     } catch {
       set(url, !enabled);
-      onFailed();
+      feedback.onFailed(`collection:${url}`);
       return;
+    } finally {
+      pending.current.delete(url);
     }
     onChanged?.();
   };
 }
 
-function CollectionToggles({ account, onToggle }: { account: CalendarAccount; onToggle: (url: string, enabled: boolean) => void }): ReactNode {
+function CollectionToggles({ account, onToggle, failed, onStart }: { account: CalendarAccount; onToggle: (url: string, enabled: boolean) => void } & Pick<ActionFeedback, 'failed' | 'onStart'>): ReactNode {
   return (
     <div className="card flat">
       {account.collections.map((c) => (
-        <label key={c.url} className="row toggle-row">
-          <span className="cal-color" style={{ background: c.color ?? 'var(--heat-2)' }} aria-hidden />
-          <span className="label">{c.name}</span>
-          <input type="checkbox" className="switch" checked={c.enabled} onChange={(e) => onToggle(c.url, e.target.checked)} />
-        </label>
+        <Fragment key={c.url}>
+          <label className="row toggle-row">
+            <span className="cal-color" style={{ background: c.color ?? 'var(--heat-2)' }} aria-hidden />
+            <span className="label">{c.name}</span>
+            <input type="checkbox" className="switch" checked={c.enabled} onChange={(e) => onToggle(c.url, e.target.checked)} />
+          </label>
+          {failed === `collection:${c.url}` && <ActionError onClear={onStart} />}
+        </Fragment>
       ))}
     </div>
   );
@@ -276,6 +307,8 @@ function AccountSettings({
   isDestination,
   setAccounts,
   onChanged,
+  failed,
+  onStart,
   onFailed,
 }: {
   account: CalendarAccount;
@@ -283,27 +316,35 @@ function AccountSettings({
   isDestination: boolean;
   setAccounts: SetAccounts;
   onChanged: () => void;
-  onFailed: () => void;
-}): ReactNode {
+} & ActionFeedback): ReactNode {
   const t = useT();
-  const toggle = useToggle(account, setAccounts, onFailed, onChanged);
+  const toggle = useToggle(account, setAccounts, { failed, onStart, onFailed }, onChanged);
   const writable = account.collections.filter((c) => c.writable);
+  const disconnecting = useRef(false);
+  const [busy, setBusy] = useState(false);
 
   const disconnect = async () => {
-    if (popup.show.isAvailable()) {
-      const answer = await popup.show({ message: t.cal.disconnectConfirm, buttons: [{ id: 'off', type: 'destructive', text: t.cal.disconnect }, { type: 'cancel' }] });
-      if (answer !== 'off') return;
-    }
+    if (disconnecting.current) return;
+    disconnecting.current = true;
+    setBusy(true);
+    onStart();
     try {
+      if (popup.show.isAvailable()) {
+        const answer = await popup.show({ message: t.cal.disconnectConfirm, buttons: [{ id: 'off', type: 'destructive', text: t.cal.disconnect }, { type: 'cancel' }] });
+        if (answer !== 'off') return;
+      }
       await api.disconnectCalendar(account.provider);
+      onChanged();
     } catch {
-      onFailed();
-      return;
+      onFailed('disconnect');
+    } finally {
+      disconnecting.current = false;
+      setBusy(false);
     }
-    onChanged();
   };
 
   const setDestination = async (url: string) => {
+    onStart();
     const prev = account.default_url;
     const set = (default_url: string | null) => setAccounts((list) => list?.map((a) => (a.id === account.id ? { ...a, default_url } : a)) ?? list);
     set(url);
@@ -311,7 +352,7 @@ function AccountSettings({
       await api.setDefaultCalendar(account.id, url);
     } catch {
       set(prev);
-      onFailed();
+      onFailed('destination');
       return;
     }
     onChanged();
@@ -329,23 +370,25 @@ function AccountSettings({
           />
         </div>
       )}
+      {failed === 'destination' && <ActionError onClear={onStart} />}
       {account.collections.length > 0 && (
         <>
           <h3 className="sheet-subtitle">{t.cal.whatToTake}</h3>
-          <CollectionToggles account={account} onToggle={(url, on) => void toggle(url, on)} />
+          <CollectionToggles account={account} onToggle={(url, on) => void toggle(url, on)} failed={failed} onStart={onStart} />
         </>
       )}
-      <button className="quiet-link warn" onClick={() => void disconnect()}>
+      <button className="quiet-link warn" disabled={busy} onClick={() => void disconnect()}>
         {t.cal.disconnectOf(name)}
       </button>
+      {failed === 'disconnect' && <ActionError onClear={onStart} />}
     </>
   );
 }
 
 /** Google только что подключили: какие календари забирать. События приходят после «Готово». */
-function GoogleSetup({ account, setAccounts, onDone, onFailed }: { account: CalendarAccount; setAccounts: SetAccounts; onDone: () => void; onFailed: () => void }): ReactNode {
+function GoogleSetup({ account, setAccounts, onDone, ...feedback }: { account: CalendarAccount; setAccounts: SetAccounts; onDone: () => void } & ActionFeedback): ReactNode {
   const t = useT();
-  const toggle = useToggle(account, setAccounts, onFailed);
+  const toggle = useToggle(account, setAccounts, feedback);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
@@ -364,7 +407,7 @@ function GoogleSetup({ account, setAccounts, onDone, onFailed }: { account: Cale
   return (
     <>
       <p className="sheet-note">{t.cal.googleChoose}</p>
-      <CollectionToggles account={account} onToggle={(url, on) => void toggle(url, on)} />
+      <CollectionToggles account={account} onToggle={(url, on) => void toggle(url, on)} failed={feedback.failed} onStart={feedback.onStart} />
       {error && <p className="error">{t.cal.errGoogle}</p>}
       <button className="act primary wide" disabled={busy || !account.collections.some((c) => c.enabled)} onClick={() => void confirm()}>
         {busy ? t.cal.connecting : t.done}
