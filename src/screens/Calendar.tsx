@@ -1,8 +1,9 @@
-import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { GroupDayItem } from '../../shared/groups';
-import { sortTodos, type Todo } from '../../shared/types';
+import { sortTodos } from '../../shared/types';
 import { api, ApiError, type CalendarAccount } from '../api';
-import { caches, load as fetchInto, warm } from '../caches';
+import { caches, load as fetchInto, trackEdit, warm } from '../caches';
+import { patchDay, patchTodos, rangeFrom, type DaysEntry } from '../calendarDays';
 import { CalendarsSheet, syncedLabel } from '../components/CalendarsSheet';
 import { addDays, monthOf, shiftMonth } from '../components/Heatmap';
 import { AvatarStack, GroupItemRow } from '../components/groupUi';
@@ -64,30 +65,32 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
   // Что на экране — прямо из кэша, ещё до первой отрисовки: уже виденный (или подтянутый заранее) день открывается сразу.
   // Правки «на месте» (отметили — галочка сразу, сервер догоняет) пишутся в тот же кэш.
   const [, rerender] = useState(0);
-  const shown = caches.days.get(key);
+  const shown = rangeFrom(caches.days, from, to);
   const todos = shown?.todos ?? null;
   // Дела групп, которые касаются меня, по дням.
   const groupDays = shown?.groups ?? [];
-  const setTodos = (fn: (list: Todo[] | null) => Todo[] | null) => {
-    // Берём текущее из кэша, а не из отрисовки: правку могут применить после ожидания сервера.
-    const cur = caches.days.get(key);
-    if (!cur) return;
-    caches.days.set(key, { todos: fn(cur.todos) ?? [], groups: cur.groups });
-    rerender((n) => n + 1);
-  };
-
+  const [loadErrors, setLoadErrors] = useState(() => new Set<string>());
   const load = useCallback(async () => {
-    if (await fetchInto.range(from, to).catch(() => null)) rerender((n) => n + 1);
+    const rangeKey = `${from}:${to}`;
+    setLoadErrors((cur) => {
+      const next = new Set(cur);
+      next.delete(rangeKey);
+      return next;
+    });
+    try {
+      await fetchInto.range(from, to);
+      rerender((n) => n + 1);
+    } catch {
+      setLoadErrors((cur) => new Set(cur).add(rangeKey));
+    }
   }, [from, to]);
-
-  // Отметка группового дела не дошла до сервера — сказать, а не молча оставить как было.
-  const [markError, setMarkError] = useState<string | null>(null);
-  const markGroupItem = async (groupId: number, it: GroupDayItem) => {
-    // Уже не на мне (очередь сменилась, на экране старое) — так и сказать: повтор не поможет, после перечитывания галочки не будет.
-    await api.markItem(groupId, it.id, !it.done, selected).catch((e: unknown) => setMarkError(e instanceof ApiError && e.code === 'not_yours' ? t.gr.notYours : t.error));
-    await load();
-    onChanged();
-  };
+  // Обновление заканчивается на текущем дне, даже если за время синхронизации перешли на другой.
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+  // Защита живёт на всём экране: смена дня или режима не разрешает второй запрос той же отметки.
+  const pendingMarks = useRef(new Set<string>());
 
   // Запускается, только когда сменился промежуток на экране: в «Месяце» выбор другого дня того же месяца ничего не грузит.
   // Поэтому — from и month, а не selected (в «Дне» from и есть выбранный день).
@@ -118,33 +121,38 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
     }
   });
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(false);
+  const syncBusy = useRef(false);
   const syncNow = useCallback(async () => {
+    if (syncBusy.current) return;
+    syncBusy.current = true;
     setSyncing(true);
-    await api.syncCalendars().catch(() => null);
-    setAccounts(await fetchInto.accounts().catch(() => caches.accounts ?? []));
-    // Синхронизация могла поменять любые дни — уже виденное перечитаем по мере открытия.
-    caches.days.clear();
-    await load();
-    setSyncing(false);
-    onChanged();
-  }, [load, onChanged]);
+    setSyncError(false);
+    try {
+      const result = await api.syncCalendars().catch(() => ({ ok: false }));
+      if (!result.ok) setSyncError(true);
+      setAccounts(await fetchInto.accounts().catch(() => {
+        setSyncError(true);
+        return caches.accounts ?? [];
+      }));
+      // Синхронизация могла поменять любые дни — уже виденное перечитаем по мере открытия.
+      // На отказе сохраняем кэш: связи нет, но уже загруженный день всё ещё можно показать.
+      if (result.ok) caches.days.clear();
+      await loadRef.current();
+      onChanged();
+    } finally {
+      syncBusy.current = false;
+      setSyncing(false);
+    }
+  }, [onChanged]);
   useEffect(() => {
     fetchInto.accounts().then(setAccounts, () => setAccounts((cur) => cur ?? []));
     // Нет Google — заранее берём ссылку входа: шторка календарей откроется уже с кнопкой.
     if (!caches.accounts?.some((a) => a.provider === 'google')) warm(fetchInto.googleUrl());
   }, []);
 
-  const actions = useTodoActions({
-    patchList: (fn) => setTodos((list) => (list ? fn(list) : list)),
-    reload: async () => {
-      await load();
-      onChanged();
-    },
-    errorText: t.error,
-  });
   const shift = (n: number) => setSelected(mode === 'day' ? addDays(selected, n) : `${shiftMonth(monthOf(selected), n)}-01`);
   const ofDay = (day: string) => (todos ?? []).filter((d) => d.day === day);
-  const dayTodos = sortTodos(ofDay(selected));
   const monthTitle = new Date(`${monthOf(selected)}-15T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' }).replace(' г.', '');
   const dayTitle = new Date(`${selected}T12:00:00`).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -201,11 +209,12 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
           {accounts.map((a) => (
             <button key={a.id} className={`cal-chip${a.status === 'auth_failed' || a.status === 'error' ? ' bad' : ''}`} onClick={() => (a.status === 'ok' ? void syncNow() : setSheet(true))}>
               <span className={`src-mark ${a.provider}`}>{a.provider === 'apple' ? 'A' : 'G'}</span>
-              {a.status === 'ok' ? syncedLabel(t, a.last_sync_at) : a.status === 'setup' ? t.cal.googleSetup : a.provider === 'apple' ? t.cal.newPassword : t.cal.reconnect}
+              {a.status === 'ok' ? syncedLabel(t, a.last_sync_at) : a.status === 'setup' ? t.cal.googleSetup : a.status === 'error' ? t.cal.notSynced : a.provider === 'apple' ? t.cal.newPassword : t.cal.reconnect}
             </button>
           ))}
         </div>
       )}
+      {syncError && <p className="error" role="alert" onClick={() => setSyncError(false)}>{t.cal.syncFailed}</p>}
       {sheet && (
         <CalendarsSheet
           googlePending={googlePending}
@@ -277,9 +286,86 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
       </div>
       )}
 
+      {loadErrors.has(key) && <p className="error" role="alert" onClick={() => void load()}>{t.cal.dayFailed}</p>}
+      <CalendarDay
+        key={`${mode}:${selected}`}
+        day={selected}
+        today={today}
+        entry={shown}
+        heading={mode === 'day' ? undefined : dayTitle}
+        me={me}
+        onOpenGroup={onOpenGroup}
+        onPatched={() => rerender((n) => n + 1)}
+        pendingMarks={pendingMarks.current}
+        reload={async () => {
+          await load();
+          onChanged();
+        }}
+      />
+    </>
+  );
+}
+
+// Действия и их ошибки принадлежат выбранному дню. Ушли с него — состояние уничтожается;
+// поздний отказ откатывает кэш исходного дня, а сообщение не попадает на другой экран.
+function CalendarDay({ day, today, entry, heading, me, onOpenGroup, onPatched, pendingMarks, reload }: {
+  day: string;
+  today: string;
+  entry: DaysEntry | undefined;
+  heading: string | undefined;
+  me: number;
+  onOpenGroup: (id: number) => void;
+  onPatched: () => void;
+  pendingMarks: Set<string>;
+  reload: () => Promise<void>;
+}): ReactNode {
+  const t = useT();
+  const actions = useTodoActions({
+    patchList: (fn) => {
+      patchTodos(caches.days, fn);
+      onPatched();
+    },
+    reload,
+    errorText: t.error,
+  });
+  const [markError, setMarkError] = useState<string | null>(null);
+  const markGroupItem = async (groupId: number, it: GroupDayItem) => {
+    const key = `${groupId}:${it.id}:${day}`;
+    if (pendingMarks.has(key) || !it.can_mark || day > today || day < addDays(today, -7)) return;
+    pendingMarks.add(key);
+    setMarkError(null);
+    const patch = (fn: (x: GroupDayItem) => GroupDayItem) => {
+      patchDay(caches.days, day, (e) => ({
+        ...e,
+        groups: e.groups.map((b) => b.day === day && b.group.id === groupId ? { ...b, items: b.items.map((x) => x.id === it.id ? fn(x) : x) } : b),
+      }));
+      onPatched();
+    };
+    const done = !it.done;
+    patch((x) => ({ ...x, done, done_by: done ? [...new Set([...x.done_by, me])] : x.done_by.filter((id) => id !== me) }));
+    try {
+      await trackEdit(api.markItem(groupId, it.id, done, day));
+    } catch (e: unknown) {
+      patch(() => it);
+      setMarkError(e instanceof ApiError && e.code === 'not_yours' ? t.gr.notYours : t.error);
+    }
+    try {
+      caches.groups.delete(groupId);
+      await reload();
+    } finally {
+      // Перечитка тоже входит в ожидание: до неё на экране ещё может быть старый ответ сервера.
+      pendingMarks.delete(key);
+    }
+  };
+  const todos = entry?.todos ?? null;
+  const groupDays = entry?.groups ?? [];
+  const dayTodos = sortTodos((todos ?? []).filter((d) => d.day === day));
+  return (
+    <>
       {(actions.error ?? markError) && (
         <p
           className="error"
+          role="alert"
           onClick={() => {
             actions.clearError();
             setMarkError(null);
@@ -293,12 +379,12 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
         <TodoList
           todos={dayTodos}
           today={today}
-          heading={mode === 'day' ? undefined : dayTitle}
+          heading={heading}
           addLabel={t.calAdd}
           showCarry={false}
-          canAdd={selected >= today}
+          canAdd={day >= today}
           onToggle={(d) => void actions.toggle(d)}
-          onAdd={(title) => void actions.add(title, selected)}
+          onAdd={(title) => void actions.add(title, day)}
           onUpdate={actions.update}
           onRemove={actions.remove}
           onHide={actions.hide}
@@ -308,7 +394,7 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
       {/* Дела групп в этот день: отметить можно сегодня и неделю назад (сервер раньше не принимает), остальное — только
           посмотреть. */}
       {groupDays
-        .filter((b) => b.day === selected)
+        .filter((b) => b.day === day)
         .map((b) => (
           <section key={b.group.id} className="group-block">
             <button className="group-block-head" onClick={() => onOpenGroup(b.group.id)}>
@@ -323,18 +409,17 @@ export function Calendar({ today, onChanged, openSheet = false, googlePending, m
               {b.items.map((it) => (
                 <GroupItemRow
                   key={it.id}
-                  item={selected > today || selected < addDays(today, -7) ? { ...it, can_mark: false } : it}
+                  item={day > today || day < addDays(today, -7) ? { ...it, can_mark: false } : it}
                   members={b.group.members}
                   me={me}
                   onToggle={() => void markGroupItem(b.group.id, it)}
                   onOpen={() => onOpenGroup(b.group.id)}
                   swipe={{
                     groupId: b.group.id,
-                    day: selected,
+                    day,
                     after: async () => {
                       caches.groups.delete(b.group.id);
-                      await load();
-                      onChanged();
+                      await reload();
                     },
                   }}
                 />

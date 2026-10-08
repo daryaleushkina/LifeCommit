@@ -1,4 +1,5 @@
 // Вкладка «Календарь»: день и месяц из кэша, листание, дела и групповые дела дня, подключённые календари.
+import { renderHook } from 'vitest-browser-react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import type { GroupDayBlock, GroupDayItem } from '../../shared/groups';
@@ -134,12 +135,52 @@ describe('день', () => {
     await expect.poll(() => caches.days.get(`${TODAY}:${TODAY}`)?.todos[0]?.title).toBe('Из кэша');
   });
 
-  it('день не загрузился — списка дел нет', async () => {
+  // 04.10.2026, /lc-explore: раньше под датой была пустота — ни списка, ни ошибки, ни повтора.
+  it('день не загрузился — сказано; по тапу грузится снова', async () => {
     m.api.calendar.mockRejectedValue(new Error('сеть'));
     await setup();
     await expect.element(page.getByText('суббота, 3 октября')).toBeVisible();
-    await expect.poll(() => m.api.calendar.mock.calls.length).toBeGreaterThan(0);
+    const failed = page.getByText('Не получилось загрузить. Нажмите, чтобы попробовать ещё раз.');
+    await expect.element(failed).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Дело на этот день' })).not.toBeInTheDocument();
+    m.api.calendar.mockImplementation(async (from: string, to: string) => ({ today: TODAY, todos: todos.filter((d) => d.day >= from && d.day <= to), groups: [] }));
+    await failed.click();
+    await expect.element(title('Купить молоко')).toBeVisible();
+    await expect.element(failed).not.toBeInTheDocument();
+  });
+
+  it('дня нет в кэше, а месяц есть — день сразу из месяца, без ожидания ответа', async () => {
+    caches.days.set('2026-09-28:2026-11-01', { todos: [todo({ title: 'Из месяца' }), todo({ id: 9, title: 'Другой день', day: '2026-10-10' })], groups: [] });
+    let release!: (v: unknown) => void;
+    m.api.calendar.mockReturnValue(new Promise((r) => (release = r)));
+    try {
+      await setup();
+      await expect.element(title('Из месяца')).toBeVisible();
+      expect(page.getByText('Другой день', { exact: true }).elements()).toEqual([]);
+    } finally {
+      // Не оставляем запрос в общем inflight: следующий тест должен грузить свои данные.
+      release({ today: TODAY, todos, groups: blocks });
+      await expect.poll(() => caches.days.has(`${TODAY}:${TODAY}`)).toBe(true);
+    }
+  });
+
+  it('поздний отказ прошлого дня не убирает ошибку выбранного дня', async () => {
+    const { act } = await renderHook(() => null);
+    let failToday!: (e: Error) => void;
+    let failTomorrow!: (e: Error) => void;
+    const base = m.api.calendar.getMockImplementation()!;
+    m.api.calendar.mockImplementation((from: string, to: string) => {
+      if (from === TODAY && to === TODAY) return new Promise((_, reject) => (failToday = reject));
+      if (from === '2026-10-04' && to === from) return new Promise((_, reject) => (failTomorrow = reject));
+      return base(from, to);
+    });
+    await setup();
+    await page.getByRole('button', { name: 'Следующий день' }).click();
+    failTomorrow(new Error('сеть'));
+    const failed = page.getByText('Не получилось загрузить. Нажмите, чтобы попробовать ещё раз.');
+    await expect.element(failed).toBeVisible();
+    await act(async () => { failToday(new Error('сеть')); });
+    await expect.element(failed).toBeVisible();
   });
 
   it('листать: завтра — можно добавить дело, «К сегодня» возвращает; вчера — добавлять нельзя', async () => {
@@ -229,9 +270,37 @@ describe('день', () => {
     await expect.poll(() => caches.days.has(`${TODAY}:${TODAY}`)).toBe(false);
     expect(onChanged).not.toHaveBeenCalled();
     fail(new Error('сеть'));
-    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    // Отказ пришёл уже на другом дне: откат исходного дня остаётся, ошибка на завтрашний не переезжает.
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
     await expect.poll(() => onChanged.mock.calls.length).toBe(1);
     await expect.element(title('Завтрашнее')).toBeVisible();
+  });
+
+  it('добавленное и отмеченное в «Дне» сразу видно в «Месяце», даже если перечитка не удалась', async () => {
+    await setup();
+    await expect.poll(() => caches.days.has('2026-09-28:2026-11-01')).toBe(true);
+    await page.getByRole('button', { name: 'Дело на этот день' }).click();
+    const input = page.getByRole('textbox', { name: 'Дело на этот день' });
+    await input.fill('Новое дело');
+    input.element().closest('form')!.requestSubmit();
+    await expect.poll(() => caches.days.get(`${TODAY}:${TODAY}`)?.todos.some((d) => d.id === 50)).toBe(true);
+    await page.getByRole('button', { name: 'Сделано: Купить молоко' }).click();
+    m.api.calendar.mockRejectedValue(new Error('сеть'));
+    await page.getByRole('radio', { name: 'Месяц' }).click();
+    await expect.element(title('Новое дело')).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Не сделано: Купить молоко' })).toBeVisible();
+  });
+
+  it('отказ общего дела после ухода на другой день откатывает его кэш, ошибка за нами не переезжает', async () => {
+    let fail!: (e: Error) => void;
+    m.api.markItem.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));
+    const { onChanged } = await setup();
+    await page.getByRole('button', { name: 'Сделано: Вынести мусор' }).click();
+    await page.getByRole('button', { name: 'Следующий день' }).click();
+    fail(new Error('сеть'));
+    await expect.poll(() => onChanged.mock.calls.length).toBe(1);
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).not.toBeInTheDocument();
+    expect(caches.days.get(`${TODAY}:${TODAY}`)?.groups[0]?.items[0]?.done).toBe(false);
   });
 
   it('удалить дело свайпом — на сервер, день перечитан, «Сегодня» узнаёт', async () => {
@@ -260,6 +329,47 @@ describe('день', () => {
     await page.getByRole('button', { name: /^Семья/ }).click();
     await title('Вынести мусор').click();
     expect(onOpenGroup.mock.calls).toEqual([[10], [10]]);
+  });
+
+  // 04.10.2026, /lc-explore: на медленной сети галочка 2,5 с не отзывалась, второй тап слал второй запрос.
+  it('групповое дело: галочка сразу, пока сервер думает; второй тап ничего не шлёт; отказ — галочка возвращается', async () => {
+    let answer!: (v: { ok: true; taken: boolean }) => void;
+    m.api.markItem.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    const { onChanged } = await setup();
+    await page.getByRole('button', { name: 'Сделано: Вынести мусор' }).click();
+    const undo = page.getByRole('button', { name: 'Не сделано: Вынести мусор' });
+    await expect.element(undo).toBeVisible();
+    await undo.click();
+    expect(m.api.markItem).toHaveBeenCalledTimes(1);
+    blocks = blocks.map((b) => (b.day === TODAY ? { ...b, items: [item({ done: true, done_by: [ME] })] } : b));
+    answer({ ok: true, taken: false });
+    await expect.poll(() => onChanged.mock.calls.length).toBe(1);
+    await expect.element(undo).toBeVisible();
+
+    m.api.markItem.mockRejectedValueOnce(new Error('сеть'));
+    await undo.click();
+    await expect.element(page.getByText('Что-то пошло не так. Попробуй ещё раз.')).toBeVisible();
+    await expect.element(undo).toBeVisible();
+  });
+
+  it('ошибка — про этот день: ушли на другой день, «К сегодня», в «Месяц», выбрали день — её нет', async () => {
+    await setup();
+    const error = page.getByText('Что-то пошло не так. Попробуй ещё раз.');
+    const steps = [
+      () => page.getByRole('button', { name: 'Следующий день' }).click(),
+      () => page.getByRole('button', { name: 'К сегодня' }).click(),
+      () => page.getByRole('radio', { name: 'Месяц' }).click(),
+      // После «К сегодня» выбран 3-й: проверяем именно переход на другой день.
+      () => page.getByRole('gridcell', { name: '4', exact: true }).click(),
+    ];
+    for (const go of steps) {
+      m.api.updateTodo.mockRejectedValueOnce(new Error('сеть'));
+      const check = page.getByRole('button', { name: /^Сделано: / }).first();
+      await check.click();
+      await expect.element(error).toBeVisible();
+      await go();
+      await expect.element(error).not.toBeInTheDocument();
+    }
   });
 
   it('групповое дело уже не на мне (очередь сменилась) — «Это дело сегодня не на тебе», а не «попробуй ещё раз»', async () => {
@@ -406,7 +516,8 @@ describe('подключённые календари', () => {
     await expect.element(page.getByRole('button', { name: /обновлено только что/ })).toBeVisible();
     await expect.element(page.getByRole('button', { name: /Выберите календари/ })).toBeVisible();
     await expect.element(page.getByRole('button', { name: /Ввести новый пароль/ })).toHaveClass(/bad/);
-    await expect.element(page.getByRole('button', { name: /Подключить заново/ })).toHaveClass(/bad/);
+    // 04.10.2026: временный сбой (error) — «не обновилось», а не «подключить заново»: доступ не отозван, сервер попробует сам.
+    await expect.element(page.getByRole('button', { name: /не обновилось/ })).toHaveClass(/bad/);
     await expect.element(page.getByText('Подключите календарь')).not.toBeInTheDocument();
     expect(m.api.googleUrl).not.toHaveBeenCalled();
 
@@ -438,7 +549,7 @@ describe('подключённые календари', () => {
     expect(caches.days.has('2026-10-04:2026-10-04')).toBe(false);
   });
 
-  it('обновить не вышло и список не перечитался — остаётся прежний', async () => {
+  it('обновить не вышло и список не перечитался — остаётся прежний, сказано, что не вышло', async () => {
     caches.accounts = [account({})];
     m.api.calendars.mockResolvedValueOnce([account({})]).mockRejectedValue(new Error('сеть'));
     m.api.syncCalendars.mockRejectedValue(new Error('сеть'));
@@ -446,6 +557,20 @@ describe('подключённые календари', () => {
     await page.getByRole('button', { name: 'Обновить' }).click();
     await expect.poll(() => onChanged.mock.calls.length).toBe(1);
     await expect.element(page.getByRole('button', { name: /обновлено только что/ })).toBeVisible();
+    // 04.10.2026, /lc-explore: раньше значок просто переставал крутиться.
+    const failed = page.getByText('Не получилось обновить календари. Попробуйте ещё раз.');
+    await expect.element(failed).toBeVisible();
+    await failed.click();
+    await expect.element(failed).not.toBeInTheDocument();
+  });
+
+  it('сервер ответил, что обновить удалось не всё, — тоже сказано', async () => {
+    caches.accounts = [account({})];
+    m.api.calendars.mockResolvedValue([account({})]);
+    m.api.syncCalendars.mockResolvedValue({ ok: false });
+    await setup();
+    await page.getByRole('button', { name: 'Обновить' }).click();
+    await expect.element(page.getByText('Не получилось обновить календари. Попробуйте ещё раз.')).toBeVisible();
   });
 
   it('и прежнего не было — пусто', async () => {
