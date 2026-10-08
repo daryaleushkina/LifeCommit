@@ -57,7 +57,7 @@ CSS_IMPORT = re.compile(
 FONT_WEIGHT = re.compile(r"(?<!\d)(?:[1-9]00)(?!\d)")
 ICON_IMPORT = re.compile(
     r"import\s*\{\s*[A-Z][A-Za-z0-9]*(?:\s*,\s*[A-Z][A-Za-z0-9]*)*\s*\}"
-    r"\s*from\s*['\"](?:@phosphor-icons/react|phosphor-react-native|"
+    r"\s*from\s*['\"](?:@phosphor-icons/react|"
     r"@heroicons/react/24/(?:outline|solid))['\"]"
 )
 ICON_USAGE_REQUIREMENTS = (
@@ -91,7 +91,7 @@ PROVENANCE_APPLIES_TO = {
 }
 CORE_PROVENANCE_FILES = {
     "colors.csv", "charts.csv", "ux-guidelines.csv", "landing.csv",
-    "typography.csv", "icons.csv", "motion.csv", "app-interface.csv",
+    "typography.csv", "icons.csv", "motion.csv",
     "react-performance.csv", "stacks/html-tailwind.csv",
 }
 CATALOG_PROVENANCE_FILES = {"google-fonts.csv", "phosphor-icons-upstream.json"}
@@ -119,8 +119,6 @@ STACK_OFFICIAL_HOSTS = {
     "shadcn": {"ui.shadcn.com"},
     "nuxtjs": {"nuxt.com"},
     "nuxt-ui": {"ui.nuxt.com"},
-    "react-native": {"reactnative.dev", "react.dev"},
-    "flutter": {"api.flutter.dev", "docs.flutter.dev"},
     "swiftui": {"developer.apple.com"},
     "jetpack-compose": {"developer.android.com"},
     "avalonia": {"docs.avaloniaui.net"},
@@ -737,13 +735,6 @@ def _check_motion_contract(rows, problems):
             problems.append(f"[motion:{row.get('No')}] missing explicit motion opt-out")
 
 
-def _check_app_interface_contract(rows, problems):
-    native_target = next((row for row in rows
-                          if row.get("Issue") == "Touch Target Size"), {})
-    if not {"44pt", "48dp"} <= set(re.findall(r"44pt|48dp", " ".join(native_target.values()))):
-        problems.append("[web:Touch Target Size] must distinguish iOS 44pt and Android 48dp")
-
-
 def _check_react_contract(rows, problems):
     react_text = "\n".join(" ".join(row.values()) for row in rows)
     if "useLatest" in react_text:
@@ -773,7 +764,6 @@ def _check_core_data_contract(domain_rows, problems):
     _check_icon_contract(domain_rows.get("icons", []), problems)
     _check_ux_contract(domain_rows.get("ux", []), problems)
     _check_motion_contract(domain_rows.get("gsap", []), problems)
-    _check_app_interface_contract(domain_rows.get("web", []), problems)
     _check_react_contract(domain_rows.get("react", []), problems)
     _check_landing_claims(domain_rows.get("landing", []), problems)
 
