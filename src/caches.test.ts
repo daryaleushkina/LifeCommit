@@ -1,5 +1,6 @@
 // Кэш загруженного: один запрос на ключ, пока первый не вернулся; устаревший ответ календаря переспрашиваем.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Todo } from '../shared/types';
 
 vi.mock('@tma.js/sdk-react', () => ({ hapticFeedback: { notificationOccurred: { ifAvailable: vi.fn() } } }));
 vi.mock('./api', () => ({
@@ -127,6 +128,22 @@ describe('ссылка входа Google', () => {
 
 describe('дни календаря', () => {
   const res = (title: string, groups?: unknown[]) => ({ today: '2026-10-03', todos: [{ id: 1, title }], groups }) as never;
+
+  it('свежий день обновляет и месяц; свежий месяц обновляет уже открытые дни, в том числе опустевшие', async () => {
+    const day = '2026-10-03';
+    const todo: Todo = { id: 1, title: 'Хлеб', day, done: false, time: null, duration_min: null, recurring: false, source: null, details: null };
+    const other = { ...todo, id: 2, day: '2026-10-04' };
+    caches.days.set('2026-10-01:2026-10-31', { todos: [todo, other], groups: [] });
+    m.calendar.mockResolvedValueOnce({ today: day, todos: [{ ...todo, done: true }], groups: [] });
+    await load.range(day, day);
+    expect(caches.days.get('2026-10-01:2026-10-31')?.todos).toEqual([other, { ...todo, done: true }]);
+    const outside = { ...todo, id: 3, day: '2026-11-01' };
+    caches.days.set('2026-10-03:2026-11-01', { todos: [todo, outside], groups: [] });
+    m.calendar.mockResolvedValueOnce({ today: day, todos: [other], groups: [] });
+    await load.range('2026-10-01', '2026-10-31');
+    expect(caches.days.get(`${day}:${day}`)?.todos).toEqual([]);
+    expect(caches.days.get('2026-10-03:2026-11-01')?.todos).toEqual([outside, other]);
+  });
 
   it('кэш по ключу «from:to»; групп нет — пустой список', async () => {
     m.calendar.mockResolvedValue(res('Молоко'));
