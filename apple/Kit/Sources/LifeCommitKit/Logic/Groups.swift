@@ -400,9 +400,6 @@ public enum FriendsLogic {
 
     public enum SearchProblem: Equatable, Sendable { case badUsername, notFound, error }
 
-    /// Поле изменили, пока уходила заявка — ответ не возвращает прежнюю строку в шторку.
-    public static func requestIsCurrent(started: String, current: String) -> Bool { started == current }
-
     public static func searchProblem(_ error: Error) -> SearchProblem {
         guard let api = error as? APIError else { return .error }
         if api.code == "bad_username" { return .badUsername }

@@ -394,13 +394,6 @@ struct TogetherMiscTests {
         #expect(FriendsLogic.searchProblem(URLError(.notConnectedToInternet)) == .error)
     }
 
-    @Test("ответ заявки — только для того имени, которое по-прежнему в поле")
-    func requestIsCurrent() {
-        #expect(FriendsLogic.requestIsCurrent(started: "masha", current: "masha"))
-        #expect(!FriendsLogic.requestIsCurrent(started: "masha", current: "masha2"))
-        #expect(!FriendsLogic.requestIsCurrent(started: "masha", current: ""))
-    }
-
     @Test("незнакомый вид группы — other; известный вид сохранён")
     func unknownGroupKind() throws {
         #expect(try APIClient.decoder.decode(GroupKind.self, from: Data(#""future""#.utf8)) == .other)

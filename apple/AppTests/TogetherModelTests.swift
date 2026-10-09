@@ -237,6 +237,117 @@ struct TogetherModelTests {
         #expect(m.together.incoming.map(\.id) == [6])
     }
 
+    func foundAnswer(_ server: FakeServer, username: String = "masha") {
+        server.answer("GET friends/find", 200, ["person": ["id": 8, "first_name": "Маша", "username": username], "status": "none"])
+    }
+
+    @Test("«Позвать»: ответ заявки после смены имени не возвращает прежнего человека; друзья перечитаны")
+    func addFriendRequestAfterNameChange() async throws {
+        let (server, m) = setup()
+        server.friends.withLock { $0 = FriendsResponse() }
+        await m.together.reloadFriends()
+        foundAnswer(server)
+        let search = AddFriendSearch(together: m.together, delay: .zero)
+        search.name = "masha"
+        await search.searchTask?.value
+        #expect(search.found?.person.username == "masha")
+        server.answer("POST friends/requests", 200, ["status": "sent"])
+        let gate = server.hold("POST friends/requests")
+        let calling = try #require(search.call())
+        await gate.entered()
+        #expect(search.busy)
+        server.fail("GET friends/find", status: 404, code: "not_found")
+        search.name = "masha2"
+        await search.searchTask?.value
+        #expect(search.found == nil && search.problem == "Такого человека нет в LifeCommit")
+        // Новый список отличается от уже прочитанного: проверяем и запрос, и применение ответа.
+        server.friends.withLock { $0 = FriendsResponse(outgoing: [Person(id: 8, firstName: "Маша", username: "masha")]) }
+        await gate.open()
+        await calling.value
+        #expect(search.found == nil, "ответ «Позвать» не вернул Машу рядом с итогом поиска masha2")
+        #expect(search.problem == "Такого человека нет в LifeCommit" && !search.busy)
+        #expect(server.calls("POST friends/requests").first?.json["username"] as? String == "masha")
+        #expect(server.calls("GET friends").count == 2)
+        #expect(m.together.friends?.outgoing.first?.username == "masha")
+    }
+
+    @Test("«Позвать»: для текущего имени показан статус заявки и перечитан список", arguments: [PersonStatus.sent, .friends])
+    func addFriendRequest(status: PersonStatus) async throws {
+        let (server, m) = setup()
+        server.friends.withLock { $0 = FriendsResponse() }
+        foundAnswer(server)
+        let search = AddFriendSearch(together: m.together, delay: .zero)
+        search.name = "masha"
+        await search.searchTask?.value
+        server.answer("POST friends/requests", 200, ["status": status.rawValue])
+        let calling = try #require(search.call())
+        await calling.value
+        #expect(search.found?.person.username == "masha" && search.found?.status == status)
+        #expect(!search.busy && search.problem == nil)
+        #expect(server.calls("GET friends").count == 1)
+    }
+
+    @Test("поиск: старый успех после нового 404 и старый 404 после нового успеха не меняют итог", arguments: [true, false])
+    func addFriendStaleSearch(oldSucceeds: Bool) async {
+        let (server, m) = setup()
+        foundAnswer(server)
+        if !oldSucceeds { server.fail("GET friends/find", status: 404, code: "not_found") }
+        let gate = server.hold("GET friends/find")
+        let search = AddFriendSearch(together: m.together, delay: .zero)
+        search.name = "masha"
+        let old = search.searchTask
+        await gate.entered() // Старый ответ собран до подготовки нового ответа.
+        if oldSucceeds {
+            server.fail("GET friends/find", status: 404, code: "not_found")
+        } else {
+            foundAnswer(server, username: "masha2")
+        }
+        search.name = "masha2"
+        await search.searchTask?.value
+        let current = search.found
+        let problem = search.problem
+        #expect(current?.person.username == (oldSucceeds ? nil : "masha2"))
+        #expect(problem == (oldSucceeds ? "Такого человека нет в LifeCommit" : nil))
+        await gate.open()
+        await old?.value
+        #expect(search.found == current, "поздний ответ на masha не заменил результат masha2")
+        #expect(search.problem == problem, "поздняя ошибка на masha не попала рядом с masha2")
+        #expect(server.calls("GET friends/find").map { $0.query["username"] } == ["masha", "masha2"])
+    }
+
+    @Test("поиск: текст ошибки по коду и статусу, включая сеть, на русском и английском", arguments: [
+        (400, "bad_username", "Это не похоже на @username", "That doesn’t look like a @username"),
+        (404, "not_found", "Такого человека нет в LifeCommit", "No such person on LifeCommit"),
+        (500, "internal", "Что-то пошло не так. Попробуй ещё раз.", "Something went wrong. Try again."),
+        (0, "", "Что-то пошло не так. Попробуй ещё раз.", "Something went wrong. Try again."),
+    ])
+    func addFriendSearchErrors(status: Int, code: String, ru: String, en: String) async {
+        for (language, expected) in [("ru", ru), ("en", en)] {
+            let (server, m) = setup()
+            var user = server.user
+            user.languageCode = language
+            m.showForTests(user: user, today: server.today)
+            server.fail("GET friends/find", status: status, code: code)
+            let search = AddFriendSearch(together: m.together, delay: .zero)
+            search.name = "masha"
+            await search.searchTask?.value
+            #expect(search.problem == expected)
+            #expect(search.found == nil && m.phase == .ready)
+        }
+    }
+
+    @Test("поиск: ключ больше не пускает — выход", arguments: ["bad_session", "session_expired", "no_session"])
+    func addFriendSearchSignsOut(code: String) async {
+        let (server, m) = setup()
+        m.api.setCredential(.session("old"))
+        server.fail("GET friends/find", status: 401, code: code)
+        let search = AddFriendSearch(together: m.together, delay: .zero)
+        search.name = "masha"
+        await search.searchTask?.value
+        #expect(m.phase == .signedOut && m.user == nil && m.api.currentCredential == nil)
+        #expect(search.found == nil && search.problem == nil)
+    }
+
     @Test("«Что показать»: спросили один раз; не сохранилось — снова открыто с тем же выбором и ошибкой; «Назад» — без ошибки")
     func shown() async {
         let (server, m) = setup()
@@ -448,6 +559,46 @@ struct TogetherModelTests {
         #expect(m.together.list?.first?.title == "Дом")
         #expect(server.calls("GET groups").count == 2, "устаревший список повторно прочитан")
         await until("переименование завершилось") { !server.calls("GET today").isEmpty }
+    }
+
+    @Test("отмена чтения списка освобождает ожидание до ответа на правку, без повторного GET groups")
+    func cancelEditWaiter() async throws {
+        let (server, m) = setup()
+        let gate = server.hold("PATCH groups/1/items/11")
+        let saving = Task { try await m.together.saveItem(groupId: 1, itemId: 11, GroupItemInput(title: "Мусор", mode: .one, day: Self.day)) }
+        await gate.entered()
+        var finished = false
+        let reading = Task { await m.together.loadList(); finished = true }
+        await until("чтение ждёт правку") { m.together.waitingForEdits }
+        reading.cancel()
+        await until("отменённое чтение завершилось до ответа на правку") { finished }
+        #expect(finished && !m.together.waitingForEdits)
+        #expect(m.together.list == nil && server.calls("GET groups").count == 1)
+        await gate.open() // Убираем подвешенную правку даже при регрессии отмены.
+        try await saving.value
+        await reading.value
+        #expect(server.calls("GET groups").count == 1)
+    }
+
+    @Test("reset освобождает ожидание списка до ответа на правку прошлого аккаунта, без повторного GET groups")
+    func resetEditWaiter() async throws {
+        let (server, m) = setup()
+        let gate = server.hold("PATCH groups/1/items/11")
+        let saving = Task { try await m.together.saveItem(groupId: 1, itemId: 11, GroupItemInput(title: "Мусор", mode: .one, day: Self.day)) }
+        await gate.entered()
+        var finished = false
+        let reading = Task { await m.together.loadList(); finished = true }
+        await until("чтение ждёт правку") { m.together.waitingForEdits }
+        m.together.reset()
+        await until("чтение прошлого аккаунта завершилось до ответа на правку") { finished }
+        #expect(finished && !m.together.waitingForEdits)
+        #expect(m.together.list == nil && server.calls("GET groups").count == 1)
+        // При мутации reset дверь не поможет: defer старого аккаунта уже не трогает waiters. Отмена убирает ожидание.
+        reading.cancel()
+        await gate.open()
+        try await saving.value
+        await reading.value
+        #expect(server.calls("GET groups").count == 1)
     }
 
     @Test("«только сегодня» прячет один день: в другие дни и на «Сегодня» дело видно, пока идёт «Вернуть»")

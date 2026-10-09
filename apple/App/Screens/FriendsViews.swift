@@ -168,15 +168,24 @@ struct FriendRow: View {
 
 struct AddFriendSheet: View {
     @Environment(AppModel.self) private var model
+
+    var body: some View {
+        AddFriendForm(together: model.together)
+    }
+}
+
+private struct AddFriendForm: View {
+    let tg: TogetherModel
     @Environment(\.strings) private var t
     @Environment(\.palette) private var palette
     @Environment(\.openURL) private var openURL
-    @State private var name = ""
-    @State private var found: FoundPerson?
-    @State private var problem: String?
-    @State private var busy = false
+    @State private var search: AddFriendSearch
 
-    private var tg: TogetherModel { model.together }
+    init(together: TogetherModel) {
+        tg = together
+        // Одна модель на открытие шторки: перерисовка родителя не теряет введённое имя и текущий поиск.
+        _search = State(initialValue: AddFriendSearch(together: together))
+    }
 
     var body: some View {
         SheetBody(title: t.fr.invite) {
@@ -187,7 +196,7 @@ struct AddFriendSheet: View {
             .disabled(link.isEmpty)
             .opacity(link.isEmpty ? 0.4 : 1)
             .accessibilityIdentifier("friendAdd.sendLink")
-            TextField(t.fr.usernamePh, text: $name)
+            TextField(t.fr.usernamePh, text: $search.name)
                 .textFieldStyle(.plain)
                 .font(.onest(17, .medium))
                 .autocorrectionDisabled()
@@ -200,8 +209,8 @@ struct AddFriendSheet: View {
                 .background(palette.bg, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .padding(.top, 10)
                 .accessibilityIdentifier("friendAdd.username")
-            if let problem { Text(problem).font(.onest(14)).foregroundStyle(palette.muted).padding(.horizontal, 4).padding(.top, 12) }
-            if let found {
+            if let problem = search.problem { Text(problem).font(.onest(14)).foregroundStyle(palette.muted).padding(.horizontal, 4).padding(.top, 12) }
+            if let found = search.found {
                 HStack(spacing: 12) {
                     AvatarView(member: found.person.member, size: 40)
                     VStack(alignment: .leading, spacing: 2) {
@@ -210,7 +219,7 @@ struct AddFriendSheet: View {
                     }
                     Spacer(minLength: 0)
                     if found.status == .none || found.status == .incoming {
-                        PrimaryButton(title: t.fr.call, busy: busy) { call(found.person) }
+                        PrimaryButton(title: t.fr.call, busy: search.busy) { search.call() }
                             .accessibilityIdentifier("friendAdd.call")
                     } else {
                         Text(t.fr.status[found.status] ?? "").font(.onest(14)).foregroundStyle(palette.muted)
@@ -221,53 +230,7 @@ struct AddFriendSheet: View {
             }
         }
         .task { if tg.friends == nil { await tg.reloadFriends() } }
-        // Ищем, когда перестали печатать (400 мс).
-        .task(id: name) {
-            found = nil
-            problem = nil
-            let clean = name.trimmingCharacters(in: .whitespaces)
-            guard FriendsLogic.searchable(clean) else { return }
-            try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled else { return }
-            do {
-                let result = try await tg.findPerson(clean)
-                if !Task.isCancelled { found = result }
-            } catch is CancellationError {
-                // Печатают дальше — этот поиск уже не нужен.
-            } catch {
-                if (error as? APIError)?.isSignedOut == true { return model.signOutLocally() }
-                guard !Task.isCancelled else { return }
-                // «Такого нет» — только когда сервер так и сказал (404); сеть или сбой — «что-то пошло не так».
-                let kind = FriendsLogic.searchProblem(error)
-                if kind == .error {
-                    friendsLog.notice("find person failed: \(String(describing: error), privacy: .public)")
-                }
-                problem = switch kind {
-                case .badUsername: t.fr.badUsername
-                case .notFound: t.fr.notFound
-                case .error: t.error
-                }
-            }
-        }
-    }
-
-    private func call(_ person: Person) {
-        let searchedName = name
-        let username = person.username ?? searchedName
-        busy = true
-        Task {
-            do {
-                let status = try await tg.request(username: username)
-                if FriendsLogic.requestIsCurrent(started: searchedName, current: name) {
-                    found = FoundPerson(person: person, status: status)
-                }
-            } catch {
-                if (error as? APIError)?.isSignedOut == true { return model.signOutLocally() }
-                friendsLog.notice("friend request failed: \(String(describing: error), privacy: .public)")
-                problem = t.error
-            }
-            busy = false
-        }
+        .onDisappear { search.stop() }
     }
 }
 

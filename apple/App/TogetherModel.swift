@@ -9,6 +9,105 @@ import Observation
 import os
 
 private let togetherLog = Logger(subsystem: "app.lifecommit", category: "together")
+private let friendsLog = Logger(subsystem: "app.lifecommit", category: "friends")
+
+/// Состояние одной шторки «Позвать друга». Отмена паузы и устаревшие ответы — здесь, а не во вьюхе.
+@Observable
+@MainActor
+final class AddFriendSearch {
+    var name = "" {
+        didSet { if name != oldValue { startSearch() } }
+    }
+    private(set) var found: FoundPerson?
+    private(set) var problem: String?
+    private(set) var busy = false
+
+    private let together: TogetherModel
+    private let delay: Duration
+    private var revision = 0
+    // Пауза отменяется при вводе. Уже ушедший запрос, как в мини-аппе, может ответить позже.
+    @ObservationIgnored private var pendingSearch: Task<Void, Never>?
+    @ObservationIgnored private(set) var searchTask: Task<Void, Never>?
+
+    init(together: TogetherModel, delay: Duration = .milliseconds(400)) {
+        self.together = together
+        self.delay = delay
+    }
+
+    private var t: Strings { together.app?.strings ?? .ru }
+
+    private func startSearch() {
+        stop()
+        found = nil
+        problem = nil
+        let clean = name.trimmingCharacters(in: .whitespaces)
+        guard FriendsLogic.searchable(clean) else { return }
+        let started = revision
+        let task = Task {
+            do {
+                try await Task.sleep(for: delay)
+                try Task.checkCancellation()
+                guard revision == started else { return }
+                pendingSearch = nil
+                let result = try await together.findPerson(clean)
+                guard revision == started else { return }
+                found = result
+            } catch is CancellationError {
+                // Печатают дальше или закрыли шторку — отменённая пауза не ошибка.
+            } catch {
+                guard revision == started else { return }
+                if (error as? APIError)?.isSignedOut == true {
+                    together.app?.signOutLocally()
+                    return
+                }
+                let kind = FriendsLogic.searchProblem(error)
+                if kind == .error {
+                    friendsLog.notice("find person failed: \(String(describing: error), privacy: .public)")
+                }
+                problem = switch kind {
+                case .badUsername: t.fr.badUsername
+                case .notFound: t.fr.notFound
+                case .error: t.error
+                }
+            }
+        }
+        searchTask = task
+        pendingSearch = task
+    }
+
+    /// Закрытая шторка не принимает ответы поиска; отправленная заявка дойдёт и перечитает друзей.
+    func stop() {
+        revision += 1
+        pendingSearch?.cancel()
+        pendingSearch = nil
+        searchTask = nil
+    }
+
+    @discardableResult
+    func call() -> Task<Void, Never>? {
+        guard !busy, let found, found.status == .none || found.status == .incoming else { return nil }
+        let person = found.person
+        let searchedName = name
+        let username = person.username ?? searchedName
+        busy = true
+        return Task {
+            defer { busy = false }
+            do {
+                let status = try await together.request(username: username)
+                if name == searchedName {
+                    self.found = FoundPerson(person: person, status: status)
+                }
+            } catch {
+                if (error as? APIError)?.isSignedOut == true {
+                    together.app?.signOutLocally()
+                    return
+                }
+                friendsLog.notice("friend request failed: \(String(describing: error), privacy: .public)")
+                problem = t.error
+            }
+        }
+    }
+}
 
 @Observable
 @MainActor
